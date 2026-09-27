@@ -261,4 +261,4 @@
     return off.startRendering();
   };
   A.debug = () => ({ ctx: !!G, state: G && G.ctx.state, voices: A.voices, enabled, bed: A.bed, music: !!theme, auto: A.auto, timer: !!timer });
-})(window.FR);
+})(typeof window !== 'undefined' ? window.FR : globalThis.FR);

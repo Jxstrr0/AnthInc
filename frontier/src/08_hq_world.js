@@ -26,6 +26,17 @@
     boardroom: { n: '8', name: 'Boardroom' }
   };
 
+  // three.js missing (the CDN script failed): a do-nothing FR.r so the rest of the one-script build (menu, sim, main) still
+  // runs; floors register into it harmlessly and nothing renders. The look and title modules skip themselves.
+  if (typeof THREE === 'undefined') {
+    console.error('three.js did not load: the HQ view is off');
+    const no = () => false;
+    FR.r = { floors: {}, stub: true, current: null, mode: 'room', focusId: null, paused: true, cinematic: null, t: 0, LED: {},
+      init() {}, loadFloor(id) { FR.emit('hq:floor', { floorId: id }); }, home() {}, back() { if (FR.ui && FR.ui.sheetId) FR.ui.sheet(null); },
+      focus: no, tapAt: no, glideTo: no, snap() {}, setMode() {}, target: () => null, poseOf: () => null, screenOf: () => null, pick: () => null,
+      live: no, targets: () => [], relabel() {}, setText() {}, staffOn: () => 0, disposeGroup() {}, debug: () => ({ stub: true }) };
+    return;
+  }
   const R = FR.r = { floors: {}, current: null, t: 0, mode: 'room', focusId: null, view: null, paused: true, cinematic: null, settled: null, dirty: false };
   R.FOCUS_MS = 600; R.HOME_MS = 550; R.FOCUS_SHIFT = 0.31; R.MIN_HIT = 48; R.DESIGN_ASPECT = 390 / 844;
   R.PR_CAP = 1.5; // pixel-ratio cap (the look module adapts below it)
@@ -403,19 +414,27 @@
     tagEls = {}; if (!tagsEl) return;
     tagsEl.innerHTML = targets.filter(t => !t.onlyIn).map(t => `<button class="tag" data-t="${esc(t.id)}" aria-label="${esc(t.label)}"><i></i><span>${esc(t.label)}</span></button>`).join('');
     tagsEl.querySelectorAll('.tag').forEach(el => { tagEls[el.dataset.t] = el; el._k = null; el._off = false; el._w = 0; });
-    tagSig = '';
+    tagStale = true;
   }
   // re-label one target's tag in place (a project floor's tag after a greenlight); placement re-runs on the next frame
   R.relabel = function (id, label) {
     const t = byId[id]; if (!t) return; t.label = label; const el = tagEls[id]; if (!el) return;
-    const sp = el.querySelector('span'); if (sp) sp.textContent = label; el.setAttribute('aria-label', label); el._w = 0; tagSig = '';
+    const sp = el.querySelector('span'); if (sp) sp.textContent = label; el.setAttribute('aria-label', label); el._w = 0; tagStale = true;
   };
   // Tags hang above their anchors, or below when every spot above is taken. Each tag takes the cheapest spot near its
   // anchor that is on screen, clear of the HUD and of the tags already placed, and covers no other target's centre;
   // spots overlapping another target's screen rect (plus 8 px of touch slop) cost the most, so a tap anywhere on an
   // object reaches that object rather than a neighbour's tag. A tag with no legal spot hides (its object still takes
   // taps). Runs only when the camera or the viewport changed (the room view is static).
-  let tagSig = '';
+  // last camera + viewport the tags were placed for (numbers, compared in place: no per-frame string); NaN = stale
+  const tagSig = new Float64Array(11); let tagStale = true;
+  function sig(i, v, ch) { if (tagSig[i] !== v) { tagSig[i] = v; return true; } return ch; }
+  function camChanged() {
+    let ch = tagStale; tagStale = false;
+    ch = sig(0, rig.pos.x, ch); ch = sig(1, rig.pos.y, ch); ch = sig(2, rig.pos.z, ch); ch = sig(3, rig.look.x, ch); ch = sig(4, rig.look.y, ch);
+    ch = sig(5, rig.look.z, ch); ch = sig(6, rig.fov, ch); ch = sig(7, rig.shift, ch); ch = sig(8, rig.sx, ch); ch = sig(9, W(), ch); ch = sig(10, H(), ch);
+    return ch;
+  }
   const SLOP = 8, EDGE = 4;
   const ovl = (a, b) => { const x = Math.min(a[2], b[2]) - Math.max(a[0], b[0]), y = Math.min(a[3], b[3]) - Math.max(a[1], b[1]); return x > 0 && y > 0 ? x * y : 0; };
   function hudRects() {
@@ -424,8 +443,7 @@
   }
   function hideTag(el) { if (!el._off) { el.classList.add('off'); el._off = true; el._k = null; } }
   function placeTags() {
-    const sig = rig.pos.x + ',' + rig.pos.y + ',' + rig.pos.z + ',' + rig.look.x + ',' + rig.look.y + ',' + rig.look.z + ',' + rig.fov + ',' + rig.shift + ',' + rig.sx + ',' + W() + ',' + H();
-    if (sig === tagSig) return; tagSig = sig;
+    if (!camChanged()) return;
     const w = W(), h = H(), hud = hudRects(), placed = [];
     const rects = targets.map(t => { if (!live(t)) return null; const s = R.screenOf(t.id); return s ? { r: [s.x0 - SLOP, s.y0 - SLOP, s.x1 + SLOP, s.y1 + SLOP], cx: s.cx, cy: s.cy } : null; });
     for (let i = 0; i < targets.length; i++) {
@@ -502,7 +520,7 @@
     tagsEl = layer('tags', 'position:fixed;inset:0;pointer-events:none;overflow:hidden');
     layer('fade', 'position:fixed;inset:0;z-index:12;background:#0a0e13;opacity:0;pointer-events:none;transition:opacity .25s');
     R.paused = true; R.frames = 0; R.fps = 0; R.fpsT = 0;
-    window.addEventListener('resize', () => { R.renderer.setSize(W(), H()); refit(); applyPose(); for (const k in tagEls) tagEls[k]._w = 0; tagSig = ''; });
+    window.addEventListener('resize', () => { R.renderer.setSize(W(), H()); refit(); applyPose(); for (const k in tagEls) tagEls[k]._w = 0; tagStale = true; });
     R.bindInput(R.renderer.domElement);
     R.clock = new THREE.Clock();
     R.renderer.setAnimationLoop(R.frame);
@@ -642,7 +660,7 @@
     cam: rig.pos ? { pos: arr(rig.pos), look: arr(rig.look), fov: +rig.fov.toFixed(2) } : null,
     targets: targets.map(t => t.id), paused: R.paused, cinematic: !!R.cinematic, objects: R.current ? R.current.group.children.length : 0,
     floorDebug: R.current && R.current.debug ? R.current.debug() : null });
-})(window.FR);
+})(typeof window !== 'undefined' ? window.FR : globalThis.FR);
 
 // ---------- FR.props: reactive prop registry ----------
 // Floors bind bus events to in-place prop updates; R.loadFloor calls unbindAll() on every floor change.
@@ -662,14 +680,14 @@
   P.unbind = function (b) { const i = P.list.indexOf(b); if (i >= 0) { P.list.splice(i, 1); b.off(); } };
   P.unbindAll = function () { const l = P.list; P.list = []; for (let i = 0; i < l.length; i++) l[i].off(); };
   P.debug = () => ({ count: P.list.length, bindings: P.list.map(b => ({ floor: b.floorId, event: b.event, fires: b.fires })) });
-})(window.FR);
+})(typeof window !== 'undefined' ? window.FR : globalThis.FR);
 
 // ---------- FR.look: pixel-ratio budget, per-floor light rig + palette, baked floor/ceiling shading, wall AO, contact
 // shadows, glows. It only wraps world helpers (R.init, R.loadFloor, R.room, R.plane, R.sign, R.person) and listens to
 // 'hq:floor', so it never touches gameplay, input or the camera. Floors read FR.look.hex(floorId, 'wall') for sign plates.
 // Headless screenshots: set FR.look.adaptive = false.
 (function (FR) {
-  const R = FR.r; if (!R) return;
+  const R = FR.r; if (!R || R.stub) return;
   const LK = FR.look = { cap: R.PR_CAP || 1.5, min: 1, pr: 1.5, adaptive: true, ema: 16, fps: 0, floor: null, level: 1 };
 
   // ---------- per-floor look (legacy lighting: no sRGB output, no tone mapping; colours are the hexes you see) ----------
@@ -917,4 +935,4 @@
     room.ceil.material = new THREE.MeshBasicMaterial({ color: 0xffffff, map: tex(cc) });
   });
   LK.debug = () => ({ floor: LK.floor, pr: LK.pr, glows: glows.length, frameMs: +LK.ema.toFixed(1), fps: +LK.fps.toFixed(1), adaptive: LK.adaptive, level: LK.level });
-})(window.FR);
+})(typeof window !== 'undefined' ? window.FR : globalThis.FR);

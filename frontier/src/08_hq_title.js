@@ -8,6 +8,7 @@
 (function (FR) {
   const R = FR.r;
   const T = FR.title = { active: false, t: 0, scene: null, cam: null };
+  if (!R || R.stub) { T.start = T.stop = T.restart = function () {}; T.debug = () => ({ active: false, stub: true }); return; }
   const FLOORS = FR.HQ_FLOORS, ROWS = FLOORS.length * 2, FH = 3.4, TW = 14, TD = 14, TH = ROWS * FH + 2.4, COLS = 6;
   const CRANE = 14; // seconds of crane-up before idle
   const _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1), _c = new THREE.Color(), _up = new THREE.Vector3(0, 1, 0);
@@ -173,4 +174,4 @@
   // the menu shows after a career changed (save and quit, delete, import): rebuild so the lit floors match the latest save
   T.restart = function () { const on = T.active; T.stop(); if (on || R.renderer) T.start(); };
   T.debug = () => ({ active: T.active, t: +T.t.toFixed(2), phase: T.t < CRANE ? 'crane' : 'idle', windows: T.wins ? T.wins.length : 0, built: !!T.scene, lab: T.lab || null, lit: T.lit, fps: R.fps });
-})(window.FR);
+})(typeof window !== 'undefined' ? window.FR : globalThis.FR);
