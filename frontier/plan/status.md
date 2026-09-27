@@ -2,7 +2,7 @@
 
 - **Version:** 0.1.0.0 (pre-release, building v1)
 - **Artifact URL:** not published yet (title "Frontier", label = version)
-- **Repo:** `Jxstrr0/AnthInc`, folder `frontier/`. Design: `docs/frontier-handoff-v0.1.html`. Contracts: `plan/contracts.md`.
+- **Repo:** `Jxstrr0/AnthInc`, folder `frontier/`. Design: `docs/frontier-handoff-v0.1.html`. Contracts: `plan/contracts.md` (sim), `plan/contracts_ui.md` (HQ + UI).
 - **Build:** `node build.js` → `dist/game.html`, `dist/game.artifact.html`, `Frontier - V<ver>.html`
 - **Tests:** `node test/run.js [name]` (node, sim) · `node tools/balance.js` (bot probe)
 - **HQ reference:** the owner's Mogul game (artifact V8LMpKH1RBp2UTiFcz7m77). Local split copy in `.ref/mogul/src`
