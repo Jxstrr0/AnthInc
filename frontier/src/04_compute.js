@@ -32,6 +32,7 @@
   const age = (t, c) => Math.max(0, t - c.bought);
   const money = FR.fmtMoney, pct = (f) => FR.fmtPct(f);
   const no = (why) => ({ ok: false, why });
+  const done = (text) => ({ ok: true, from: 'compute', memo: { kind: 'change', text } });
   function rivalName(s, id) {
     const r = s.market && s.market.rivals && s.market.rivals.find(x => x.id === id);
     return r ? r.name : String(id);
@@ -44,9 +45,13 @@
     return { total: FR.round(owned + rented + deals, 1), owned, rented, deals };
   }
   C.capacity = (s) => capAt(s, s.turn);
-  C.rentCost = (s) => s.compute.rentPF * s.compute.rentPrice;
+  // rent discount from project effects (chip pre-order, supply contract), 0 when none
+  const disc = (s) => FR.projects && FR.projects.fx && s.projects ? FR.projects.fx(s).rentDiscount || 0 : 0;
+  C.rentCost = (s) => s.compute.rentPF * s.compute.rentPrice * (1 - disc(s));
   C.powerCost = (s) => sum(s.compute.clusters, x => x.pf * pwr(age(s.turn, x)));
-  C.cost = (s) => Math.round(C.rentCost(s) + C.powerCost(s));
+  // $/week. During End Turn, once step has run, the bill for the week just worked (the price and fleet the player saw);
+  // otherwise the projection for the coming week.
+  C.cost = (s) => { const b = s.compute.bill; return b && b.turn === s.turn ? b.cash : Math.round(C.rentCost(s) + C.powerCost(s)); };
   C.revShare = (s) => sum(s.compute.deals, d => d.revShare);
   // one cluster for the UI: effective PF now, power $/week, age and weeks left
   C.clusterInfo = function (s, x) {
@@ -55,7 +60,7 @@
   };
   // weeks from purchase until an offer has saved its price vs renting the same capacity at today's spot price; null = never
   C.payback = function (s, o) {
-    const p = s.compute.rentPrice; let acc = -o.cost;
+    const p = s.compute.rentPrice * (1 - disc(s)); let acc = -o.cost;
     for (let a = 0; a < K.retireTurns; a++) { acc += o.pf * (fac(a) * p - pwr(a)); if (acc >= 0) return o.installTurns + a + 1; }
     return null;
   };
@@ -81,7 +86,7 @@
   }
 
   C.init = function (s, rng) {
-    s.compute = { rentPF: K.startRent, rentPrice: K.basePrice, scarcity: 0, clusters: [], deals: [], offers: [], installing: [] };
+    s.compute = { rentPF: K.startRent, rentPrice: K.basePrice, scarcity: 0, clusters: [], deals: [], offers: [], installing: [], bill: { turn: 0, cash: 0 } };
     makeOffers(s, rng, s.turn);
   };
 
@@ -98,7 +103,7 @@
     if (cash < o.cost) return no(o.name + ' costs ' + money(o.cost) + ', cash is ' + money(cash));
     s.money.cash -= o.cost; c.offers.splice(i, 1);
     c.installing.push({ id: o.id, name: o.name, pf: o.pf, ready: s.turn + o.installTurns, cost: o.cost });
-    return { ok: true };
+    return done(o.name + ' cluster bought: ' + o.pf + ' PF for ' + money(o.cost) + '. Online ' + FR.dateLabel(s.turn + o.installTurns) + '.');
   };
   C.acceptDeal = function (s) {
     const o = s.market && s.market.dealOffer;
@@ -107,12 +112,14 @@
     if (o.expires != null && s.turn > o.expires) return no('The offer has expired');
     if (s.compute.deals.some(d => d.rivalId === o.rivalId)) return no('A deal with ' + rivalName(s, o.rivalId) + ' is already running');
     s.compute.deals.push({ rivalId: o.rivalId, kind: 'compute', pf: o.pf, revShare: o.revShare, ends: s.turn + o.turns });
-    s.market.dealOffer = null; return { ok: true };
+    s.market.dealOffer = null;
+    return done(rivalName(s, o.rivalId) + ' compute share signed: ' + o.pf + ' PF for ' + o.turns + ' weeks at ' + pct(o.revShare) + ' of revenue.');
   };
   C.endDeal = function (s, rivalId) {
     const i = s.compute.deals.findIndex(d => d.rivalId === rivalId);
     if (i < 0) return no('No running deal with ' + rivalName(s, rivalId));
-    s.compute.deals.splice(i, 1); return { ok: true };
+    const d = s.compute.deals.splice(i, 1)[0];
+    return done(rivalName(s, rivalId) + ' compute share ended early: ' + d.pf + ' PF withdrawn, revenue share stops.');
   };
 
   // ---- the turn ----
@@ -171,7 +178,8 @@
   }
 
   C.step = function (s, rng, report) {
-    const c = s.compute, next = s.turn + 1;
+    const c = s.compute, next = s.turn + 1, rent = C.rentCost(s), power = C.powerCost(s);
+    c.bill = { turn: s.turn, cash: Math.round(rent + power) };     // what 05_money charges for this week
     price(s, rng, report);
     installs(s, next, report);
     retirements(s, next, report);
@@ -180,7 +188,7 @@
       makeOffers(s, rng, next);
       report.memo.push({ kind: 'change', text: 'Cluster offers this quarter: ' + c.offers.map(o => o.name + ' ' + o.pf + ' PF for ' + money(o.cost)).join(', ') + '.' });
     }
-    report.flows.compute = { rent: Math.round(C.rentCost(s)), power: Math.round(C.powerCost(s)), price: c.rentPrice, capacity: capAt(s, next).total };
+    report.flows.compute = { rent: Math.round(rent), power: Math.round(power), bill: c.bill.cash, price: c.rentPrice, capacity: capAt(s, next).total };
   };
 
   C.debug = function (s) {

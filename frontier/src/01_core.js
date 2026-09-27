@@ -80,9 +80,10 @@
   function checksum(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h.toString(36); }
   function b64(s) { return typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(s))) : Buffer.from(s, 'utf8').toString('base64'); }
   function unb64(s) { return typeof atob !== 'undefined' ? decodeURIComponent(escape(atob(s))) : Buffer.from(s, 'base64').toString('utf8'); }
-  // FR1.<checksum>.<base64 json>. History and news are dropped to keep codes short; the sim rebuilds nothing from them.
+  // FR1.<checksum>.<base64 json>. History, old news and the last report are dropped to keep codes short. The sim reads
+  // only the last 12 wire lines (the market's repeat filter), so a resumed code plays on exactly as the original would.
   save.exportCode = function (state) {
-    const j = JSON.stringify(Object.assign({}, state, { version: FR.VERSION, history: [], news: (state.news || []).slice(-6) }));
+    const j = JSON.stringify(Object.assign({}, state, { version: FR.VERSION, history: [], news: (state.news || []).slice(-12), lastReport: null }));
     return 'FR1.' + checksum(j) + '.' + b64(j);
   };
   save.importCode = function (code) {

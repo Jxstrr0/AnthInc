@@ -53,7 +53,9 @@
   M.trustMult = (s) => FR.market && FR.market.trustMult && s.market ? FR.market.trustMult(s) : K.trustLo + (K.trustHi - K.trustLo) * trust(s) / 100;
   M.pricePerPF = (avgCap) => K.priceBase * Math.pow(Math.max(0, avgCap) / 10, K.priceExp);
   M.price = M.pricePerPF;
-  M.demandPF = (s) => K.demandBase * Math.pow(avg(s) / 10, K.demandExp) * Math.pow(M.trustMult(s), K.demandTrustExp);
+  // project effects (product launch, efficiency work): demandMult and priceMult from 07_projects, 1 when none
+  const fx = (s) => FR.projects && FR.projects.fx && s.projects ? FR.projects.fx(s) : { demandMult: 1, priceMult: 1 };
+  M.demandPF = (s) => K.demandBase * Math.pow(avg(s) / 10, K.demandExp) * Math.pow(M.trustMult(s), K.demandTrustExp) * fx(s).demandMult;
   // open weights: price factor when Zeta's average cap is ahead of yours (1 when level or behind)
   M.zetaFactor = function (s) {
     if (!s.market) return 1;
@@ -65,7 +67,7 @@
   const share = (s) => FR.compute && FR.compute.revShare && s.compute ? FR.compute.revShare(s) : 0;
   M.revenue = function (s, servingPF) {
     const pf = Math.min(Math.max(0, +servingPF || 0), M.demandPF(s));
-    return pf * M.pricePerPF(avg(s)) * M.trustMult(s) * Math.max(0, 1 - share(s)) * M.zetaFactor(s);
+    return pf * M.pricePerPF(avg(s)) * fx(s).priceMult * M.trustMult(s) * Math.max(0, 1 - share(s)) * M.zetaFactor(s);
   };
 
   // ---- costs ----
@@ -170,7 +172,7 @@
     checkMilestone(s, report);
   }
 
-  // ---- commands. Results carry the event and memo line; step forwards them for commands resolved at End Turn. ----
+  // ---- commands. Results carry the event and memo line; 02_sim queues the memo line and sends the event. ----
   const done = (event, text) => ({ ok: true, from: 'money', event, memo: text ? { kind: 'change', text } : null });
   M.acceptRound = function (s) {
     const m = s.money, o = m.offer;
@@ -245,9 +247,11 @@
     report.news.push({ kind: 'you', text: name + ' winds down after running out of cash.' });
   }
 
+  // cash at or below zero ends the run; 02_sim calls this again after the ladder, since an incident bill lands late
+  M.bankrupt = function (s, report) { if (s.status === 'playing' && s.money.cash <= 0) bankrupt(s, report); return s.status === 'dead'; };
+
   M.step = function (s, alloc, rng, report) {
     const m = s.money, next = s.turn + 1;
-    (report.commands || []).forEach(r => { if (r && r.ok && r.from === 'money') { if (r.event) report.events.push(r.event); if (r.memo) report.memo.push(r.memo); } });
     const was = weeksOf(m.cash, m.net);                 // runway as it stood coming into the turn
     const served = alloc && alloc.serving ? Math.max(0, alloc.serving.pf) : 0, demand = M.demandPF(s);
     const p = M.burnParts(s), burn = Math.round(p.payroll + p.ops + p.compute + p.projects), revenue = Math.round(M.revenue(s, served));
