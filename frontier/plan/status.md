@@ -15,6 +15,7 @@
 - After the 52-week safe frontier hold: **the run ends** (end-of-run sheet, then a new lab).
 - Accepting an acquisition: **exit with a score** (not a win, not a death). Acquisition deals are back-burner in v1.
 - Everything in the handoff §2 table.
+- PR flow: one PR per milestone; the owner merges once the game builds, passes tests and is published.
 
 ## Build log
 - 0.1.0.0 — scaffold: core (bus, rng, save codes), sim resolver, contracts.

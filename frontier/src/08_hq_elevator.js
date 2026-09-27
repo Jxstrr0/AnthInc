@@ -167,4 +167,4 @@
     if (ev.led && META[floorId]) R.setText(ev.led, [META[floorId].n], R.LED);
   });
   E.debug = () => ({ riding: E.riding, rides: E.rides, floor: E.floor, lines: FR.state ? order.map(id => id + ': ' + E.line(id).text) : [] });
-})(window.FR);
+})(typeof window !== 'undefined' ? window.FR : globalThis.FR);
