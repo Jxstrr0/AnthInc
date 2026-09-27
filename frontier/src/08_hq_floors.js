@@ -1058,7 +1058,7 @@
     const aide = walkers(g, [[-3.6, 4.6, 3.6, 4.6, 0.1, 0.5]], 7);
     const targets = [
       ev.target,
-      { id: 'boardroom.table', label: 'Board table', labelAt: [0.2, 1.1, 1.2], box: [-1.45, 0, -7, 1.85, 3.3, 2.75], focus: { pos: [0.2, 4.4, 5.8], look: [0.2, 1.5, -3.8], fov: 64 } },
+      { id: 'boardroom.table', label: 'Board table', labelAt: [0.2, 1.1, 1.2], box: [-1.45, 0, -7, 1.85, 3.3, 2.75], focus: aim([0.2, 2.0, -5.2], 0, 22, 10) },
       { id: 'boardroom.rivals', label: 'Rivals', box: [2.8, 1.0, -7, 7.4, 3.4, -6.8], focus: aim([5.1, 2.2, -6.9], 0, 14, fitD(4.6, 2.4)) },
       { id: 'boardroom.compute', label: 'Compute', box: [-7.95, 1.2, -2.7, -7.8, 3.2, 0.7], focus: aim([-7.9, 2.2, -1.0], 90, 18, fitD(3.4, 2.0)) },
       { id: 'boardroom.team', label: 'Team', box: [7.8, 1.2, -2.7, 7.95, 3.2, 0.7], focus: aim([7.9, 2.2, -1.0], -90, 18, fitD(3.4, 2.0)) }
