@@ -243,7 +243,7 @@
   // finish a floor object: shared fields, the first refresh
   function finish(f, id, scr) {
     f._fr = true; f._frScreens = scr; f.light = f.light || { hemi: 0.8, sun: 0.5, bg: 0x0a0e13 };
-    if (f.refresh) tryf(() => f.refresh(S()), null);
+    if (f.refresh) try { f.refresh(S()); } catch (e) { console.error('floor refresh failed', id, e); }
     return f;
   }
 
@@ -783,9 +783,10 @@
           T(x, '+' + d.rate + ' research points a week', w / 2, h - 44, 26, '#2d6aa8', 'center', 600, SANS, w - 70);
         });
         sp = split(heads(p.staff), desks.n, stands.length, walk.length); sit.set(sp.sit); stand.set(sp.stand); nWalk = sp.walk; desks.set(Math.max(4, Math.min(desks.n, sp.sit + 2)));
-        desks.scrMat.color.setScalar(0.35 + 0.65 * act); lampMat.emissiveIntensity = 0.15 + 0.85 * act;
+        desks.scrMat.color.setScalar(0.35 + 0.65 * act);
       },
-      update(dt, t) { stepWalkers(walk, nWalk, t); rig(f, 0.74 + 0.26 * act, 0); },
+      // lamps dim in update, not refresh: look's glow bake (after the build) only gives a glow to a lamp that is lit then
+      update(dt, t) { stepWalkers(walk, nWalk, t); lampMat.emissiveIntensity = 0.15 + 0.85 * act; rig(f, 0.74 + 0.26 * act, 0); },
       debug() { return { activity: +act.toFixed(2), people: sp, desks: desks.count, lamps: +lampMat.emissiveIntensity.toFixed(2), targets: targets.map(t => t.id) }; }
     };
     return finish(f, id, scr);
