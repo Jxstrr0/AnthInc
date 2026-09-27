@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0f141a">
+<title>Frontier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,600..800&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* ---- Design tokens (ported from Mogul's style guide; values re-themed per plan/contracts_ui.md "Look").
+   Use these; never hard-code a hex, size or duration. Token names are Mogul's so ported CSS keeps working. ---- */
+:root{
+  color-scheme:dark;
+  /* surfaces: cool graphite, darkest to lightest */
+  --sunken:#0a0e13;     /* fields, tracks, wells */
+  --bg:#0f141a;         /* app and screen background */
+  --surface:#171e27;    /* sheet, dock, toast */
+  --raised:#202a35;     /* cards and secondary buttons on a surface */
+  --raised-2:#2a3642;   /* stat tiles inside cards, pressed secondary */
+  --line:#3a4756;       /* hairlines and card borders (decorative) */
+  --line-strong:#6b7c8f;/* outlines that identify a control: fields, secondary buttons (>= 3:1) */
+  --glass:rgba(15,20,26,.86);   /* HUD chips and dock over the 3D view (no backdrop blur: it costs every frame) */
+  --glass-line:rgba(238,242,246,.14);
+  --scrim:rgba(6,9,12,.6);      /* #dim behind sheets */
+  --screen-veil:rgba(15,20,26,.86); /* full screens over the title scene / paused world: >= .84 keeps --ink-3 AA even over white */
+  --screen-veil-dim:rgba(15,20,26,.93); /* reading screens (careers, help, settings, new career, credits, end) over the title */
+  --screen-veil-clear:rgba(15,20,26,.08); /* the title scene's window: no text sits on it */
+  --ticker-h:32px;       /* menu newswire band */
+  /* text */
+  --ink:#eef2f6;        /* primary text */
+  --ink-2:#c5cfd9;      /* secondary text, labels */
+  --ink-3:#97a5b4;      /* captions, hints, meta (>= 4.5:1 on every surface) */
+  /* brand: board blue */
+  --brand:#2d6aa8;      /* primary fills (white text 5.6:1) */
+  --brand-press:#245a8f;
+  --brand-bright:#4f93d9; /* strokes, selected outlines, bars; also the capability colour */
+  --brand-text:#8ec0f2; /* blue text and icons at any size on any surface */
+  --on-brand:#ffffff;
+  --brand-tint:color-mix(in srgb,var(--brand) 26%,var(--surface)); /* selected backgrounds */
+  /* semantic hues: one job each */
+  --gold:#e6c15a;  --gold-tint:color-mix(in srgb,var(--gold) 15%,var(--surface));  /* money */
+  --good:#5fcf9a;  --good-tint:color-mix(in srgb,var(--good) 15%,var(--surface));  /* safety, gains, done */
+  --warn:#f0a24a;  --warn-tint:color-mix(in srgb,var(--warn) 15%,var(--surface));  /* heads-up, gap above 10 */
+  --bad:#ef6b5b;   --bad-tint:color-mix(in srgb,var(--bad) 16%,var(--surface));    /* losses, errors, gap above 20 */
+  --bad-press:#b23a2f;  /* solid danger fill (white text 5.7:1) */
+  --info:#9cc0ff;  --info-tint:color-mix(in srgb,var(--info) 14%,var(--surface));  /* tips, explanations */
+  --cap:var(--brand-bright);   /* capability bars */
+  --safe:var(--good);          /* safety bars */
+  --focus:#ffd98a;
+  --led:#8ec0f2;       /* elevator LED, matches R.LED.fg in 08_hq_world.js */
+  --beacon:#ff4d52;    /* the aircraft beacon on the boot tower */
+  /* type */
+  --font-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-display:"Archivo","IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --font-led:var(--font-num);
+  --stretch-display:87.5%;
+  --text-xs:12px;   /* floor: captions, kicker, meta */
+  --text-sm:13px;   /* hints, secondary lines */
+  --text-md:15px;   /* body */
+  --text-lg:17px;   /* buttons, list titles */
+  --text-xl:20px;   /* sheet and card titles (display) */
+  --text-2xl:26px;  /* screen titles (display) */
+  --text-3xl:34px;  /* hero numbers */
+  --text-logo:clamp(44px,14vw,62px);
+  --lh-tight:1.1; --lh-snug:1.3; --lh-body:1.45;
+  /* weights: IBM Plex Sans ships 400/500/600; Archivo 600-800 (display only) */
+  --w-regular:400; --w-medium:500; --w-bold:600; --w-black:600; --w-display:700; --w-logo:800;
+  --track-caps:.08em; --track-logo:.14em; --track-wide:.32em; /* title credit line */
+  /* space (4px grid) */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px;
+  --gutter:16px;           /* screen side padding */
+  --col:360px;             /* max width of a screen column */
+  --sheet-pad-top:12px; --sheet-pad-x:16px; --sheet-pad-bottom:16px;
+  --sheet-head:56px;       /* the band that holds the grab and the close once a sheet is scrolled */
+  /* radius */
+  --r-xs:6px; --r-sm:10px; --r-md:14px; --r-lg:18px; --r-xl:24px; --r-pill:999px;
+  /* sizes */
+  --tap:44px;              /* minimum touch target, no exceptions */
+  --control:48px;          /* default button and field height */
+  --control-lg:56px;       /* hero actions */
+  --icon:20px; --icon-lg:24px;
+  --dock-h:68px;           /* HUD bottom dock (buttons + padding) */
+  --chip-h:48px;           /* HUD top chips */
+  --strip-h:30px;          /* HUD frontier strip under the chips */
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --hud-clear-top:calc(var(--sp-2) + var(--chip-h) + 6px + var(--strip-h) + var(--safe-t)); /* the chips and the strip end here */
+  --hud-clear-bottom:calc(var(--dock-h) + 24px + var(--safe-b)); /* place world labels and prompts above this */
+  /* elevation */
+  --sh-1:inset 0 1px 0 rgba(238,242,246,.05),0 1px 3px rgba(0,0,0,.3);
+  --sh-2:inset 0 1px 0 rgba(238,242,246,.07),0 6px 18px rgba(0,0,0,.35);
+  --sh-3:0 -12px 40px rgba(0,0,0,.5);
+  --sh-brand:inset 0 1px 0 rgba(255,255,255,.18),0 6px 18px color-mix(in srgb,var(--brand) 40%,transparent);
+  --ring:0 0 0 3px var(--focus);
+  /* motion */
+  --dur-1:120ms;  /* press feedback */
+  --dur-2:200ms;  /* small state changes, fades */
+  --dur-3:320ms;  /* sheets, screens, toasts entering */
+  --dur-4:520ms;  /* reveals, meters filling */
+  --dur-5:1000ms; /* title: cinematic fades */
+  --dur-6:1500ms; /* title: the logo landing */
+  --ease-out:cubic-bezier(.2,.8,.2,1);
+  --ease-in:cubic-bezier(.4,0,1,1);
+  --ease-spring:cubic-bezier(.3,1.35,.5,1);
+  /* layers */
+  --z-hud:10; --z-fade:12; --z-led:13; --z-dim:14; --z-sheet:15; --z-screen:20; --z-toast:30;
+  /* legacy aliases: ported .pl- panel CSS still reads these. New code uses the names above. */
+  --acc:var(--brand); --acc2:var(--brand-bright); --mute:var(--ink-3); --card:var(--surface);
+}
+/* ---- Base: reset, type, focus, reduced motion, small utilities ---- */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font:var(--w-regular) var(--text-md)/var(--lh-body) var(--font-ui);font-variant-numeric:tabular-nums;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
+button{cursor:pointer;touch-action:manipulation}
+input,textarea{-webkit-user-select:text;user-select:text}
+h1,h2,h3,h4{font-family:var(--font-display);font-stretch:var(--stretch-display);font-weight:var(--w-display);line-height:var(--lh-tight);letter-spacing:-.005em}
+b,strong{font-weight:var(--w-bold)}
+:focus{outline:none}
+:focus-visible{outline:none;box-shadow:var(--ring)}
+[hidden]{display:none!important}
+#game{position:fixed;inset:0}
+canvas{display:block}
+.ico{width:var(--icon);height:var(--icon);flex:none;display:inline-block;vertical-align:-.28em}
+.num{font-family:var(--font-num);font-weight:var(--w-medium);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.kicker{display:block;font-size:var(--text-xs);font-weight:var(--w-bold);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--brand-text)}
+.kicker.gold{color:var(--gold)}.kicker.good{color:var(--good)}.kicker.warn{color:var(--warn)}.kicker.bad{color:var(--bad)}
+.hint{font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3);margin:var(--sp-2) 0}
+.hint.good{color:var(--good)}.hint.warn{color:var(--warn)}.hint.bad{color:var(--bad)}.hint.info{color:var(--info)}
+.pos{color:var(--good)}.neg{color:var(--bad)}.money{color:var(--gold)}
+/* Frontier tones: capability blue, safety green, the gap in warn (> 10) or bad (> 20) */
+.tone-cap{color:var(--cap)}.tone-safe{color:var(--safe)}.tone-good{color:var(--good)}.tone-warn{color:var(--warn)}.tone-bad{color:var(--bad)}.tone-mute{color:var(--ink-3)}
+/* shared keyframes */
+@keyframes blink{50%{opacity:.4}}
+@keyframes screen-in{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:1ms!important;transition-delay:0s!important}}
+/* the in-game Reduce motion setting (FR.settings.reduceMotion) does the same through a body class */
+body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{animation-duration:1ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:1ms!important;transition-delay:0s!important}
+/* ---- Shared components: buttons, segmented control, fields, save slots, chips, badges, cards, tabs,
+   stat meter, capability/safety bar, empty state, confirm, tap-tip, checklist, list rows ---- */
+
+/* Buttons. Secondary is the default look; add .primary / .quiet / .danger. Sizes: .small (44) / default (48) / .lg (56). */
+.btn{position:relative;display:flex;align-items:center;justify-content:center;gap:var(--sp-2);width:100%;min-height:var(--control);margin:var(--sp-2) 0;padding:10px 18px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--raised);box-shadow:var(--sh-1);color:var(--ink);font-size:var(--text-lg);font-weight:var(--w-bold);line-height:var(--lh-snug);text-align:center;text-decoration:none;transition:transform var(--dur-1) var(--ease-out),background-color var(--dur-2),border-color var(--dur-2)}
+.btn:active{transform:scale(.97);background:var(--raised-2)}
+.btn .ico{width:var(--icon);height:var(--icon)}
+.btn.primary{background:var(--brand);border-color:var(--brand-bright);color:var(--on-brand);box-shadow:var(--sh-brand)}
+.btn.primary:active{background:var(--brand-press)}
+.btn.quiet{background:transparent;border-color:transparent;box-shadow:none;color:var(--ink-2)}
+.btn.quiet:active{background:var(--raised)}
+.btn.danger{background:transparent;border-color:color-mix(in srgb,var(--bad) 70%,transparent);box-shadow:none;color:var(--bad)}
+.btn.danger:active{background:var(--bad-tint)}
+.btn.danger.solid{background:var(--bad-press);border-color:var(--bad);color:var(--on-brand)}
+.btn.small{min-height:var(--tap);padding:8px 14px;border-radius:var(--r-sm);font-size:var(--text-md)}
+.btn.lg{min-height:var(--control-lg);padding:12px 20px;border-radius:var(--r-lg);font-size:18px}
+.btn.icon-only{width:var(--tap);min-width:var(--tap);padding:0;flex:none}
+.btn.two-line{flex-direction:column;gap:2px}
+.btn .btn-t{display:flex;align-items:center;justify-content:center;gap:var(--sp-2)}
+.btn .btn-sub{display:block;font-size:var(--text-sm);font-weight:var(--w-regular);color:var(--ink-2)}
+/* on a blue fill the sub-line stays full white: faded white on --brand fails AA */
+.btn.primary .btn-sub,.btn.danger.solid .btn-sub{color:var(--on-brand);font-weight:var(--w-medium)}
+.btn[disabled],.btn.is-disabled{opacity:.45;filter:saturate(.35);box-shadow:none;transform:none;cursor:default}
+/* a disabled primary turns into a flat, still-readable slab (ink-3 on raised); a .hint next to it says why */
+.btn.primary[disabled],.btn.primary.is-disabled{opacity:1;filter:none;border-color:var(--line);background:var(--raised);color:var(--ink-3)}
+.btn.primary[disabled] .btn-sub{color:var(--ink-3)}
+.btn .count,.count{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--gold);color:#1a1405;font-size:var(--text-xs);font-weight:var(--w-bold);line-height:20px;text-align:center;box-shadow:0 0 0 2px var(--surface)}
+
+/* Segmented control: .seg > .btn, one .sel. */
+.seg{display:flex;gap:4px;width:100%;margin:var(--sp-2) 0;padding:4px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--sunken)}
+.seg .btn{flex:1;min-width:0;min-height:var(--tap);margin:0;padding:6px 8px;border:1px solid transparent;border-radius:var(--r-sm);background:transparent;box-shadow:none;color:var(--ink-2);font-size:var(--text-md);font-weight:var(--w-medium)}
+.seg .btn.sel{background:var(--brand-tint);border-color:var(--brand-bright);color:var(--ink);font-weight:var(--w-bold)}
+
+/* Fields */
+.field{width:100%;margin:var(--sp-4) 0 var(--sp-2)}
+.field label,.label{display:block;margin:0 0 6px;font-size:var(--text-sm);font-weight:var(--w-bold);color:var(--ink-2)}
+.field input{width:100%;min-height:var(--control);padding:10px 14px;border:1px solid var(--line-strong);border-radius:var(--r-md);background:var(--sunken);color:var(--ink);font-size:var(--text-lg);transition:border-color var(--dur-2),box-shadow var(--dur-2)}
+.field input:focus{border-color:var(--focus);box-shadow:var(--ring)}
+
+/* Save slots (new career, import) */
+.slots{display:flex;flex-direction:column;gap:6px}
+.btn.slot{justify-content:flex-start;gap:var(--sp-3);min-height:56px;margin:0;padding:8px 14px;text-align:left}
+.slot .slot-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.slot .slot-t b{font-size:var(--text-md)}
+.slot .meta{font-size:var(--text-sm);font-weight:var(--w-regular);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot .tick{width:24px;height:24px;border-radius:50%;border:2px solid var(--line-strong);flex:none;display:grid;place-items:center;color:transparent}
+.slot .tick .ico{width:14px;height:14px}
+.btn.slot.sel{background:var(--brand-tint);border-color:var(--brand-bright)}
+.btn.slot.sel .tick{background:var(--brand-bright);border-color:var(--brand-bright);color:var(--on-brand)}
+
+/* Chips: choices and filters (tappable). Badges: status labels (not tappable). */
+.chips{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.chip{position:relative;display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:6px 14px;border:1px solid var(--line);border-radius:var(--r-pill);background:var(--raised);color:var(--ink-2);font-size:var(--text-sm);font-weight:var(--w-medium);white-space:nowrap}
+button.chip::after{content:"";position:absolute;inset:-4px 0}
+.chip.on{background:var(--brand-tint);border-color:var(--brand-bright);color:var(--ink)}
+.chip .ico{width:16px;height:16px}
+.badge{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:var(--r-pill);background:var(--raised-2);color:var(--ink-2);font-size:var(--text-xs);font-weight:var(--w-bold);letter-spacing:.02em;white-space:nowrap;vertical-align:middle}
+.badge .ico{width:14px;height:14px}
+.badge.brand{background:var(--brand-tint);color:var(--brand-text)}
+.badge.gold{background:var(--gold-tint);color:var(--gold)}
+.badge.good{background:var(--good-tint);color:var(--good)}
+.badge.warn{background:var(--warn-tint);color:var(--warn)}
+.badge.bad{background:var(--bad-tint);color:var(--bad)}
+.badge.info{background:var(--info-tint);color:var(--info)}
+
+/* Cards */
+.card{margin:0 0 var(--sp-3);padding:var(--sp-3) var(--sp-4);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--raised);box-shadow:var(--sh-1)}
+.card.ghost{background:transparent;border-style:dashed;box-shadow:none}
+.card.selected{border-color:var(--brand-bright);box-shadow:inset 0 0 0 1px var(--brand-bright)}
+.card-head{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
+.card-title{flex:1;min-width:0;margin:0;font-family:var(--font-display);font-stretch:var(--stretch-display);font-size:var(--text-lg);font-weight:var(--w-display);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-meta{margin:2px 0 0;font-size:var(--text-sm);color:var(--ink-3)}
+.card-actions{display:flex;gap:var(--sp-2);margin-top:var(--sp-3)}
+.card-actions .btn{flex:1;width:auto;min-width:0;margin:0}
+
+/* Tabs. Inside the sheet add .sticky so they pin under the sheet's header band (grab + close). */
+.tabs{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--sunken);overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{position:relative;flex:1 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:60px;min-height:var(--tap);padding:4px 10px;border:0;border-radius:var(--r-sm);background:transparent;color:var(--ink-3);font-size:var(--text-sm);font-weight:var(--w-bold);white-space:nowrap}
+.tab .ico{width:18px;height:18px}
+.tab.on{background:var(--raised-2);color:var(--ink);box-shadow:var(--sh-1)}
+.tab.on::after{content:"";position:absolute;left:32%;right:32%;bottom:3px;height:3px;border-radius:2px;background:var(--brand-bright)}
+.tabs.sticky{position:sticky;top:calc(var(--sheet-head) - var(--sheet-pad-top));z-index:2;margin:0 calc(-1 * var(--sheet-pad-x)) var(--sp-3);padding:6px var(--sheet-pad-x);border-width:0 0 1px;border-radius:0;background:var(--surface)}
+
+/* Stat tiles and meters: <div class="stat"><small>Trust</small><b>54</b><div class="meter good"><i style="--v:54"></i></div></div> */
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.stat{min-width:0;padding:6px 10px;border-radius:var(--r-sm);background:var(--raised-2)}
+.stat small{display:block;font-size:var(--text-xs);font-weight:var(--w-medium);line-height:1.25;color:var(--ink-3)}
+.stat b{display:block;font-family:var(--font-num);font-size:var(--text-lg);font-weight:var(--w-medium);font-variant-numeric:tabular-nums}
+.meter{height:8px;margin:4px 0 0;border-radius:var(--r-pill);background:var(--sunken);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.meter>i{display:block;height:100%;width:calc(var(--v,0) * 1%);max-width:100%;border-radius:inherit;background:var(--ink-2);transition:width var(--dur-4) var(--ease-out)}
+.meter.brand>i,.meter.cap>i{background:var(--cap)}.meter.gold>i{background:var(--gold)}.meter.good>i,.meter.safe>i{background:var(--safe)}.meter.warn>i{background:var(--warn)}.meter.bad>i{background:var(--bad)}.meter.info>i{background:var(--info)}
+/* Capability vs safety on one track: <div class="capbar" style="--cap:46;--safe:31"><i class="c"></i><i class="s"></i></div>.
+   The blue bar is capability, the green bar under it safety; the uncovered blue is the gap (.gw / .gb tint it warn / bad). */
+.capbar{position:relative;height:12px;margin:4px 0 0;border-radius:var(--r-pill);background:var(--sunken);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.capbar>i{position:absolute;left:0;top:0;bottom:0;border-radius:inherit;transition:width var(--dur-4) var(--ease-out)}
+.capbar>i.c{width:calc(var(--cap,0) * 1%);background:var(--cap)}
+.capbar>i.s{top:3px;bottom:3px;width:calc(var(--safe,0) * 1%);background:var(--safe)}
+.capbar.gw>i.c{background:linear-gradient(90deg,var(--cap) 0,var(--cap) calc(var(--safe,0) / var(--cap,1) * 100%),var(--warn) 0)}
+.capbar.gb>i.c{background:linear-gradient(90deg,var(--cap) 0,var(--cap) calc(var(--safe,0) / var(--cap,1) * 100%),var(--bad) 0)}
+
+/* Empty state: icon, one line saying why it is empty, one button that fixes it. */
+.empty{display:flex;flex-direction:column;align-items:center;gap:var(--sp-2);padding:var(--sp-6) var(--sp-4);border:1px dashed var(--line);border-radius:var(--r-lg);text-align:center}
+.empty-ico{display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:var(--brand-tint);color:var(--brand-text)}
+.empty-ico .ico{width:28px;height:28px}
+.empty h4{margin:var(--sp-1) 0 0;font-size:var(--text-lg)}
+.empty p{margin:0;max-width:32ch;font-size:var(--text-sm);color:var(--ink-3)}
+.empty .btn{margin:var(--sp-2) 0 0}
+
+/* Confirm: replaces the sheet body (or sits inline in a card) until answered. Never window.confirm (the host returns false). */
+.confirm{padding:var(--sp-4);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--raised);box-shadow:var(--sh-2)}
+.confirm.danger{border-color:color-mix(in srgb,var(--bad) 55%,var(--line));background:var(--bad-tint)}
+.confirm h4{margin:0 0 6px;font-size:var(--text-lg)}
+.confirm p{margin:0 0 var(--sp-3);color:var(--ink-2)}
+.confirm .actions{display:flex;gap:var(--sp-2)}
+.confirm .actions .btn{flex:1;width:auto;min-width:0;margin:0}
+
+/* Tap-tip: <details class="tip"><summary aria-label="What is runway?"></summary><p>...</p></details>
+   The explanation docks at the bottom of the screen, so no overflow can clip it; 09_ui_chrome.js keeps one open at a time. */
+.tip{position:relative;display:inline-block;vertical-align:-3px;text-transform:none;letter-spacing:0}
+.tip>summary{position:relative;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--info-tint);color:var(--info);font-size:var(--text-xs);font-weight:var(--w-bold);line-height:1;list-style:none;cursor:pointer}
+.tip>summary::-webkit-details-marker{display:none}
+.tip>summary::before{content:"i"}
+.tip>summary::after{content:"";position:absolute;inset:-13px}
+.tip[open]>summary{background:var(--info);color:var(--sunken)}
+.tip>:not(summary){position:fixed;z-index:var(--z-toast);left:var(--gutter);right:var(--gutter);bottom:calc(var(--sp-4) + var(--safe-b));max-width:480px;margin:0 auto;padding:12px 16px 12px 44px;border:1px solid var(--line);border-left:4px solid var(--info);border-radius:var(--r-md);background:var(--surface);box-shadow:var(--sh-2),0 14px 36px rgba(0,0,0,.45);color:var(--ink);font-size:var(--text-md);font-weight:var(--w-regular);line-height:var(--lh-snug);white-space:normal;text-align:left;animation:rise var(--dur-2) var(--ease-out)}
+.tip>:not(summary)::before{content:"";position:absolute;left:14px;top:13px;width:20px;height:20px;background:var(--info);-webkit-mask:var(--icon-info) center/contain no-repeat;mask:var(--icon-info) center/contain no-repeat}
+
+/* Checklist: li.done / li.now */
+.checklist{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.checklist li{position:relative;display:flex;align-items:center;gap:10px;min-height:var(--tap);padding:6px 12px;border-radius:var(--r-sm);background:var(--raised);font-size:var(--text-md)}
+.checklist li::before{content:"";flex:none;width:22px;height:22px;border:2px solid var(--line-strong);border-radius:50%}
+.checklist li.now{box-shadow:inset 0 0 0 1px var(--brand-bright)}
+.checklist li.now::before{border-color:var(--brand-bright)}
+.checklist li.done{color:var(--ink-3)}
+.checklist li.done::before{border-color:var(--good);background:var(--good)}
+.checklist li.done::after{content:"";position:absolute;left:17px;width:14px;height:14px;background:var(--sunken);-webkit-mask:var(--icon-check) center/contain no-repeat;mask:var(--icon-check) center/contain no-repeat}
+
+/* List rows: a tappable line with an optional leading icon and a trailing chevron. */
+.row{display:flex;align-items:center;gap:var(--sp-3);width:100%;min-height:56px;margin:0 0 6px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--raised);color:var(--ink);text-align:left}
+.row-t{flex:1;min-width:0}
+.row-t b{display:block;font-size:var(--text-md)}
+.row-t small{display:block;font-size:var(--text-sm);color:var(--ink-3)}
+.row.go::after{content:"";flex:none;width:20px;height:20px;background:var(--ink-3);-webkit-mask:var(--icon-chevron) center/contain no-repeat;mask:var(--icon-chevron) center/contain no-repeat}
+button.row:active{background:var(--raised-2)}
+/* ---- Full-screen pages: boot, menu, new career, careers, settings, how to play, credits, end of run ---- */
+.screen{position:fixed;inset:0;z-index:var(--z-screen);display:none;flex-direction:column;align-items:center;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;padding:calc(var(--sp-6) + var(--safe-t)) var(--gutter) calc(var(--sp-10) + var(--safe-b));background:radial-gradient(130% 55% at 50% -4%,color-mix(in srgb,var(--brand) 30%,transparent) 0%,transparent 62%),linear-gradient(180deg,var(--screen-veil) 0%,var(--screen-veil) 45%,var(--bg) 100%)}
+.screen.on{display:flex;animation:screen-in var(--dur-3) var(--ease-out)}
+.screen-col{flex:none;display:block;width:100%;max-width:var(--col);margin:auto 0}
+.screen.on .screen-col{animation:rise var(--dur-3) var(--ease-out)}
+h1.logo{margin:0;padding-left:var(--track-logo);font-family:var(--font-display);font-stretch:var(--stretch-display);font-size:var(--text-logo);font-weight:var(--w-logo);line-height:1;letter-spacing:var(--track-logo);text-align:center;color:var(--ink);text-shadow:0 3px 0 rgba(0,0,0,.35)}
+h1.logo span{color:var(--brand-bright);text-shadow:0 0 28px color-mix(in srgb,var(--brand-bright) 55%,transparent),0 3px 0 rgba(0,0,0,.35)}
+h1.logo.md{font-size:clamp(36px,11vw,46px)}
+.tagline{margin:var(--sp-3) 0 var(--sp-8);font-size:var(--text-lg);line-height:var(--lh-snug);color:var(--ink-2);text-align:center;text-wrap:balance}
+.byline{margin:var(--sp-5) 0 0;font-size:var(--text-sm);color:var(--ink-3);text-align:center}
+.ver{position:absolute;right:var(--gutter);bottom:calc(var(--sp-3) + var(--safe-b));font-family:var(--font-num);font-size:var(--text-xs);color:var(--ink-3)}
+.screen-title{margin:var(--sp-1) 0 var(--sp-2);font-size:var(--text-2xl)}
+.screen-lead{margin:0 0 var(--sp-2);font-size:var(--text-md);color:var(--ink-2);text-wrap:pretty}
+.screen-actions{margin-top:var(--sp-6)}
+.screen-actions .btn{margin:var(--sp-2) 0 0}
+
+/* boot: the tower (SVG fallback; the 3D title scene replaces it when WebGL runs) */
+.hero-art{display:block;width:min(64vw,240px);height:auto;margin:0 auto var(--sp-6);overflow:visible}
+.hero-art .sky{fill:var(--raised)}
+.hero-art .tower{fill:var(--raised-2);stroke:var(--line);stroke-width:1.5}
+.hero-art .slab{stroke:var(--line);stroke-width:1}
+.hero-art .w{fill:var(--sunken)}
+.hero-art .w.on{fill:var(--gold)}
+.hero-art .w.blue{fill:var(--brand-bright)}
+.hero-art .w.tw{animation:twinkle 5s var(--ease-out) infinite}
+.hero-art .w.tw:nth-of-type(2n){animation-delay:1.7s}
+.hero-art .w.tw:nth-of-type(3n){animation-delay:3.1s}
+.hero-art .lobby{fill:color-mix(in srgb,var(--gold) 55%,var(--raised-2))}
+.hero-art .door{fill:var(--sunken)}
+.hero-art .sign{fill:var(--sunken);stroke:var(--brand-bright);stroke-width:1}
+.hero-art .sign-t{fill:var(--brand-text);font:800 7.2px var(--font-display);letter-spacing:.14em}
+.hero-art .mast{stroke:var(--line-strong);stroke-width:2;stroke-linecap:round}
+.hero-art .beacon{fill:var(--beacon);animation:beacon 2s ease-in-out infinite}
+.hero-art .glow{fill:url(#heroGlow)}
+.hero-art .ground{fill:var(--line)}
+@keyframes twinkle{0%,70%,100%{fill:var(--sunken)}75%,95%{fill:var(--gold)}}
+@keyframes beacon{50%{opacity:.25}}
+#boot .btn{margin-top:var(--sp-2)}
+
+/* menu */
+.menu-art{display:flex;justify-content:center;margin:0 0 var(--sp-3)}
+.hero-art.sm{width:min(34vw,128px);margin:0}
+.menu-pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
+.menu-pair .btn{margin:var(--sp-2) 0 0}
+.btn.menu-credits{width:auto;margin:var(--sp-4) auto 0;color:var(--ink-3)}
+/* menu newswire: a glass band at the bottom (content pads above it, so it never covers a button) */
+#menu{padding-bottom:calc(var(--ticker-h) + var(--sp-10) + var(--safe-b))}
+#menu .ver{bottom:calc(var(--ticker-h) + var(--sp-2) + var(--safe-b))}
+.ticker{position:fixed;left:0;right:0;bottom:0;z-index:1;height:calc(var(--ticker-h) + var(--safe-b));padding-bottom:var(--safe-b);overflow:hidden;white-space:nowrap;background:var(--glass);border-top:1px solid var(--glass-line);pointer-events:none}
+.ticker-track{display:inline-block;padding-left:100vw;font-size:var(--text-xs);line-height:var(--ticker-h);color:var(--ink-2);animation:tick 90s linear infinite;will-change:transform}
+.tk-item::after{content:"\25C6";margin:0 var(--sp-4);font-size:10px;vertical-align:1px;color:var(--brand-text)}
+@keyframes tick{to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.ticker-track{padding-left:var(--gutter);animation:none}}
+body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
+.btn.nudge::after{content:"New here?";position:absolute;top:-9px;right:8px;height:20px;padding:0 8px;border-radius:var(--r-pill);background:var(--brand-text);color:var(--sunken);font-size:var(--text-xs);font-weight:var(--w-bold);line-height:20px;box-shadow:0 0 0 2px var(--bg)}
+
+@media (orientation:landscape) and (max-height:500px){
+  #menu .screen-col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-auto-flow:row dense;column-gap:var(--sp-6);align-items:center;max-width:720px}
+  #menu .menu-art,#menu .logo,#menu .tagline{grid-column:1}
+  #menu .screen-col>.btn:not(.menu-credits),#menu .menu-pair{grid-column:2}
+  #menu .menu-credits{grid-column:1}
+  #menu .hero-art.sm{width:min(20vh,96px)}
+}
+/* new career */
+#slotWarn{display:flex;gap:var(--sp-2);align-items:flex-start;margin:var(--sp-2) 0 0}
+#slotWarn .ico{width:18px;height:18px;margin-top:1px}
+.nc-confirm{margin:var(--sp-6) 0 0;animation:rise var(--dur-2) var(--ease-out)}
+
+/* settings: one card per group, each row a label, a one-line explanation and its control */
+.set-group{margin:var(--sp-4) 0 0;padding:var(--sp-4);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--sh-1)}
+.set-h{display:flex;align-items:center;gap:var(--sp-2);margin:0;font-size:var(--text-lg)}
+.set-h .ico{width:var(--icon);height:var(--icon);color:var(--brand-text)}
+.set-row+.set-row{margin-top:var(--sp-4);padding-top:var(--sp-1);border-top:1px solid var(--line)}
+.set-group .field{margin:var(--sp-3) 0 0}
+.set-group .field label{margin:0;font-size:var(--text-md);color:var(--ink)}
+.set-group .field .hint{margin:2px 0 0}
+.set-group>.hint{margin:var(--sp-2) 0 var(--sp-3)}
+.set-saves{display:flex;flex-direction:column;gap:var(--sp-2)}
+.set-save{display:flex;align-items:center;gap:var(--sp-2);min-height:56px;padding:6px 6px 6px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--raised)}
+.set-save-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.set-save-t b{font-size:var(--text-md)}
+.set-save-t small{font-size:var(--text-sm);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.set-save .btn{width:auto;flex:none;margin:0;padding:8px 12px;gap:6px}
+.set-save .btn .ico{width:18px;height:18px}
+.set-saves .confirm{padding:var(--sp-3) var(--sp-4)}
+.set-empty{margin:0;font-size:var(--text-sm);color:var(--ink-3)}
+.row.set-help{margin:var(--sp-4) 0 0;min-height:64px;border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--sh-1)}
+.row.set-help>.ico{width:var(--icon-lg);height:var(--icon-lg);color:var(--info)}
+
+/* how to play */
+.help-sec{margin:var(--sp-4) 0 0;padding:var(--sp-4);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--sh-1)}
+.help-sec h3{margin:0 0 var(--sp-3);font-size:var(--text-lg)}
+.howto{margin:0;padding:0;list-style:none;counter-reset:step}
+.howto li{position:relative;min-height:28px;margin:0 0 var(--sp-3);padding:3px 0 0 38px;font-size:var(--text-md);line-height:var(--lh-snug);color:var(--ink-2);counter-increment:step}
+.howto li:last-child{margin-bottom:0}
+.howto li::before{content:counter(step);position:absolute;left:0;top:0;width:26px;height:26px;border-radius:50%;background:var(--brand-tint);color:var(--brand-text);font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);line-height:26px;text-align:center}
+.howto li b,.help-terms b{color:var(--ink)}
+.help-terms{display:flex;flex-direction:column;gap:var(--sp-3);margin:0;padding:0;list-style:none}
+.help-terms li{display:flex;gap:var(--sp-3);align-items:flex-start}
+.help-terms p{margin:0;font-size:var(--text-md);line-height:var(--lh-snug);color:var(--ink-2)}
+.help-terms p b{display:block}
+.help-ico{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--info-tint);color:var(--info)}
+.help-ico.gold{background:var(--gold-tint);color:var(--gold)}
+.help-ico.cap{background:var(--brand-tint);color:var(--brand-text)}
+.help-ico.good{background:var(--good-tint);color:var(--good)}
+.help-ico.warn{background:var(--warn-tint);color:var(--warn)}
+.help-ico.bad{background:var(--bad-tint);color:var(--bad)}
+.help-ico .ico{width:20px;height:20px}
+.help-again{display:flex;gap:var(--sp-2);align-items:flex-start;margin:var(--sp-4) 0 0}
+.help-again .ico{flex:none;width:18px;height:18px;margin-top:1px;color:var(--brand-text)}
+
+/* credits */
+.credits-note{margin:var(--sp-6) 0 var(--sp-2);font-size:var(--text-md);color:var(--ink-2);text-align:center;text-wrap:balance}
+.credits-build{margin:0 0 var(--sp-4);font-family:var(--font-num);font-size:var(--text-sm);color:var(--ink-3);text-align:center}
+
+/* careers: continue any slot, save codes out and in, delete with an inline confirm */
+.car-list{display:flex;flex-direction:column;gap:var(--sp-2);margin:var(--sp-4) 0 0}
+@media (max-width:399px){.car-slot{flex-wrap:wrap;padding:8px}.car-slot .set-save-t{flex:1 1 100%;padding:0 6px 2px}.car-slot .btn{flex:1}}
+.car-slot.empty{opacity:.7;background:transparent;border-style:dashed}
+.car-slot .set-save-t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.car-slot .set-save-t small.warn{color:var(--warn)}
+.car-slot .set-save-t small.bad{color:var(--bad)}
+.car-slot .set-save-t small.good{color:var(--good)}
+.car-list .confirm{padding:var(--sp-3) var(--sp-4)}
+.car-code,.car-import{margin:var(--sp-4) 0 0}
+.careers textarea{display:block;width:100%;min-height:calc(var(--control) * 1.6);padding:10px 14px;border:1px solid var(--line-strong);border-radius:var(--r-md);background:var(--sunken);color:var(--ink);font-family:var(--font-num);font-size:var(--text-sm);line-height:1.35;word-break:break-all;resize:vertical}
+.careers textarea:focus{outline:none;border-color:var(--focus);box-shadow:var(--ring)}
+.car-code-acts{display:flex;gap:var(--sp-2);margin:var(--sp-3) 0 0}
+.car-code-acts .btn{width:auto;flex:1;margin:0}
+.car-import #impGo{margin:var(--sp-4) 0 0}
+.car-err{display:flex;gap:var(--sp-2);align-items:flex-start;margin:var(--sp-2) 0 0}
+.car-err .ico{width:18px;height:18px;margin-top:1px}
+.car-copy{margin:var(--sp-2) 0 0}
+
+/* end of run: outcome, cause, score, parts, the frontier record */
+.end-score{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-3);margin:var(--sp-4) 0 0;padding:var(--sp-3) var(--sp-4);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface)}
+.end-score small{font-size:var(--text-sm);font-weight:var(--w-bold);color:var(--ink-2)}
+.end-score b{font-family:var(--font-num);font-size:var(--text-3xl);font-weight:var(--w-medium);line-height:1;color:var(--gold)}
+.end-facts{margin:var(--sp-3) 0 0}
+.end-facts .stat{background:var(--surface)}
+.end-parts{width:100%;margin:var(--sp-3) 0 0;border-collapse:collapse;font-size:var(--text-sm)}
+.end-parts td{padding:8px 0;border-top:1px solid var(--line);color:var(--ink-2);vertical-align:top}
+.end-parts tr:first-child td{border-top:0}
+.end-parts td+td{padding-left:var(--sp-3);font-family:var(--font-num);font-weight:var(--w-medium);color:var(--ink);text-align:right;white-space:nowrap}
+.end-parts td.neg{color:var(--bad)}
+.end-parts tr.total td{border-top:1px solid var(--line-strong);font-weight:var(--w-bold);color:var(--ink)}
+.end-parts tr.total td+td{color:var(--gold)}
+.end-record{display:flex;flex-direction:column;gap:6px;margin:var(--sp-3) 0 0;padding:0;list-style:none}
+.end-record li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:var(--sp-3);min-height:44px;padding:6px 12px 6px 6px;border-radius:var(--r-sm);background:var(--raised)}
+.end-record .mk{display:grid;place-items:center;height:32px;border-radius:8px;background:var(--raised-2);font-family:var(--font-num);font-size:var(--text-md);font-weight:var(--w-medium);color:var(--ink-2)}
+.end-record .by{min-width:0;font-size:var(--text-md);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.end-record .wk{font-family:var(--font-num);font-size:var(--text-sm);color:var(--ink-3)}
+.end-record li.you{box-shadow:inset 3px 0 0 var(--good)}
+.end-record li.you .mk{background:var(--good-tint);color:var(--good)}
+.end-record li.rival .mk{background:var(--bad-tint);color:var(--bad)}
+.end-record li.open{background:transparent;border:1px dashed var(--line)}
+.end-record li.open .by{color:var(--ink-3)}
+/* ---- HUD over the 3D view: status chips, frontier strip, bottom dock, Back chip, first-visit hint.
+   Icons come from --icon-* masks because 09_ui_hud.js rewrites the chip and button text. ---- */
+#hud{position:fixed;inset:0;z-index:var(--z-hud);display:none;pointer-events:none}
+#hud.on{display:block}
+#hud .top{position:absolute;top:calc(var(--sp-2) + var(--safe-t));left:var(--sp-3);right:var(--sp-3);display:flex;align-items:flex-start;gap:6px;max-width:560px;margin:0 auto}
+#hud .top .chip{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:8px;flex:1 1 auto;min-width:0;min-height:var(--chip-h);padding:5px 12px 5px 10px;border:1px solid var(--glass-line);border-radius:var(--r-md);background:var(--glass);box-shadow:var(--sh-2);color:var(--ink);font-size:var(--text-md);line-height:1.15;white-space:nowrap;pointer-events:auto}
+#hud .top .chip::before{content:"";grid-row:1 / span 2;width:20px;height:20px;background:var(--ink-2);-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
+#hud .top .chip b{font-family:var(--font-num);font-size:var(--text-lg);font-weight:var(--w-medium);color:var(--ink);letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis}
+#hud .top .chip .co{font-size:var(--text-xs);font-weight:var(--w-medium);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}
+#hud .top .hud-week{--i:var(--icon-calendar);flex:none}
+#hud .top .hud-week b{overflow:visible;text-overflow:clip;min-width:max-content}
+#hud .top .hud-cash{--i:var(--icon-coin);flex:none}
+#hud .top .hud-cash::before{background:var(--gold)}
+#hud .top .hud-cash b{color:var(--gold);overflow:visible;text-overflow:clip;min-width:max-content}
+#hud .top .hud-cash.warn .co{color:var(--warn);font-weight:var(--w-bold)}
+#hud .top .hud-cash.bad .co{color:var(--bad);font-weight:var(--w-bold)}
+#hud .top .hud-trust{--i:var(--icon-globe)}
+#hud .top .hud-trust.warn b{color:var(--warn)}
+#hud .top .hud-trust.bad b{color:var(--bad)}
+/* phones: the chips drop their icons so every number fits whole (the aria-labels and the lines under them name them) */
+@media (max-width:429px){#hud .top .chip{grid-template-columns:minmax(0,1fr);padding-left:12px}#hud .top .chip::before{display:none}}
+@media (max-width:359px){#hud .top .chip{padding:5px 8px}#hud .top .chip b{font-size:var(--text-md)}}
+/* game menu: how to play, sound, reduce motion, save and quit */
+#hud .top .hud-menu{flex:none;width:var(--control);min-width:var(--control);height:var(--chip-h);min-height:var(--chip-h);margin:0;padding:0;border:1px solid var(--glass-line);border-radius:var(--r-md);background:var(--glass);box-shadow:var(--sh-2);color:var(--ink-2);pointer-events:auto}
+#hud .top .hud-menu .ico{width:var(--icon-lg);height:var(--icon-lg)}
+#hud .top .hud-menu:active{background:var(--raised);color:var(--ink)}
+/* the frontier strip: your average capability against the best rival's, and the safe-hold count once it runs */
+#hud .strip{position:absolute;top:calc(var(--sp-2) + var(--safe-t) + var(--chip-h) + 6px);left:var(--sp-3);right:var(--sp-3);display:flex;align-items:center;gap:10px;max-width:560px;height:var(--strip-h);margin:0 auto;padding:0 12px;border:1px solid var(--glass-line);border-radius:var(--r-pill);background:var(--glass);box-shadow:var(--sh-1);color:var(--ink-2);font-size:var(--text-xs);line-height:1;white-space:nowrap;overflow:hidden;pointer-events:none}
+#hud .strip .st-k{flex:none;font-weight:var(--w-bold);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-3)}
+#hud .strip .st-v{display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#hud .strip .st-v b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--ink)}
+#hud .strip .st-you b{color:var(--cap)}
+#hud .strip .st-gap{flex:none;padding:2px 6px;border-radius:var(--r-pill);font-family:var(--font-num);font-weight:var(--w-medium);background:var(--raised-2);color:var(--ink-2)}
+#hud .strip .st-gap.good{background:var(--good-tint);color:var(--good)}
+#hud .strip .st-gap.warn{background:var(--warn-tint);color:var(--warn)}
+#hud .strip .st-hold{flex:none;margin-left:auto;display:flex;align-items:center;gap:5px;color:var(--good)}
+#hud .strip .st-hold b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--good)}
+#hud .strip .st-hold i{display:block;width:40px;height:4px;border-radius:2px;background:var(--sunken);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+#hud .strip .st-hold i::before{content:"";display:block;height:100%;width:calc(var(--v,0) * 1%);background:var(--good)}
+@media (max-width:374px){#hud .strip .st-k,#hud .strip .st-hold i{display:none}}
+
+/* bottom dock */
+#hud .bottom{position:absolute;left:var(--sp-3);right:var(--sp-3);bottom:calc(var(--sp-3) + var(--safe-b));display:flex;gap:6px;max-width:440px;min-height:var(--dock-h);margin:0 auto;padding:6px;border:1px solid var(--glass-line);border-radius:22px;background:var(--glass);box-shadow:var(--sh-2);pointer-events:auto}
+#hud .bottom .btn{flex:1;flex-direction:column;gap:3px;width:auto;min-width:0;min-height:54px;margin:0;padding:6px 4px;border:0;border-radius:16px;background:transparent;box-shadow:none;color:var(--ink-2);font-size:var(--text-sm);font-weight:var(--w-bold);line-height:1.1}
+#hud .bottom .btn::before{content:"";flex:none;width:24px;height:24px;background:currentColor;-webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
+#hud .bottom .btn:active{background:var(--raised)}
+#hud .bottom .btn.endturn{flex:1.5;flex-direction:row;flex-wrap:wrap;align-content:center;gap:2px var(--sp-2);background:var(--brand);color:var(--on-brand);font-size:var(--text-lg);box-shadow:var(--sh-brand)}
+#hud .bottom .btn.endturn:active{background:var(--brand-press)}
+#hud .bottom .btn.endturn .why{flex-basis:100%;text-align:center;font-size:var(--text-xs);font-weight:var(--w-medium);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hud .bottom .btn[disabled]{opacity:.5;filter:saturate(.3);box-shadow:none}
+#hud .bottom .btn.endturn[disabled]{opacity:1;filter:none;background:var(--raised-2);color:var(--ink-3)}
+#hElev{--i:var(--icon-elevator);position:relative}
+#hMemo{--i:var(--icon-memo);position:relative}
+#hEnd{--i:var(--icon-endturn)}
+/* something to read: a dot on Memo (an unread weekly memo), like the panels' tab dots */
+#hMemo.dot::after,#hElev.dot::after{content:"";position:absolute;top:6px;left:calc(50% + 9px);width:9px;height:9px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--surface)}
+#hMemo.dot.bad::after{background:var(--bad)}
+/* ---- Bottom sheet chrome (#sheet): grab handle, title, close, safe areas. Content is owned by each panel. ---- */
+/* #sheet is the frame (grab, close, rounded top) and never scrolls; #sheetBody is the scroller, so the close
+   and the grab stay put however long the content is. Panels pin things (.tabs.sticky, .pl-nav) against
+   #sheetBody's padding box. */
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:var(--z-sheet);display:none;flex-direction:column;max-width:560px;max-height:min(78vh,calc(100vh - 64px - var(--safe-t)));margin:0 auto;padding:0;overflow:hidden;border:1px solid var(--line);border-bottom:0;border-radius:var(--r-xl) var(--r-xl) 0 0;background:var(--surface);box-shadow:var(--sh-3);transition:transform var(--dur-2) var(--ease-out)}
+#sheetBody{position:relative;flex:1 1 auto;min-height:0;padding:var(--sheet-pad-top) var(--sheet-pad-x) calc(var(--sheet-pad-bottom) + var(--safe-b));overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+/* once the title has scrolled away, a solid header band keeps the grab and the close readable */
+#sheet::before{content:"";position:absolute;top:0;left:0;right:0;z-index:2;height:var(--sheet-head);border-bottom:1px solid var(--line);background:var(--surface);opacity:0;pointer-events:none;transition:opacity var(--dur-2)}
+#sheet.scrolled::before{opacity:1}
+#sheet.on{display:flex;animation:sheet-in var(--dur-3) var(--ease-out)}
+@keyframes sheet-in{from{opacity:.4;transform:translateY(40px)}to{opacity:1;transform:none}}
+#sheet .sheet-grab{position:absolute;top:0;left:22%;right:22%;z-index:3;height:26px;display:flex;justify-content:center;padding-top:7px;touch-action:none;cursor:grab}
+#sheet .sheet-grab::before{content:"";width:40px;height:5px;border-radius:3px;background:var(--line-strong)}
+#sheet h3{margin:6px 52px 12px 0;font-size:var(--text-xl);line-height:var(--lh-tight)}
+#sheet .close{position:absolute;top:6px;right:10px;z-index:3;display:grid;place-items:center;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:50%;background:var(--raised);color:var(--ink-2);transition:background-color var(--dur-1)}
+#sheet .close .ico{width:20px;height:20px}
+#sheet .close:active{background:var(--raised-2);color:var(--ink)}
+#dim{position:fixed;inset:0;z-index:var(--z-dim);display:none;background:var(--scrim)}
+#dim.on{display:block;animation:screen-in var(--dur-2) var(--ease-out)}
+/* read-only lists some sheets reuse the floor row for (the lobby news): no chevron, no press */
+#sheetBody>.floor{min-height:0;margin:0 0 6px;padding:12px 14px;cursor:default;box-shadow:none;background:var(--raised)}
+#sheetBody>.floor::after{content:none}
+#sheetBody>.floor:active{transform:none;background:var(--raised)}
+#sheetBody>.floor .t{font-weight:var(--w-medium)}
+#sheetBody>p{margin:var(--sp-2) 0;line-height:var(--lh-snug)}
+/* landscape phones: use the height, the dimmed world above is not worth 86px */
+@media (orientation:landscape) and (max-height:500px){
+  #sheet{max-height:calc(100vh - 8px - var(--safe-t))}
+  #sheet h3{margin-block:4px 8px}
+}
+/* ---- Elevator sheet (rows rendered by 08_hq_elevator.js) and the ride LED ---- */
+.floors{display:grid;grid-template-columns:1fr;gap:var(--sp-2)}
+.floor{position:relative;display:flex;align-items:center;gap:var(--sp-3);min-height:60px;padding:var(--sp-2) var(--sp-3) var(--sp-2) 10px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--raised);box-shadow:var(--sh-1);cursor:pointer;transition:transform var(--dur-1) var(--ease-out),background-color var(--dur-2)}
+.floor:active{transform:scale(.98);background:var(--raised-2)}
+.floor .n{flex:none;display:grid;place-items:center;width:var(--sp-10);height:var(--sp-10);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--sunken);font-family:var(--font-num);font-size:var(--text-lg);font-weight:var(--w-medium);color:var(--led)}
+.floor .t{flex:1;min-width:0;font-size:var(--text-md);font-weight:var(--w-bold);line-height:var(--lh-snug)}
+.floor .s{font-size:var(--text-sm);font-weight:var(--w-regular);color:var(--ink-3)}
+.floor::after{content:"";flex:none;width:var(--icon);height:var(--icon);background:var(--ink-3);-webkit-mask:var(--icon-chevron) center/contain no-repeat;mask:var(--icon-chevron) center/contain no-repeat}
+.floor.here{border-color:var(--brand-bright);background:var(--brand-tint);box-shadow:none}
+.floor.here .n{border-color:var(--brand-bright);background:var(--brand);color:var(--on-brand)}
+.floor.here::after{-webkit-mask-image:var(--icon-check);mask-image:var(--icon-check);background:var(--brand-text)}
+.floor.locked{background:transparent;border-style:dashed;box-shadow:none}
+.floor.locked .n{color:var(--ink-3);background:transparent}
+.floor.locked .t{color:var(--ink-2)}
+.floor.locked::after{-webkit-mask-image:var(--icon-lock);mask-image:var(--icon-lock)}
+.led{margin:var(--sp-2) 0 0;font-family:var(--font-led);font-weight:var(--w-medium);font-size:var(--text-2xl);letter-spacing:.2em;text-align:center;color:var(--led);text-shadow:0 0 18px color-mix(in srgb,var(--led) 60%,transparent)}
+/* the ride LED over the fade (09_ui_chrome.js FR.ui.led) */
+#ledOverlay{position:fixed;top:40%;left:0;right:0;z-index:var(--z-led);display:none;margin:0;font-size:64px;pointer-events:none}
+/* ---- Toast and the elevator fade ---- */
+#toast{position:fixed;top:calc(var(--hud-clear-top) + var(--sp-2));left:50%;transform:translateX(-50%);z-index:var(--z-toast);display:none;width:max-content;max-width:min(400px,calc(100vw - 2 * var(--gutter)));padding:12px 16px 12px 14px;border:1px solid var(--line);border-left:4px solid var(--brand-bright);border-radius:var(--r-md);background:var(--surface);box-shadow:var(--sh-2),0 14px 36px rgba(0,0,0,.45);color:var(--ink);font-size:var(--text-md);font-weight:var(--w-medium);line-height:var(--lh-snug);overflow-wrap:anywhere;pointer-events:none}
+#toast.on{display:block;animation:toast-in var(--dur-3) var(--ease-spring)}
+#toast.bad{border-left-color:var(--bad)}
+#toast.good{border-left-color:var(--good)}
+/* no HUD (menus): the toast sits near the top */
+body:not(.in-world) #toast{top:calc(var(--sp-4) + var(--safe-t))}
+@keyframes toast-in{from{opacity:0;transform:translate(-50%,-10px) scale(.97)}to{opacity:1;transform:translate(-50%,0)}}
+/* landscape phones: the room's targets fill the central band, so the toast takes the left side slot under the week chip */
+@media (orientation:landscape) and (max-height:500px){body:not(.hq-focus) #toast,body.hq-back #toast{top:calc(var(--hud-clear-top) + var(--sp-2));bottom:auto;left:var(--gutter);transform:none;max-width:clamp(160px,calc(50vw - 200px),240px);font-size:var(--text-sm)}body:not(.hq-focus) #toast.on,body.hq-back #toast.on{animation:toast-in-side var(--dur-3) var(--ease-spring)}}
+@keyframes toast-in-side{from{opacity:0;transform:translateY(-10px) scale(.97)}to{opacity:1;transform:none}}
+#fade{position:fixed;inset:0;z-index:var(--z-fade);background:var(--sunken);opacity:0;pointer-events:none;transition:opacity .25s}
+/* ---- Title: the tower at night (08_hq_title.js) shows through the boot, menu and reading screens ----
+   body.title-on is set while the scene runs. Free text sits only on --screen-veil (>= .84 keeps --ink-3 AA over a white
+   pixel); the tower shows where there is no text. Buttons keep their opaque fills. The WebGL-less fallback (no title)
+   keeps the plain screens and the SVG tower. */
+body.title-on .screen{background:radial-gradient(130% 45% at 50% -8%,color-mix(in srgb,var(--brand) 18%,transparent) 0%,transparent 60%),var(--screen-veil-dim)}
+body.title-on #boot .hero-art,body.title-on #menu .menu-art{display:none}
+body.title-on .ver{padding:2px var(--sp-2);border-radius:var(--r-pill);background:var(--glass)}
+
+/* boot + menu, portrait: the tower in the upper part, the column on a veil that rises from the bottom */
+body.title-on #boot,body.title-on #menu{background:linear-gradient(180deg,var(--screen-veil-clear) 0%,var(--screen-veil-clear) 30%,var(--screen-veil) 50%,var(--screen-veil) 100%)}
+body.title-on #boot .screen-col,body.title-on #menu .screen-col{margin:auto 0 0}
+body.title-on #boot{padding-bottom:calc(var(--sp-12) + var(--safe-b))}
+body.title-on #menu{padding-bottom:calc(var(--ticker-h) + var(--sp-10) + var(--safe-b))}
+@media (orientation:landscape) and (max-height:500px){
+  /* boot: the column in a centred veil band, the tower either side */
+  body.title-on #boot{background:linear-gradient(90deg,var(--screen-veil-clear) 0%,var(--screen-veil) 27%,var(--screen-veil) 73%,var(--screen-veil-clear) 100%)}
+  body.title-on #boot .screen-col,body.title-on #menu .screen-col{margin:auto 0}
+  body.title-on #boot{padding-bottom:calc(var(--sp-6) + var(--safe-b))}
+  /* menu: the text column (left) on the veil; the buttons (right) are opaque, so the tower shows between them */
+  body.title-on #menu{background:linear-gradient(90deg,var(--screen-veil) 0%,var(--screen-veil) 50%,var(--screen-veil-clear) 72%,var(--screen-veil-clear) 100%)}
+}
+
+/* boot: the credit line, then the logo lands, then the rest (reduced motion: shown at once) */
+.presents{margin:0 0 var(--sp-3);padding-left:var(--track-wide);letter-spacing:var(--track-wide);color:var(--ink-2);text-align:center}
+#boot .presents{opacity:0;animation:fade-up var(--dur-5) var(--ease-out) var(--dur-2) forwards}
+#boot h1.logo{opacity:0;animation:land var(--dur-6) var(--ease-out) var(--dur-5) forwards}
+#boot .tagline,#boot .byline{opacity:0;animation:fade-up var(--dur-5) var(--ease-out) calc(var(--dur-5) * 2.1) forwards}
+#boot #bootTap{opacity:0;animation:fade-up var(--dur-5) var(--ease-out) calc(var(--dur-5) * 2.8) forwards}
+#boot #bootTap::after{content:"";position:absolute;inset:-6px;border-radius:calc(var(--r-md) + 6px);box-shadow:0 0 22px 2px color-mix(in srgb,var(--brand-bright) 55%,transparent);opacity:0;pointer-events:none;animation:breathe calc(var(--dur-5) * 2.6) ease-in-out calc(var(--dur-5) * 3.8) infinite}
+@keyframes land{0%{opacity:0;transform:scale(1.45)}60%{opacity:1}100%{opacity:1;transform:none}}
+@keyframes fade-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes breathe{50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){#boot #bootTap::after{animation:none}}
+body.reduce-motion #boot #bootTap::after{animation:none}
+/* reading screens: the empty slot cards are otherwise see-through, and the lit sign would ghost behind their text */
+body.title-on .car-slot.empty{background:var(--sunken)}
+/* ---- Scene layer for tap-to-interact (08_hq_world.js): world vignette, floating target tags, Back chip, first-visit hint,
+   tap ripple, toast placement while an object is focused. ---- */
+/* free vignette over the canvas, under the HUD; taps pass through */
+#game::after{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(120% 85% at 50% 42%,transparent 55%,color-mix(in srgb,var(--sunken) 42%,transparent) 100%)}
+#tags{position:fixed;inset:0;z-index:calc(var(--z-hud) - 1);pointer-events:none;overflow:hidden;opacity:0;visibility:hidden;transition:opacity var(--dur-2) var(--ease-in),visibility 0s var(--dur-2)}
+#tags.on{opacity:1;visibility:visible;transition:opacity var(--dur-2) var(--ease-out)}
+/* world label: a glass pill (28 px visible, 44 px hit area through ::before), blue live dot, stem to its object */
+.tag{position:absolute;left:0;top:0;display:flex;align-items:center;gap:var(--sp-2);min-height:28px;margin:0;padding:var(--sp-1) var(--sp-3) var(--sp-1) 10px;border:1px solid var(--glass-line);border-radius:var(--r-pill);background:var(--glass);color:var(--ink);font:var(--w-bold) var(--text-xs)/1 var(--font-ui);letter-spacing:.01em;white-space:nowrap;pointer-events:auto;cursor:pointer;will-change:transform;box-shadow:var(--sh-2);-webkit-tap-highlight-color:transparent}
+.tag::before{content:"";position:absolute;inset:-8px -2px}
+#tags:not(.on) .tag{pointer-events:none}
+.tag::after{content:"";position:absolute;left:calc(50% + var(--sx,0px));top:100%;width:1px;height:var(--sh,6px);background:color-mix(in srgb,var(--ink) 45%,transparent)}
+.tag.dn::after{top:auto;bottom:100%}
+.tag i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--brand-bright);animation:tagpulse calc(var(--dur-3) * 5.6) var(--ease-out) infinite}
+.tag.on,.tag:active{background:var(--brand);border-color:var(--brand-bright);color:var(--on-brand)}
+.tag.on i,.tag:active i{background:var(--on-brand)}
+.tag.off{display:none}
+.tag:focus-visible{outline:none;box-shadow:var(--ring)}
+@media (max-height:500px){.tag{min-height:22px;padding:3px var(--sp-2) 3px 7px;font-size:var(--text-xs);gap:var(--sp-1)}.tag i{width:6px;height:6px}.tag::before{inset:-11px -2px}}
+@keyframes tagpulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--brand-bright) 60%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+/* Back chip: glass, sits just above the dock while an object is focused */
+#hud #hBack{position:absolute;left:var(--sp-3);bottom:calc(var(--dock-h) + var(--sp-5) + var(--safe-b));display:none;align-items:center;gap:var(--sp-1);width:auto;min-width:0;min-height:var(--tap);margin:0;padding:var(--sp-2) var(--sp-4) var(--sp-2) var(--sp-2);border:1px solid var(--glass-line);border-radius:var(--r-pill);background:var(--glass);color:var(--ink);font:var(--w-bold) var(--text-sm)/1 var(--font-ui);box-shadow:var(--sh-2);pointer-events:auto}
+#hud #hBack .ico{width:18px;height:18px}
+body.hq-back #hud #hBack{display:flex;animation:hq-in var(--dur-2) var(--ease-out)}
+/* first-visit hint: a quiet glass line above the dock; never takes taps */
+#hint{position:absolute;left:50%;bottom:var(--hud-clear-bottom);transform:translateX(-50%);max-width:calc(100vw - 2 * var(--gutter));width:max-content;background:var(--glass);border:1px solid var(--glass-line);border-radius:var(--r-pill);padding:var(--sp-2) var(--sp-4);color:var(--ink-2);font:var(--w-medium) var(--text-sm)/var(--lh-snug) var(--font-ui);text-align:center;box-shadow:var(--sh-2);pointer-events:none;opacity:0;transition:opacity var(--dur-3) var(--ease-out)}
+#hint.on{opacity:1}
+body.hq-back #hint{bottom:calc(var(--hud-clear-bottom) + var(--tap) + var(--sp-2))}
+/* empty-tap ripple */
+#ripple{position:fixed;left:calc(var(--tap) / -2);top:calc(var(--tap) / -2);width:var(--tap);height:var(--tap);z-index:calc(var(--z-hud) - 2);pointer-events:none}
+#ripple::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid color-mix(in srgb,var(--ink) 60%,transparent);opacity:0}
+#ripple.on::after{animation:ripple var(--dur-4) var(--ease-out)}
+@keyframes ripple{0%{opacity:.85;transform:scale(.3)}100%{opacity:0;transform:scale(1)}}
+@keyframes hq-in{from{opacity:0}to{opacity:1}}
+body.hq-focus #dim{background:color-mix(in srgb,var(--sunken) 18%,transparent)}
+/* toast: never over the focused object. With a sheet open (focus, no Back) the object sits in the strip under the HUD
+   chips, so the toast rides over the chips; with the Back chip showing it sits above the chip. */
+body.hq-focus:not(.hq-back) #toast{top:calc(var(--sp-2) + var(--safe-t))}
+body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + var(--sp-10))}
+
+/* landscape: the first-visit hint moves to a side slot so it never covers the room's central band */
+@media (orientation:landscape) and (max-height:500px){#hint{left:var(--gutter);right:auto;transform:none;max-width:260px;text-align:left;border-radius:var(--r-md)}body.hq-back #hint{bottom:calc(var(--hud-clear-bottom) + var(--tap) + var(--sp-2))}}
+/* ---- Panel parts (.pl-), ported from Mogul's Label panel: the shared pieces any floor panel (09_ui_panels.js) can use:
+   lede, banners, key-value lines, meters with labels, sticky action bar, steppers, sliders, forecast box, money box,
+   option cards, table rows, verdict, choice. Tokens only. ---- */
+.pl{padding-bottom:0}
+.pl-nav>.btn{margin:0}
+.pl-lede{margin:-6px 52px var(--sp-3) 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3)}
+.pl-lede b{color:var(--ink)}
+.pl-lede .tip{margin-left:6px}
+.pl-intro{margin:0 0 var(--sp-3);font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}
+.pl .btn{margin:0 0 var(--sp-3)}
+.pl .card-actions .btn,.pl .confirm .actions .btn,.pl .seg .btn{margin:0}
+.pl .card{margin:0 0 var(--sp-3)}
+.pl .card-title{white-space:normal;overflow-wrap:anywhere;line-height:var(--lh-snug)}
+.pl .card-head .badge{flex:none}
+.pl .stats{margin-top:10px}
+.pl .stat{position:relative;display:flex;flex-direction:column;justify-content:flex-end}
+.pl .stat small{line-height:1.3}
+.pl .stat small:first-child{padding-right:18px}
+.pl .stat small .tip{position:absolute;top:6px;right:6px}
+.pl .stat small+b+small{margin-top:1px}
+.pl .empty{margin:0 0 var(--sp-3);background:color-mix(in srgb,var(--raised) 45%,transparent)}
+.pl .empty .btn{margin:var(--sp-2) 0 0;max-width:300px}
+.pl-why{display:flex;align-items:flex-start;gap:6px}
+.pl-why .ico{flex:none;width:16px;height:16px;margin-top:1px}
+.pl-danger-q{color:var(--bad)!important}
+.pl-dot{position:absolute;top:5px;left:calc(50% + 8px);width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--sunken)}
+/* tabs: four or five must fit a 360px phone without truncating */
+.pl .tabs{overflow:hidden}
+.pl .tab{flex:1 1 0;min-width:0;padding:4px 2px 7px;font-size:var(--text-xs);letter-spacing:-.005em}
+.pl .tab .ico{width:20px;height:20px}
+/* banners */
+.pl-banner{display:flex;align-items:center;gap:12px;margin:0 0 var(--sp-3);padding:12px 14px;border:1px solid color-mix(in srgb,var(--brand-bright) 40%,transparent);border-radius:var(--r-md);background:var(--brand-tint)}
+.pl-banner>.ico{flex:none;width:24px;height:24px;color:var(--brand-text)}
+.pl-banner>div{flex:1;min-width:0}
+.pl-banner b{display:block;font-size:var(--text-md)}
+.pl-banner>div>span{display:block;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}
+.pl-banner .btn{flex:none;width:auto;margin:0;padding:8px 12px}
+.pl-banner.gold{border-color:color-mix(in srgb,var(--gold) 40%,transparent);background:var(--gold-tint)}
+.pl-banner.gold>.ico{color:var(--gold)}
+.pl-banner.warn{border-color:color-mix(in srgb,var(--warn) 45%,transparent);background:var(--warn-tint)}
+.pl-banner.warn>.ico{color:var(--warn)}
+.pl-banner.bad{border-color:color-mix(in srgb,var(--bad) 45%,transparent);background:var(--bad-tint)}
+.pl-banner.bad>.ico{color:var(--bad)}
+.pl-banner.good{border-color:color-mix(in srgb,var(--good) 40%,transparent);background:var(--good-tint)}
+.pl-banner.good>.ico{color:var(--good)}
+/* shared card lines */
+.pl-kind{flex:none;padding:3px 8px;border-radius:var(--r-pill);background:var(--raised-2);color:var(--ink-2);font-size:var(--text-xs);font-weight:var(--w-bold);line-height:1.2}
+.pl-mrow-l{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:12px 0 0;font-size:var(--text-sm);color:var(--ink-2)}
+.pl-mrow-l b{color:var(--ink);font-family:var(--font-num);font-weight:var(--w-medium)}
+.pl-mrow-l .tip{margin-left:6px}
+.pl-mrow-l>span:first-child{flex:none;white-space:nowrap}
+.pl-mrow-l>span+span{text-align:right}
+.pl-mrow-l+.meter,.pl-mrow-l+.capbar{margin-top:6px}
+.pl-kv,.pl-note{display:flex;align-items:center;gap:8px;margin:12px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}
+.pl-kv .ico{flex:none;width:18px;height:18px;color:var(--brand-text)}
+.pl-kv b{color:var(--ink)}
+.pl-note{color:var(--ink-3)}
+.pl-note .ico{flex:none;width:18px;height:18px}
+.pl-note .tip{margin-left:6px}
+.pl-result{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0 0;font-size:var(--text-sm);color:var(--ink-2)}
+.pl-result b{color:var(--ink)}
+.pl-qline{display:flex;align-items:center;gap:8px;margin:12px 0 0;padding:4px 4px 4px 10px;border-radius:var(--r-md);background:var(--brand-tint);font-size:var(--text-sm);color:var(--ink-2)}
+.pl-qline>span:not(.badge){flex:1;min-width:0}
+.pl-qline .btn{flex:none;width:auto;margin:0;padding:6px 10px}
+.pl-confirm{margin:12px 0 0;box-shadow:none}
+.pl-confirm .actions .btn{min-height:var(--tap);font-size:var(--text-md)}
+.meter.pl-band>i{width:calc((var(--hi) - var(--lo)) * 1%);margin-left:calc(var(--lo) * 1%);background:var(--ink-3);opacity:.75}
+.pl-more{margin-top:6px}
+.pl-more>summary{display:flex;align-items:center;gap:6px;min-height:var(--tap);color:var(--ink-2);font-size:var(--text-sm);font-weight:var(--w-medium);list-style:none;cursor:pointer}
+.pl-more>summary::-webkit-details-marker{display:none}
+.pl-more>summary .ico{width:18px;height:18px;transition:transform var(--dur-2) var(--ease-out)}
+.pl-more[open]>summary .ico{transform:rotate(180deg)}
+.pl .stats.pl-st4{grid-template-columns:repeat(2,minmax(0,1fr))}
+.pl .stats.pl-st2{grid-template-columns:repeat(2,minmax(0,1fr))}
+/* expandable rows: tap the head, the body opens under it */
+.pl-mrow{padding:0;overflow:hidden}
+.pl-mhead{display:grid;grid-template-columns:minmax(0,1fr) auto 20px;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 12px 10px 14px;border:0;background:transparent;color:var(--ink);text-align:left;transition:background-color var(--dur-2)}
+.pl-mhead:active{background:var(--raised-2)}
+.pl-mt{min-width:0}
+.pl-mt b{display:block;font-family:var(--font-display);font-stretch:var(--stretch-display);font-size:var(--text-lg);font-weight:var(--w-display);line-height:var(--lh-snug);overflow-wrap:anywhere}
+.pl-mt small{display:block;font-size:var(--text-sm);color:var(--ink-3)}
+.pl-mprice{text-align:right;white-space:nowrap}
+.pl-mprice b{display:block;font-family:var(--font-num);font-size:var(--text-md);font-weight:var(--w-medium)}
+.pl-mprice small{display:block;font-size:var(--text-xs);color:var(--ink-3)}
+.pl-chev{display:grid;place-items:center;color:var(--ink-3)}
+.pl-chev .ico{transition:transform var(--dur-2) var(--ease-out)}
+.pl-mrow.open .pl-chev .ico{transform:rotate(180deg)}
+.pl-mrow.open{border-color:var(--line-strong)}
+.pl-mbody{padding:12px 16px 16px;border-top:1px solid var(--line);animation:rise var(--dur-2) var(--ease-out)}
+.pl-mbody>.stats:first-of-type{margin-top:4px}
+.pl-mact{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:var(--sp-4)}
+.pl-mact .btn,.pl-mact .pl-qline{margin:0}
+/* table rows (rivals, the record): rank, name + line, value */
+.pl-chhead{margin:0 0 var(--sp-2);font-size:var(--text-sm);color:var(--ink-3)}
+.pl-chhead b{color:var(--ink)}
+.pl-chart{overflow:hidden;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--raised)}
+.pl-cr{display:grid;grid-template-columns:32px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:56px;padding:6px 14px 6px 10px;border-top:1px solid var(--line)}
+.pl-cr:first-child{border-top:0}
+.pl-cr.you{background:var(--brand-tint);box-shadow:inset 4px 0 0 var(--brand-bright)}
+.pl-rk{font-family:var(--font-num);font-size:var(--text-lg);font-weight:var(--w-medium);text-align:center;color:var(--ink-3)}
+.pl-cr:nth-child(-n+3) .pl-rk{color:var(--ink)}
+.pl-cr.you .pl-rk{color:var(--brand-text)}
+.pl-ct{min-width:0}
+.pl-ct b,.pl-ct small{display:block;overflow-wrap:anywhere}
+.pl-ct b{font-size:var(--text-md);line-height:var(--lh-snug)}
+.pl-ct small{font-size:var(--text-xs);color:var(--ink-3)}
+.pl-cs{text-align:right;white-space:nowrap}
+.pl-cs b{display:block;font-family:var(--font-num);font-size:var(--text-md);font-weight:var(--w-medium)}
+.pl-cs small{display:block;font-size:var(--text-xs);color:var(--ink-3)}
+/* option cards (target skill, offers): .pl-opt.on is the picked one */
+.pl-opts{display:flex;flex-direction:column;gap:var(--sp-2)}
+.pl-opt{position:relative;display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--raised);box-shadow:var(--sh-1);color:var(--ink);text-align:left;transition:transform var(--dur-1) var(--ease-out),background-color var(--dur-2),border-color var(--dur-2)}
+.pl-opt:active{transform:scale(.98);background:var(--raised-2)}
+.pl-opt-ico{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:12px;background:var(--raised-2);color:var(--ink-2)}
+.pl-opt-t{flex:1;min-width:0}
+.pl-opt-t b{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:var(--text-lg);line-height:var(--lh-snug)}
+.pl-opt-t small{display:block;margin-top:2px;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}
+.pl-opt-t em{display:block;margin-top:4px;font-size:var(--text-xs);font-style:normal;line-height:var(--lh-snug);color:var(--ink-3)}
+.pl-opt-t em .ico{width:14px;height:14px;margin-right:4px;vertical-align:-2px}
+.pl-opt-t .warn{color:var(--warn)}
+.pl-opt-tick{display:grid;place-items:center;flex:none;width:24px;height:24px;border:2px solid var(--line-strong);border-radius:50%;color:transparent}
+.pl-opt-tick .ico{width:14px;height:14px}
+.pl-opt.on{border-color:var(--brand-bright);background:var(--brand-tint)}
+.pl-opt.on .pl-opt-ico{background:var(--brand);color:var(--on-brand)}
+.pl-opt.on .pl-opt-tick{border-color:var(--brand-bright);background:var(--brand-bright);color:var(--on-brand)}
+.pl-opt[disabled]{border-style:dashed;background:transparent;box-shadow:none;transform:none;cursor:default}
+.pl-opt[disabled] .pl-opt-t b,.pl-opt[disabled] .pl-opt-t small{color:var(--ink-3)}
+.pl-opt[disabled] .pl-opt-t em{color:var(--warn)}
+.pl-opt[disabled] .pl-opt-tick{visibility:hidden}
+.pl-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.pl-grid2 .pl-opt{padding:10px 12px}
+.pl-grid2 .pl-opt-tick{display:none}
+.pl-grid2 .pl-opt-t b{font-size:var(--text-md)}
+/* steppers (rent PF, hire): label, minus, value, plus */
+.pl-steps{display:flex;flex-direction:column;gap:6px}
+.pl-step{display:grid;grid-template-columns:minmax(0,1fr) 48px 72px 48px;align-items:center;gap:6px;padding:6px 6px 6px 12px;border-radius:var(--r-md);background:var(--raised)}
+.pl-step>span b{display:block;font-size:var(--text-md)}
+.pl-step>span small{display:block;font-size:var(--text-xs);color:var(--ink-3)}
+.pl-step>b{font-family:var(--font-num);font-size:var(--text-md);font-weight:var(--w-medium);text-align:center}
+.pl-sb{display:grid;place-items:center;width:48px;height:48px;padding:0;border:1px solid var(--line-strong);border-radius:var(--r-sm);background:var(--raised-2);color:var(--ink);transition:transform var(--dur-1) var(--ease-out)}
+.pl-sb:active{transform:scale(.94);background:var(--brand-tint)}
+.pl-sb[disabled]{opacity:.35;transform:none}
+.pl-tot{display:flex;justify-content:space-between;align-items:center;margin:8px 0 0;padding:10px 12px;border-top:1px solid var(--line);font-size:var(--text-md);color:var(--ink-2)}
+.pl-tot b{font-family:var(--font-num);font-weight:var(--w-medium);color:var(--gold);font-size:var(--text-lg)}
+/* money box and forecast box */
+.pl-money{margin:12px 0 0;padding:2px 14px;border-radius:var(--r-md);background:var(--raised)}
+.pl-money>div{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:40px;font-size:var(--text-md);color:var(--ink-2)}
+.pl-money>div+div{border-top:1px solid var(--line)}
+.pl-money span{display:flex;align-items:center;gap:6px}
+.pl-money b{font-family:var(--font-num);font-weight:var(--w-medium);color:var(--ink)}
+.pl-money-t b{font-size:var(--text-lg);color:var(--gold)}
+.pl-fc{margin:12px 0 0;padding:12px 14px;border:1px solid color-mix(in srgb,var(--info) 30%,var(--line));border-radius:var(--r-md);background:var(--info-tint)}
+.pl-fc .kicker{color:var(--info)}
+.pl-fc-ex{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:6px 0 0;font-size:var(--text-md);color:var(--ink)}
+.pl-fc-ex span{display:flex;align-items:center;gap:6px;font-weight:var(--w-bold)}
+.pl-fc-ex b{font-family:var(--font-num);font-size:var(--text-xl);font-weight:var(--w-medium);color:var(--gold)}
+.pl-fc .stats{margin-top:8px}
+.pl-fc .stat{background:var(--surface)}
+.pl-fc .hint{margin:10px 0 0!important;color:var(--ink-2)}
+.pl-fc .hint b{color:var(--ink)}
+/* sticky action bar at the bottom of a panel */
+.pl-nav{position:sticky;bottom:calc(-1 * (var(--sheet-pad-bottom) + var(--safe-b)));z-index:2;margin:var(--sp-4) calc(-1 * var(--sheet-pad-x)) calc(-1 * (var(--sheet-pad-bottom) + var(--safe-b)));padding:10px var(--sheet-pad-x) calc(var(--sheet-pad-bottom) + var(--safe-b));border-top:1px solid var(--line);background:var(--surface);box-shadow:0 -10px 24px rgba(0,0,0,.35)}
+.pl-nav-sum{display:block;margin:0 0 8px;font-size:var(--text-sm);line-height:var(--lh-snug);text-align:center;color:var(--ink-2)}
+.pl-nav-sum b{color:var(--gold)}
+.pl-nav-sum b.neg{color:var(--bad)}
+.pl-nav .pl-nav-why{justify-content:center;margin:0 0 8px}
+.pl-nav-btns{display:flex;gap:var(--sp-2)}
+.pl-nav-btns .btn{width:auto;min-height:var(--control);margin:0}
+.pl-nav-btns .btn.quiet{flex:none;padding:8px 14px}
+.pl-nav-btns .btn.primary{flex:1;min-width:0}
+/* slider: <input type=range class="pl-range" style="--p:.40;--rc:var(--safe)">. --p is the fill (0..1), --rc the colour */
+.pl-range{--thumb:28px;--p:.5;--rc:var(--brand-bright);-webkit-appearance:none;appearance:none;display:block;width:100%;height:48px;margin:4px 0 0;background:transparent;touch-action:pan-x}
+.pl-range::-webkit-slider-runnable-track{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--rc) 0,var(--rc) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p)),var(--sunken) 0);box-shadow:inset 0 0 0 1px var(--line)}
+.pl-range::-webkit-slider-thumb{-webkit-appearance:none;width:var(--thumb);height:var(--thumb);margin-top:-10px;border:3px solid var(--rc);border-radius:50%;background:var(--ink);box-shadow:var(--sh-2)}
+.pl-range::-moz-range-track{height:8px;border-radius:4px;background:var(--sunken)}
+.pl-range::-moz-range-progress{height:8px;border-radius:4px;background:var(--rc)}
+.pl-range::-moz-range-thumb{width:22px;height:22px;border:3px solid var(--rc);border-radius:50%;background:var(--ink)}
+.pl-range:focus-visible{box-shadow:none}
+.pl-range:focus-visible::-webkit-slider-thumb{box-shadow:var(--ring)}
+.pl-ticks{position:relative;height:18px;margin-top:-6px;font-size:var(--text-xs);color:var(--ink-3)}
+.pl-ticks span{position:absolute;top:0;left:calc(var(--thumb,28px) / 2 + (100% - var(--thumb,28px)) * var(--at));transform:translateX(-50%);white-space:nowrap}
+.pl-ticks span:first-child{left:0;transform:none}
+.pl-ticks span:last-child{left:auto;right:0;transform:none}
+/* verdict and choice */
+.pl-verdict{display:flex;align-items:center;gap:12px;margin:12px 0 0;padding:12px 14px;border:1px solid;border-radius:var(--r-md)}
+.pl-verdict>.ico{flex:none;width:24px;height:24px}
+.pl-verdict>div{flex:1;min-width:0}
+.pl-verdict b{display:block;font-size:var(--text-md)}
+.pl-verdict span{display:block;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}
+.pl-verdict.good{border-color:color-mix(in srgb,var(--good) 40%,transparent);background:var(--good-tint)}
+.pl-verdict.good>.ico{color:var(--good)}
+.pl-verdict.warn{border-color:color-mix(in srgb,var(--warn) 45%,transparent);background:var(--warn-tint)}
+.pl-verdict.warn>.ico{color:var(--warn)}
+.pl-verdict.bad{border-color:color-mix(in srgb,var(--bad) 45%,transparent);background:var(--bad-tint)}
+.pl-verdict.bad>.ico{color:var(--bad)}
+.pl-choice{display:flex;align-items:center;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.pl-choice>div{flex:1;min-width:0}
+.pl-choice b{display:block;font-size:var(--text-md)}
+.pl-choice span{display:block;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3)}
+.pl-choice .btn{flex:none;width:auto;min-width:112px;margin:0}
+/* list rows with a remove button */
+.pl-row{display:flex;align-items:center;gap:10px;min-height:60px;margin:0 0 6px;padding:6px 4px 6px 10px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--raised)}
+.pl-row-ico{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:10px;background:var(--brand-tint);color:var(--brand-text)}
+.pl-row-ico .ico{width:18px;height:18px}
+.pl-row-t{flex:1;min-width:0}
+.pl-row-t b{display:block;font-size:var(--text-md);line-height:var(--lh-snug);overflow-wrap:anywhere}
+.pl-row-t small{display:block;margin-top:1px;font-size:var(--text-xs);line-height:var(--lh-snug);color:var(--ink-3)}
+.pl-row-c{flex:none;font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--ink-2)}
+.pl-x{display:grid;place-items:center;flex:none;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:var(--r-sm);background:transparent;color:var(--ink-3)}
+.pl-x .ico{width:18px;height:18px}
+.pl-x:active{background:var(--bad-tint);color:var(--bad)}
+.pl-run{display:flex;align-items:flex-start;gap:8px;margin:10px 0 4px;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3)}
+.pl-run .ico{flex:none;width:16px;height:16px;margin-top:2px}
+/* short phones: keep the sticky action bar compact so the content above it stays usable */
+@media (max-height:700px){
+  .pl-nav{padding-top:8px}
+  .pl-nav-sum{margin-bottom:6px;font-size:var(--text-xs)}
+  .pl-nav .btn .btn-sub{display:none}
+  .pl-nav .btn.two-line{min-height:var(--control)}
+}
+/* landscape phones: the sheet takes nearly the full height, headers shrink and the action bar is one row */
+@media (orientation:landscape) and (max-height:500px){
+  .pl-lede{margin-bottom:var(--sp-2)}
+  .pl-intro,.pl-nav-sum{display:none}
+  .pl-nav{display:flex;align-items:center;gap:var(--sp-2);padding-top:6px;padding-bottom:calc(8px + var(--safe-b))}
+  .pl-nav>.pl-nav-why{flex:1;min-width:0;margin:0;justify-content:flex-start}
+  .pl-nav-btns{flex:none;margin-left:auto}
+  .pl-nav .btn .btn-sub{display:none}
+  .pl-nav .btn.two-line{min-height:var(--control)}
+}
+/* ---- Week loop sheets (.wk-): the weekly memo lines, the money box and the game menu. ---- */
+.wk>.kicker{margin:2px 52px 0 0}
+.wk>.kicker+h3{margin-top:2px}
+.wk .btn{margin:var(--sp-3) 0 0}
+.wk-lead{margin:0 0 var(--sp-3);font-size:var(--text-md);line-height:var(--lh-body);color:var(--ink-2)}
+.wk-actions{display:flex;gap:var(--sp-2);margin-top:var(--sp-4)}
+.wk-actions .btn{flex:1;width:auto;min-width:0;margin:0}
+.wk-actions .btn.quiet{flex:0 1 auto}
+.wk-stack{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:var(--sp-4)}
+.wk-stack .btn{margin:0}
+/* facts and memo lines: an icon in a tinted circle, then one plain sentence */
+.wk-facts,.wk-lines{display:flex;flex-direction:column;gap:var(--sp-2);margin:0;padding:0;list-style:none}
+.wk-facts li,.wk-lines li{display:flex;align-items:flex-start;gap:var(--sp-3);padding:10px 12px;border-radius:var(--r-md);background:var(--raised);font-size:var(--text-md);line-height:var(--lh-snug);color:var(--ink)}
+.wk-facts li>.ico,.wk-lines li>.ico{flex:none;width:28px;height:28px;padding:5px;border-radius:50%;background:var(--raised-2);color:var(--ink-2)}
+.wk-facts li b{color:var(--gold)}
+.wk-lines li.good>.ico{background:var(--good-tint);color:var(--good)}
+.wk-lines li.warn>.ico,.wk-lines li.due>.ico{background:var(--warn-tint);color:var(--warn)}
+.wk-lines li.bad>.ico,.wk-lines li.flag>.ico{background:var(--bad-tint);color:var(--bad)}
+.wk-lines li.info>.ico,.wk-lines li.change>.ico{background:var(--info-tint);color:var(--info)}
+.wk-lines li>span,.wk-facts li>span{padding-top:4px}
+/* money: label on the left, amount on the right, the total in gold */
+.wk-money{margin:var(--sp-3) 0 0;padding:2px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--raised)}
+.wk-money>div{display:flex;justify-content:space-between;align-items:center;gap:var(--sp-3);min-height:44px;padding:6px 0;font-size:var(--text-md);color:var(--ink-2)}
+.wk-money>div+div{border-top:1px solid var(--line)}
+.wk-money span{display:flex;flex-direction:column;min-width:0}
+.wk-money span small{font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3)}
+.wk-money b{flex:none;font-family:var(--font-num);font-weight:var(--w-medium);color:var(--ink);font-size:var(--text-lg)}
+.wk-money-t span{flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;font-weight:var(--w-bold);color:var(--ink)}
+.wk-money-t span small{flex-basis:100%;font-weight:var(--w-regular)}
+.wk-money-t b{font-size:var(--text-xl);color:var(--gold)}
+.wk-money b.pos{color:var(--good)}
+.wk-money b.neg{color:var(--bad)}
+/* game menu */
+.wk-menu .row.wk-help{margin:var(--sp-1) 0 0}
+.wk-menu .row.wk-help>.ico{width:var(--icon-lg);height:var(--icon-lg);color:var(--info)}
+.wk-set{display:flex;align-items:center;gap:var(--sp-3);margin:var(--sp-2) 0 0;padding:8px 8px 8px 14px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--raised)}
+.wk-set>div:first-child{flex:1;min-width:0}
+.wk-set b{display:block;font-size:var(--text-md)}
+.wk-set small{display:block;font-size:var(--text-sm);color:var(--ink-3)}
+.wk-set .seg{flex:none;width:auto;margin:0}
+.wk-set .seg .btn{flex:none;width:auto;min-width:64px;margin:0}
+.wk-saved{display:flex;align-items:center;gap:6px;margin:var(--sp-3) 0 0}
+.wk-saved .ico{width:16px;height:16px;color:var(--good)}
+.wk-saved.bad .ico{color:var(--bad)}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="tags"></div>
+<div id="fade"></div>
+
+<div id="boot" class="screen on">
+  <div class="screen-col">
+    <div class="kicker presents">Prairie Blue Studio presents</div>
+    <svg class="hero-art" viewBox="0 0 200 172" aria-hidden="true" focusable="false"><defs><radialGradient id="heroGlow" cx="50%" cy="50%" r="50%"><stop offset="0" style="stop-color:var(--brand);stop-opacity:.42"/><stop offset="1" style="stop-color:var(--brand);stop-opacity:0"/></radialGradient></defs><ellipse class="glow" cx="100" cy="96" rx="100" ry="76"/><path class="sky" d="M8 170V118h26v-12h18v64zM192 170v-60h-22V96h-16v74z"/><line class="mast" x1="118" y1="27" x2="118" y2="12"/><circle class="beacon" cx="118" cy="10" r="3"/><rect class="tower" x="64" y="42" width="72" height="128" rx="3"/><rect class="sign" x="70" y="27" width="60" height="13" rx="2"/><text class="sign-t" x="100.6" y="36.2" text-anchor="middle">FRONTIER</text><rect class="w on" x="69" y="46" width="13" height="8" rx="1"/><rect class="w on" x="85" y="46" width="13" height="8" rx="1"/><rect class="w on" x="101" y="46" width="13" height="8" rx="1"/><rect class="w on" x="117" y="46" width="13" height="8" rx="1"/><line class="slab" x1="64" y1="57" x2="136" y2="57"/><rect class="w blue" x="69" y="60" width="13" height="8" rx="1"/><rect class="w" x="85" y="60" width="13" height="8" rx="1"/><rect class="w tw" x="101" y="60" width="13" height="8" rx="1"/><rect class="w" x="117" y="60" width="13" height="8" rx="1"/><line class="slab" x1="64" y1="71" x2="136" y2="71"/><rect class="w tw" x="69" y="74" width="13" height="8" rx="1"/><rect class="w on" x="85" y="74" width="13" height="8" rx="1"/><rect class="w blue" x="101" y="74" width="13" height="8" rx="1"/><rect class="w blue" x="117" y="74" width="13" height="8" rx="1"/><line class="slab" x1="64" y1="85" x2="136" y2="85"/><rect class="w on" x="69" y="88" width="13" height="8" rx="1"/><rect class="w" x="85" y="88" width="13" height="8" rx="1"/><rect class="w on" x="101" y="88" width="13" height="8" rx="1"/><rect class="w on" x="117" y="88" width="13" height="8" rx="1"/><line class="slab" x1="64" y1="99" x2="136" y2="99"/><rect class="w blue" x="69" y="102" width="13" height="8" rx="1"/><rect class="w on" x="85" y="102" width="13" height="8" rx="1"/><rect class="w on" x="101" y="102" width="13" height="8" rx="1"/><rect class="w" x="117" y="102" width="13" height="8" rx="1"/><line class="slab" x1="64" y1="113" x2="136" y2="113"/><rect class="w" x="69" y="116" width="13" height="8" rx="1"/><rect class="w tw" x="85" y="116" width="13" height="8" rx="1"/><rect class="w" x="101" y="116" width="13" height="8" rx="1"/><rect class="w on" x="117" y="116" width="13" height="8" rx="1"/><line class="slab" x1="64" y1="127" x2="136" y2="127"/><rect class="w on" x="69" y="130" width="13" height="8" rx="1"/><rect class="w on" x="85" y="130" width="13" height="8" rx="1"/><rect class="w on" x="101" y="130" width="13" height="8" rx="1"/><rect class="w blue" x="117" y="130" width="13" height="8" rx="1"/><line class="slab" x1="64" y1="141" x2="136" y2="141"/><rect class="w blue" x="69" y="144" width="13" height="8" rx="1"/><rect class="w on" x="85" y="144" width="13" height="8" rx="1"/><rect class="w tw" x="101" y="144" width="13" height="8" rx="1"/><rect class="w on" x="117" y="144" width="13" height="8" rx="1"/><line class="slab" x1="64" y1="155" x2="136" y2="155"/><rect class="lobby" x="68" y="158" width="64" height="12" rx="1"/><rect class="door" x="93" y="159.5" width="14" height="10.5" rx="1"/><rect class="ground" x="0" y="169.5" width="200" height="2" rx="1"/></svg>
+    <h1 class="logo">FRONT<span>I</span>ER</h1>
+    <p class="tagline">Run a frontier AI lab. Keep capability and safety in step.</p>
+    <button class="btn primary lg" id="bootTap">Tap to start</button>
+    <div class="byline">Lab-management sim · one week per turn</div>
+  </div>
+  <div class="ver">V{{VERSION}}</div>
+</div>
+
+<div id="menu" class="screen">
+  <div class="screen-col">
+    <div class="menu-art" id="menuArt" aria-hidden="true"></div>
+    <h1 class="logo md">FRONT<span>I</span>ER</h1>
+    <p class="tagline">Run a frontier AI lab. Keep capability and safety in step.</p>
+    <button class="btn primary lg two-line" id="mContinue"><span class="btn-t"><i data-icon="play"></i>Continue</span><span class="btn-sub" id="mContinueSub"></span></button>
+    <button class="btn lg" id="mNew"><i data-icon="plus"></i>New career</button>
+    <button class="btn" id="mCareers"><i data-icon="disc"></i>Careers and save codes</button>
+    <div class="menu-pair">
+      <button class="btn" id="mHelp"><i data-icon="help"></i>How to play</button>
+      <button class="btn" id="mSettings"><i data-icon="settings"></i>Settings</button>
+    </div>
+    <button class="btn quiet small menu-credits" id="mCredits"><i data-icon="info"></i>Credits</button>
+  </div>
+  <div class="ver">V{{VERSION}}</div>
+  <div class="ticker" aria-hidden="true"><div class="ticker-track" id="tickerText"></div></div>
+</div>
+
+<div id="newCareer" class="screen" aria-labelledby="ncTitle">
+  <div class="screen-col">
+    <span class="kicker">New career</span>
+    <h2 class="screen-title" id="ncTitle">Found your lab</h2>
+    <p class="screen-lead">You start with a small team, rented compute and a seed round on the table. Nothing carries over from an earlier lab.</p>
+    <div class="field"><label for="labName">Lab name</label><input id="labName" maxlength="28" value="Prairie Blue Labs" placeholder="Prairie Blue Labs" autocomplete="off" spellcheck="false"></div>
+    <div class="field"><label>Save slot</label></div>
+    <div id="slots" class="slots"></div>
+    <p class="hint warn" id="slotWarn" hidden></p>
+    <div class="screen-actions">
+      <button class="btn primary lg" id="ncStart">Found the lab</button>
+      <button class="btn quiet" id="ncBack"><i data-icon="back"></i>Back</button>
+    </div>
+  </div>
+</div>
+
+<div id="careers" class="screen careers" aria-labelledby="carTitle">
+  <div class="screen-col">
+    <span class="kicker">Careers</span>
+    <h2 class="screen-title" id="carTitle">Your labs</h2>
+    <p class="screen-lead">Three save slots. Continue a lab, copy its save code to move it to another device, or delete it.</p>
+    <div class="car-list" id="carList"></div>
+    <div class="car-code" id="carExport" hidden></div>
+    <section class="set-group car-import" aria-labelledby="impH">
+      <h3 class="set-h" id="impH"><i data-icon="import"></i>Import a save code</h3>
+      <div class="field"><label for="impCode">Save code</label><textarea id="impCode" rows="3" autocomplete="off" spellcheck="false" placeholder="Paste a code that starts with FR1."></textarea></div>
+      <div class="field"><label>Import into</label></div>
+      <div id="impSlots" class="slots"></div>
+      <p class="hint warn car-err" id="impErr" role="alert" hidden></p>
+      <div id="impConfirm" hidden></div>
+      <button class="btn primary" id="impGo">Import code</button>
+    </section>
+    <div class="screen-actions"><button class="btn quiet" id="carBack"><i data-icon="back"></i>Back</button></div>
+  </div>
+</div>
+
+<div id="settings" class="screen" aria-labelledby="setTitle">
+  <div class="screen-col">
+    <h2 class="screen-title" id="setTitle">Settings</h2>
+    <p class="screen-lead">Changes save as soon as you tap.</p>
+    <section class="set-group" aria-labelledby="setSoundH">
+      <h3 class="set-h" id="setSoundH"><i data-icon="sound"></i>Sound</h3>
+      <div class="set-row">
+        <div class="field"><label>Sound effects and ambience</label><p class="hint">Off by default. The office hum, the elevator chime and the end-of-week cue.</p></div>
+        <div class="seg" id="sndSeg" role="group" aria-label="Sound"><button class="btn small" data-v="1">On</button><button class="btn small sel" data-v="0">Off</button></div>
+      </div>
+    </section>
+    <section class="set-group" aria-labelledby="setMotionH">
+      <h3 class="set-h" id="setMotionH"><i data-icon="eye"></i>Display</h3>
+      <div class="set-row">
+        <div class="field"><label>Reduce motion</label><p class="hint">Cuts screen animations and the title camera move. Your device setting also applies.</p></div>
+        <div class="seg" id="motionSeg" role="group" aria-label="Reduce motion"><button class="btn small" data-v="1">On</button><button class="btn small sel" data-v="0">Off</button></div>
+      </div>
+    </section>
+    <button class="row go set-help" id="setCareers"><i data-icon="disc"></i><span class="row-t"><b>Careers and save codes</b><small>Continue, copy a code, import or delete a lab</small></span></button>
+    <button class="row go set-help" id="setHelp"><i data-icon="help"></i><span class="row-t"><b>How to play</b><small>Sliders, projects, the warning ladder, winning and losing</small></span></button>
+    <div class="screen-actions">
+      <button class="btn quiet" id="setBack"><i data-icon="back"></i>Back</button>
+    </div>
+  </div>
+</div>
+
+<div id="help" class="screen help" aria-labelledby="helpTitle">
+  <div class="screen-col">
+    <span class="kicker">How to play</span>
+    <h2 class="screen-title" id="helpTitle">How the lab runs</h2>
+    <p class="screen-lead">One turn is one week. Nothing moves until you tap End Turn. Tap a labelled object on any floor to open its panel; the elevator moves you between floors.</p>
+    <section class="help-sec"><h3>Each week</h3>
+      <ol class="howto">
+        <li><b>Set the sliders.</b> Four sliders split compute and staff across Training, Serving, Safety and Research. They always total 100%. Training raises capability on the skill the run targets. Serving earns revenue. Safety raises safety. Research speeds projects and unlocks higher tiers.</li>
+        <li><b>Greenlight projects.</b> Research lists the offers. Each has a cash cost spread over its weeks, a duration, a risk of overrun or failure and a payoff. One runs per project floor, three at a time.</li>
+        <li><b>Fund the lab.</b> Investors carry the early years: a round adds cash and dilutes your stake, and missing its milestone takes rounds off the table for a year. Revenue grows with capability and public trust.</li>
+        <li><b>End Turn.</b> The week resolves. The memo lists what changed, what is flagged and what is due.</li>
+      </ol></section>
+    <section class="help-sec"><h3>The warning ladder</h3>
+      <ul class="help-terms">
+        <li><span class="help-ico cap"><i data-icon="coding"></i></span><p><b>Capability and safety</b>Coding, Reasoning and Agents each have a capability bar and a safety bar. The gap between them is the risk. Agents weighs most.</p></li>
+        <li><span class="help-ico warn"><i data-icon="alert"></i></span><p><b>Warning</b>Gap above 10 for two weeks. An internal report. No cost.</p></li>
+        <li><span class="help-ico bad"><i data-icon="incident"></i></span><p><b>Incident</b>Gap above 20. A chance each week of an incident that costs cash and public trust.</p></li>
+        <li><span class="help-ico bad"><i data-icon="close"></i></span><p><b>Final incident</b>Gap above 30 for four weeks, or a third incident on one skill within a year. The lab closes.</p></li>
+      </ul></section>
+    <section class="help-sec"><h3>Winning and losing</h3>
+      <ul class="help-terms">
+        <li><span class="help-ico good"><i data-icon="record"></i></span><p><b>The win</b>Hold the frontier safely for 52 weeks in a row: your average capability at or above the best rival’s, and every skill’s safety within 5 of its capability.</p></li>
+        <li><span class="help-ico bad"><i data-icon="coin"></i></span><p><b>Two ways to close</b>Cash reaches zero, or the final incident. Either ends the lab for good.</p></li>
+        <li><span class="help-ico"><i data-icon="rival"></i></span><p><b>The frontier record</b>A rival that reaches a capability mark first goes on the record and costs score. The run continues.</p></li>
+        <li><span class="help-ico"><i data-icon="building"></i></span><p><b>Nothing carries over</b>Each new lab starts from nothing.</p></li>
+      </ul></section>
+    <p class="hint help-again"><i data-icon="menu"></i><span>This page is also in the game menu, the button at the top right.</span></p>
+    <div class="screen-actions"><button class="btn primary" id="helpBack">Back</button></div>
+  </div>
+</div>
+
+<div id="credits" class="screen" aria-labelledby="crTitle">
+  <div class="screen-col">
+    <h1 class="logo md" id="crTitle">FRONT<span>I</span>ER</h1>
+    <div class="byline">A game by Prairie Blue Studio</div>
+    <p class="credits-note">All labs, products, people and events in this game are fictional.</p>
+    <p class="credits-note">Built with three.js. Type: Archivo, IBM Plex Sans and IBM Plex Mono.</p>
+    <p class="credits-build">Build V{{VERSION}}</p>
+    <button class="btn quiet" id="crBack"><i data-icon="back"></i>Back</button>
+  </div>
+</div>
+
+<div id="end" class="screen end" aria-labelledby="endTitle">
+  <div class="screen-col">
+    <span class="kicker" id="endKicker">Run over</span>
+    <h2 class="screen-title" id="endTitle">Lab</h2>
+    <p class="screen-lead" id="endCause"></p>
+    <div class="end-score"><small>Final score</small><b id="endTotal">0</b></div>
+    <div class="stats end-facts" id="endFacts"></div>
+    <section class="set-group" aria-labelledby="endPartsH">
+      <h3 class="set-h" id="endPartsH"><i data-icon="chart"></i>How the score adds up</h3>
+      <table class="end-parts" id="endParts"></table>
+    </section>
+    <section class="set-group" aria-labelledby="endRecH">
+      <h3 class="set-h" id="endRecH"><i data-icon="record"></i>The frontier record</h3>
+      <p class="hint" id="endRecHint">First lab to reach each average-capability mark.</p>
+      <ol class="end-record" id="endRecord"></ol>
+    </section>
+    <div class="screen-actions">
+      <button class="btn primary lg" id="endNew"><i data-icon="plus"></i>Found a new lab</button>
+      <button class="btn quiet" id="endMenu"><i data-icon="back"></i>Main menu</button>
+    </div>
+  </div>
+</div>
+
+<div id="hud">
+  <div class="top">
+    <div class="chip hud-week" id="hudWeekChip" role="group" aria-label="Year and week"><b id="hudWeek">Week 1</b><div class="co" id="hudYear">Year 1</div></div>
+    <div class="chip hud-cash" id="hudCashChip" role="group" aria-label="Cash and runway"><b id="hudCash">$0</b><div class="co" id="hudRunway">Runway</div></div>
+    <div class="chip hud-trust" id="hudTrustChip" role="group" aria-label="Public trust"><b id="hudTrust">50</b><div class="co">Trust</div></div>
+    <button class="btn icon-only hud-menu" id="hMenu" aria-label="Game menu: how to play, sound, save and quit"><i data-icon="menu"></i></button>
+  </div>
+  <div class="strip" id="hudStrip" role="group" aria-label="Frontier position"></div>
+  <div id="hint"></div>
+  <button class="btn" id="hBack" aria-label="Back to the room"><i data-icon="back"></i>Back</button>
+  <div class="bottom">
+    <button class="btn" id="hElev">Elevator</button>
+    <button class="btn" id="hMemo">Memo</button>
+    <button class="btn endturn" id="hEnd">End Turn</button>
+  </div>
+</div>
+<div id="dim"></div>
+<div id="sheet" role="dialog" aria-modal="true"><div class="sheet-grab" id="sheetGrab" aria-hidden="true"></div><button class="close" id="sheetClose" aria-label="Close"><i data-icon="close"></i></button><div id="sheetBody"></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- SCRIPTS -->
+</body>
+</html>

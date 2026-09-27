@@ -20,7 +20,7 @@ const near = (a, b, e) => assert.ok(Math.abs(a - b) <= (e || 1e-6), a + ' vs ' +
 
 // init shape
 let s = game();
-assert.deepStrictEqual(Object.keys(s.compute).sort(), ['clusters', 'deals', 'installing', 'offers', 'rentPF', 'rentPrice', 'scarcity']);
+assert.deepStrictEqual(Object.keys(s.compute).sort(), ['bill', 'clusters', 'deals', 'installing', 'offers', 'rentPF', 'rentPrice', 'scarcity']);
 assert.strictEqual(s.compute.rentPF, K.startRent); assert.strictEqual(s.compute.rentPrice, base); assert.strictEqual(s.compute.scarcity, 0);
 assert.ok(s.compute.offers.length >= 2 && s.compute.offers.length <= 3);
 s.compute.offers.forEach((o, i, a) => {

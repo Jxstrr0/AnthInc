@@ -24,7 +24,7 @@
       sliders: { training: 40, serving: 20, safety: 25, research: 15 }, target: 'coding',
       win: { streak: 0, best: 0 }, news: [], memo: { turn: 0, lines: [] }, history: [],
       stats: { incidents: 0, warnings: 0, firstsWon: 0, firstsLost: 0, projectsDone: 0, peakValuation: 0 },
-      lastReport: null
+      pendingMemo: [], lastReport: null
     };
     const rng = FR.rng(s.rngState);
     mods().forEach(m => m && m.init && m.init(s, rng));
@@ -36,7 +36,9 @@
   S.migrate = function (d) {
     if (!d.stats) d.stats = { incidents: 0, warnings: 0, firstsWon: 0, firstsLost: 0, projectsDone: 0, peakValuation: 0 };
     if (!d.win) d.win = { streak: 0, best: 0 };
-    if (!d.history) d.history = []; if (!d.news) d.news = [];
+    if (!d.history) d.history = []; if (!d.news) d.news = []; if (!d.pendingMemo) d.pendingMemo = [];
+    if (d.projects && !d.projects.spend) d.projects.spend = { turn: 0, cash: 0 };
+    if (d.compute && !d.compute.bill) d.compute.bill = { turn: 0, cash: 0 };
     return d;
   };
 
@@ -51,8 +53,14 @@
     return out;
   }
 
-  // one command → {ok, why}. Mutates s.
+  // one command → {ok, why} (modules may add `event` and `memo`). Mutates s. A command's memo line waits in
+  // s.pendingMemo for the next weekly memo; its event goes out with End Turn, or from 99_main when applied at once.
   function apply1(s, c) {
+    const r = run1(s, c);
+    if (r && r.ok && r.memo) (s.pendingMemo || (s.pendingMemo = [])).push(r.memo);
+    return r;
+  }
+  function run1(s, c) {
     if (!c || !c.type) return { ok: false, why: 'Unknown command' };
     if (s.status !== 'playing') return { ok: false, why: 'The run is over' };
     switch (c.type) {
@@ -99,7 +107,8 @@
     const rng = FR.rng(s.rngState);
     const report = { turn: s.turn, events: [], memo: [], news: [], flows: {}, commands: [] };
     report.commands = (commands || []).map(c => apply1(s, c));
-    report.commands.forEach((r, i) => { if (!r.ok) report.memo.push({ kind: 'flag', text: 'Not done: ' + r.why + '.' }); });
+    report.memo = (s.pendingMemo || []).slice(); s.pendingMemo = [];
+    report.commands.forEach(r => { if (!r.ok) report.memo.push({ kind: 'flag', text: 'Not done: ' + r.why + '.' }); else if (r.event) report.events.push(r.event); });
     const before = { cash: s.money.cash, trust: s.market.trust, cap: {}, safe: {} };
     FR.SKILLS.forEach(k => { before.cap[k] = s.model.skills[k].cap; before.safe[k] = s.model.skills[k].safe; });
 
@@ -110,6 +119,7 @@
     FR.money.step(s, alloc, rng, report);
     FR.market.step(s, rng, report);
     if (s.status === 'playing') FR.model.ladder(s, rng, report);
+    if (s.status === 'playing' && s.money.cash <= 0) FR.money.bankrupt(s, report);   // an incident bill can empty the bank
 
     // win check
     if (s.status === 'playing') {

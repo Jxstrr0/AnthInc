@@ -215,7 +215,7 @@
     const q = p.payoff, b = [], t = tpl(p.tpl);
     if ((q.cap || q.safe) && p.skill && FR.model && FR.model.boost) b.push(modelText(s, p, FR.model.boost(s, p.skill, { cap: q.cap || 0, safe: q.safe || 0 })));
     if (q.trust) b.push(trustText(s, nudge(s, q.trust, p.name, report)));
-    if (q.cash && s.money) { s.money.cash += q.cash; b.push(money(q.cash) + ' received'); }
+    if (q.cash && s.money) { s.money.cash += q.cash; report.flows.projectPayout = (report.flows.projectPayout || 0) + q.cash; b.push(money(q.cash) + ' received'); }
     if (q.fx) {
       const g = { name: p.name, until: s.turn + q.fx.turns - 1 };
       FX.forEach(k => { if (q.fx[k]) g[k] = q.fx[k]; });

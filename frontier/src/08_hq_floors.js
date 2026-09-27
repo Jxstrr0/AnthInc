@@ -171,6 +171,12 @@
     const m = new THREE.MeshLambertMaterial({ color: 0xf2f4f8, emissive: 0xf4f7ff, emissiveIntensity: k == null ? 0.7 : k });
     pts.forEach(p => { R.box(g, 1.2, 0.06, 1.2, 0xf2f4f8, p[0], H - 0.05, p[1]).material = m; }); return m;
   }
+  // focus pose: look at c from yaw (deg; 0 = from +z, 90 = from +x), pitch (deg above), distance d. world.js lens-shifts a
+  // focus so c sits at ~y 160 of 844: the object has to fit the strip between the top chips and the sheet.
+  function aim(c, yaw, pitch, d, fov) { const a = yaw * PI / 180, q = pitch * PI / 180;
+    return { pos: [c[0] + Math.sin(a) * Math.cos(q) * d, c[1] + Math.sin(q) * d, c[2] + Math.cos(a) * Math.cos(q) * d].map(v => +v.toFixed(2)), look: c, fov: fov || 60 }; }
+  // distance that fits a w × h face in that strip (~190 px tall, ~375 px wide at fov 60)
+  const fitD = (w, h) => Math.max(3.9 * h, 1.95 * w, 3);
   function plant(g, x, z, s) { s = s || 1; R.cyl(g, 0.28 * s, 0.22 * s, 0.5 * s, POT, x, 0.25 * s, z, 10); R.cyl(g, 0.42 * s, 0.3 * s, 0.7 * s, PLANT, x, 0.85 * s, z, 8); R.cyl(g, 0.26 * s, 0.4 * s, 0.5 * s, PLANT_L, x, 1.4 * s, z, 8); }
   function frame(g, w, h, x, y, z, ry) { const f = R.box(g, w + 0.2, h + 0.2, 0.1, BLACK, x, y, z); f.rotation.y = ry || 0; return f; }
   // department plate above the elevator: '2   TRAINING'
@@ -274,7 +280,7 @@
       const y = 150 + i * 84, you = r[1] === 'player', col = !r[1] ? HX.ink3 : you ? HX.gold : HX.ink2;
       rect(x, 24, y - 34, w - 48, 72, you ? 'rgba(230,193,90,.12)' : HX.surface);
       T(x, String(r[0]), 44, y, 46, col, 'left', 500, MONO);
-      T(x, r[1] ? fit(x, r[3], 180) : 'Open', 124, y - 10, 26, r[1] ? HX.ink : HX.ink3, 'left', 600, SANS, 200);
+      T(x, r[1] ? r[3] : 'Open', 124, y - 10, 26, r[1] ? HX.ink : HX.ink3, 'left', 600, SANS, 200);
       T(x, r[1] ? wk(r[2]) + ' · Y' + FR.year(r[2]) : 'Not yet reached', 124, y + 20, 20, HX.ink3, 'left', 500, SANS, 200);
     });
   }
@@ -287,16 +293,16 @@
     // glass line with a revolving door, set back from the room edge so the cutaway never hides it
     const GZ = 6.3, gl = { transparent: true, opacity: 0.14, depthWrite: false };
     R.plane(g, 6.6, 3.7, GLASS, -4.7, 1.85, GZ, null, gl); R.plane(g, 6.6, 3.7, GLASS, 4.7, 1.85, GZ, null, gl);
-    [-7.9, -5.4, -2.9, -1.4, 1.4, 2.9, 5.4, 7.9].forEach(x => R.box(g, 0.1, 3.7, 0.12, GRAPH, x, 1.85, GZ));
+    [-7.9, -6.7, -2.9, -1.4, 1.4, 2.9, 6.7, 7.9].forEach(x => R.box(g, 0.1, 3.7, 0.12, GRAPH, x, 1.85, GZ));
     R.box(g, W, 0.26, 0.3, GRAPH, 0, 3.8, GZ); R.box(g, W, 0.08, 0.3, GRAPH, 0, 0.04, GZ);
-    const rd = grp(g, 0, GZ); R.cyl(rd, 1.32, 1.32, 0.2, GRAPH, 0, 3.6, 0, 20);
+    const rd = grp(g, 0, GZ); const ring = new THREE.Mesh(new THREE.TorusGeometry(1.28, 0.06, 6, 28), R.mat(GRAPH)); ring.rotation.x = PI / 2; ring.position.y = 3.62; rd.add(ring);
     const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.26, 1.26, 3.5, 20, 1, true), new THREE.MeshLambertMaterial({ color: GLASS, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }));
     drum.position.y = 1.75; rd.add(drum);
     const wings = grp(rd, 0, 0); for (let i = 0; i < 4; i++) { const a = i * PI / 2, b = R.box(wings, 1.18, 2.5, 0.05, 0xb8c6d4, Math.cos(a) * 0.6, 1.3, Math.sin(a) * 0.6); b.rotation.y = -a; }
     // outside: pavement a step below the lobby floor, kerb, street, the block opposite
     const out = grp(g, 0, 0);
-    R.plane(out, 36, 4.0, 0x5c636a, 0, -0.03, 9.0, -PI / 2);
-    R.box(out, 36, 0.22, 0.3, 0x8a9199, 0, -0.1, 11.1);
+    R.plane(out, 36, 4.0, 0x3f454b, 0, -0.03, 9.0, -PI / 2);
+    R.box(out, 36, 0.22, 0.3, 0x6a7178, 0, -0.1, 11.1);
     R.plane(out, 36, 7.6, 0x1b2025, 0, -0.2, 15.0, -PI / 2);
     const dash = inst(out, new THREE.BoxGeometry(1.6, 0.02, 0.14), R.mat(0xc9ccd0), 10); for (let i = 0; i < 10; i++) place(dash, i, -18 + i * 4, -0.18, 15.0, 0);
     [-5.8, 5.8].forEach(x => { R.cyl(out, 0.06, 0.09, 4.4, 0x3a424a, x, 2.2, 10.7, 8); R.box(out, 0.1, 0.08, 0.9, 0x3a424a, x, 4.35, 10.3); R.box(out, 0.42, 0.1, 0.3, 0xffe2b8, x, 4.28, 9.9, { emissive: 0xffd9a0, emissiveIntensity: 0.9 }); });
@@ -345,7 +351,7 @@
       [0, 2.1, 4.2].forEach(a => legs.push([x + Math.sin(a) * 0.22, 0.7, z + Math.cos(a) * 0.22, Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3])); });
     const leg = inst(pressG, new THREE.CylinderGeometry(0.018, 0.018, 1.45, 5), R.mat(BLACK), legs.length);
     legs.forEach((p, i) => { _o.position.set(p[0], p[1], p[2]); _o.rotation.set(p[3], 0, p[5]); _o.scale.set(1, 1, 1); _o.updateMatrix(); leg.setMatrixAt(i, _o.matrix); });
-    const van = grp(pressG, -6.8, 13.2, PI / 2); R.box(van, 4.6, 2.0, 2.0, 0xdfe3e8, 0, 1.2, 0); R.box(van, 1.2, 0.8, 1.9, 0x1b232c, 1.7, 1.7, 0);
+    const van = grp(pressG, -6.8, 13.2, 0); R.box(van, 4.6, 2.0, 2.0, 0xdfe3e8, 0, 1.2, 0); R.box(van, 1.2, 0.8, 1.9, 0x1b232c, 1.7, 1.7, 0);
     R.cyl(van, 0.05, 0.05, 1.0, 0x9aa4ae, -0.8, 2.7, 0, 6); const dish = R.cyl(van, 0.6, 0.6, 0.06, 0xe6ebf0, -0.8, 3.2, 0, 16); dish.rotation.z = 0.8;
     [[-1.4, 0.5, 1], [1.4, 0.5, 1], [-1.4, 0.5, -1], [1.4, 0.5, -1]].forEach(([x, y, z]) => { const wh = R.cyl(van, 0.36, 0.36, 0.24, 0x14181c, x, 0.36, z, 12); wh.rotation.x = PI / 2; });
     R.sign(van, ['NEWS'], 1.6, 0.46, -0.6, 1.4, 1.01, 0, { bg: '#dfe3e8', fg: '#1b232c', w: 256, h: 76, size: 56, font: 'display', weight: '800', glow: false });
@@ -354,13 +360,13 @@
 
     const targets = [
       ev.target,
-      { id: 'lobby.news', label: 'News wall', box: [-7.25, 0.8, -7, -1.95, 3.5, -6.8], focus: { pos: [-4.6, 2.3, 3.4], look: [-4.6, 2.15, -7], fov: 60 } },
-      { id: 'lobby.trust', label: 'Public trust', box: R.aabb([tl]), focus: { pos: [-4.9, 3.6, 8.3], look: [-4.9, 1.5, 4.5], fov: 60 } },
-      { id: 'lobby.record', label: 'Frontier record', box: R.aabb([tr]), focus: { pos: [4.9, 3.6, 8.3], look: [4.9, 1.5, 4.5], fov: 60 } }
+      { id: 'lobby.news', label: 'News wall', box: [-7.25, 0.8, -7, -1.95, 3.5, -6.8], focus: aim([-4.6, 2.15, -6.9], 0, 6, fitD(5.2, 2.8)) },
+      { id: 'lobby.trust', label: 'Public trust', box: R.aabb([tl]), focus: aim([-4.9, 1.55, 4.66], 0, 16, fitD(1.9, 2.8)) },
+      { id: 'lobby.record', label: 'Frontier record', box: R.aabb([tr]), focus: aim([4.9, 1.55, 4.66], 0, 16, fitD(1.9, 2.8)) }
     ];
     let nPress = 0, flashT = 0.5, flashLife = 0;
     const f = { group: g, elevator: ev, targets, hint: 'Tap the news wall for the wire. The elevator goes up to the lab floors.',
-      view: { pos: [0, 21.5, 17.5], look: [0, 0.3, -0.4], fov: 68 },
+      view: { pos: [0, 20.3, 13.65], look: [0, 0.8, 0], fov: 62, shift: 0.036 }, // front, over the street: the press pack sits under the room
       light: { hemi: 0.8, sun: 0.5, bg: 0x0b1016 },
       refresh(s) {
         s = s || S();
@@ -404,7 +410,10 @@
       const mat = new THREE.MeshBasicMaterial({ map: tex, color: st.color });
       const per = st.hs.map(() => []);
       for (let i = 0; i < st.n; i++) { const b = Math.floor(rnd() * st.hs.length), x = st.x[0] + rnd() * (st.x[1] - st.x[0]); if (kind === 'lobby' && Math.abs(x) < 1) continue;
-        per[b].push([x, st.y0(st.hs[b]), st.z[0] + rnd() * (st.z[1] - st.z[0]), st.w[0] + rnd() * (st.w[1] - st.w[0]), st.w[0] + rnd() * (st.w[1] - st.w[0])]); }
+        const z = st.z[0] + rnd() * (st.z[1] - st.z[0]); let y0 = st.y0(st.hs[b]);
+        // towers in front of the boardroom stay under the camera's sight line to the window wall
+        if (kind !== 'lobby' && z > 7) y0 = Math.min(y0, -1.5 + (z - 9.5) * 0.8 - st.hs[b]);
+        per[b].push([x, y0, z, st.w[0] + rnd() * (st.w[1] - st.w[0]), st.w[0] + rnd() * (st.w[1] - st.w[0])]); }
       st.hs.forEach((h, b) => { if (!per[b].length) return; const m = inst(g, towerGeo(h), mat, per[b].length); per[b].forEach((p, i) => place(m, i, p[0], p[1], p[2], 0, p[3], 1, p[4])); });
     });
     if (kind !== 'lobby') { const st = new THREE.Mesh(new THREE.PlaneGeometry(260, 260), new THREE.MeshBasicMaterial({ color: 0x05080c })); st.rotation.x = -PI / 2; st.position.y = -42; g.add(st); }
@@ -452,9 +461,9 @@
     const w1 = new THREE.Mesh(new THREE.PlaneGeometry(15, 12), washMat); w1.rotation.x = -PI / 2; w1.position.set(0, 0.03, -0.5); w1.userData.look = 1; g.add(w1);
     const w2 = new THREE.Mesh(new THREE.PlaneGeometry(12, 4), washMat); w2.position.set(1.5, 2.2, -HD + 0.2); w2.userData.look = 1; g.add(w2);
     // rack row on the left wall, fronts facing the room
-    const rs = []; for (let i = 0; i < 16; i++) rs.push({ x: -7.2, z: -4.2 + i * 0.64, ry: PI / 2 });
+    const rs = []; for (let i = 0; i < 15; i++) rs.push({ x: -6.3, z: -4.0 + i * 0.64, ry: PI / 2 });
     const racks = rackKit(g, rs, 'serve');
-    R.box(g, 0.5, 0.08, 10.6, 0x7a6a3a, -7.2, 2.75, 0.6); R.plane(g, 0.07, 10.4, 0xc8a03a, -6.5, 0.008, 0.6, -PI / 2);
+    R.box(g, 0.5, 0.08, 10.0, 0xc8a03a, -6.3, 2.55, 0.5); R.plane(g, 0.07, 9.8, 0xc8a03a, -5.55, 0.008, 0.5, -PI / 2); R.plane(g, 1.2, 9.8, 0x353c44, -7.3, 0.008, 0.5, -PI / 2);
     // ops desks: three rows of five facing the wall
     const ds = []; [-3.4, -1.1, 1.2].forEach(z => [2.6, 1.0, 4.2, -0.6, 5.8].forEach(x => ds.push({ x, z, ry: 0 })));
     R.plane(g, 8.2, 6.2, 0x434b54, 2.6, 0.01, -1.0, -PI / 2);
@@ -466,18 +475,18 @@
     plant(g, -7.3, 6.2); plant(g, 7.3, 6.3); plant(g, -2.6, -6.4, 0.9);
     const pm = panels(g, [[-4.5, -3.5], [0, -3.5], [4.5, -3.5], [-4.5, 1.5], [0, 1.5], [4.5, 1.5], [0, 5.2], [4.5, 5.2]]);
     // people
-    const stands = [[1.0, -5.4, PI], [3.6, -5.5, PI], [5.6, -5.3, PI + 0.3], [-6.4, -2.0, -PI / 2], [-6.4, 2.6, -PI / 2], [6.6, 4.3, -PI / 2 + 0.3], [-1.9, -4.6, PI * 0.85], [6.3, 5.4, PI * 0.8]];
+    const stands = [[1.0, -5.4, PI], [3.6, -5.5, PI], [5.6, -5.3, PI + 0.3], [-5.4, -2.0, -PI / 2], [-5.4, 2.6, -PI / 2], [6.6, 4.3, -PI / 2 + 0.3], [-1.9, -4.6, PI * 0.85], [6.3, 5.4, PI * 0.8]];
     const sit = crowd(g, desks.seats, 'sit', 11), stand = crowd(g, stands, 'stand', 12);
-    const walk = walkers(g, [[-3.6, -4.6, -3.6, 5.4, 0.22, 0], [7.0, -4.2, 7.0, 2.6, 0.18, 1.2], [-2.4, 3.4, 6.0, 3.4, 0.2, 2.4]], 1);
+    const walk = walkers(g, [[-3.8, -4.6, -3.8, 5.4, 0.22, 0], [7.0, -4.2, 7.0, 2.6, 0.18, 1.2], [-2.4, 3.4, 6.0, 3.4, 0.2, 2.4]], 1);
     const targets = [
       ev.target,
-      { id: 'serving.wall', label: 'Status wall', box: [-1.3, 0.75, -7, 6.5, 3.8, -6.8], focus: { pos: [2.6, 3.4, 7.2], look: [2.6, 2.0, -7], fov: 60 } },
-      { id: 'serving.racks', label: 'Rack row', box: [-7.75, 0, -4.6, -6.65, 2.3, 5.8], focus: { pos: [-1.6, 3.2, 7.2], look: [-7.0, 1.1, -0.3], fov: 60 } },
-      { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: { pos: [2.6, 4.8, 7.4], look: [2.6, 0.7, -1.1], fov: 60 } }
+      { id: 'serving.wall', label: 'Status wall', box: [-1.3, 0.75, -7, 6.5, 3.8, -6.8], focus: aim([2.6, 2.15, -6.9], 0, 10, fitD(7.8, 2.8)) },
+      { id: 'serving.racks', label: 'Rack row', box: [-6.85, 0, -4.4, -5.75, 2.3, 5.4], focus: aim([-6.3, 1.1, 0.5], 68, 18, 10.5) },
+      { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: aim([2.6, 0.8, -2.0], 0, 45, 11) }
     ];
     let act = 0, dark = false, nWalk = 0, split0 = { walk: 0, sit: 0, stand: 0 }, scroll = 0;
     const f = { group: g, elevator: ev, targets, get hint() { return dark ? 'The model is pulled after an incident. Tap the status wall for serving.' : 'Tap the status wall for the serving share, demand and rented compute.'; },
-      view: { pos: [4.6, 19.5, 13.2], look: [0.4, 0.3, -1.0], fov: 68 },
+      view: { pos: [3.1, 26.61, 14.57], look: [0, 0.8, 0], fov: 60, shift: -0.029, shiftX: 0.012 },
       light: { hemi: 0.62, sun: 0.5, bg: 0x070b10 },
       refresh(s) {
         s = s || S(); const a = allocOf(s), p = part(s, a, 'serving'), inc = recentIncidents(s);
@@ -549,13 +558,13 @@
     const walk = walkers(g, [[0.6, -3.2, 6.8, -3.2, 0.16, 0], [6.8, -0.7, 0.6, -0.7, 0.14, 1.3], [-1.3, -5.0, -1.3, 5.6, 0.2, 2.2], [0.6, 3.3, 6.8, 3.3, 0.15, 3.1]], 3);
     const targets = [
       ev.target,
-      { id: 'training.board', label: 'Run board', box: [-0.4, 1.35, -7, 6.2, 3.55, -6.8], focus: { pos: [2.9, 4.4, 3.8], look: [2.9, 2.4, -7], fov: 60 } },
-      { id: 'training.racks', label: 'Cluster', labelAt: [3.6, 2.3, 0.6], box: [-0.7, 0, -4.95, 7.45, 2.3, 1.15], focus: { pos: [-2.8, 4.8, 6.6], look: [3.6, 0.9, -1.9], fov: 60 } },
-      { id: 'training.console', label: 'Console', box: [-5.8, 0, -2.6, -2.4, 1.5, 3.4], focus: { pos: [-4.1, 3.8, 8.2], look: [-4.1, 0.9, 0.3], fov: 60 } }
+      { id: 'training.board', label: 'Run board', box: [-0.4, 1.35, -7, 6.2, 3.55, -6.8], focus: aim([2.9, 2.45, -6.9], 0, 12, fitD(6.6, 2.2)) },
+      { id: 'training.racks', label: 'Cluster', labelAt: [3.6, 2.3, 0.6], box: [-0.7, 0, -4.95, 7.45, 2.3, 1.15], focus: aim([3.6, 1.1, -0.4], -30, 28, 13.5) },
+      { id: 'training.console', label: 'Console', box: [-5.8, 0, -2.6, -2.4, 1.5, 3.4], focus: aim([-4.1, 0.8, 0.4], 0, 50, 10) }
     ];
     let act = 0, nWalk = 0, sp = { walk: 0, sit: 0, stand: 0 };
     const f = { group: g, elevator: ev, targets, hint: 'Tap the run board to pick the target skill.',
-      view: { pos: [6.0, 19.0, 12.6], look: [0.4, 0.3, -1.2], fov: 68 },
+      view: { pos: [4.48, 25.91, 13.79], look: [0, 0.8, 0], fov: 60, shift: -0.027, shiftX: 0.045 }, // front right, steep: the rows read
       light: { hemi: 0.56, sun: 0.45, bg: 0x06090d },
       refresh(s) {
         s = s || S(); const a = allocOf(s), p = part(s, a, 'training'); act = activity(s, a, 'training');
@@ -625,7 +634,7 @@
     // eval benches: three rows of four facing the screens; the red-team room's three desks share the kit
     const ds = [], rt = [{ x: -5.8, z: 3.6, ry: 0 }, { x: -4.2, z: 3.6, ry: 0 }, { x: -5.0, z: 5.9, ry: PI }];
     [-3.3, -1.1, 1.1].forEach((z, r) => { [2.1, 3.8, 0.4, 5.5].forEach(x => ds.push({ x, z, ry: 0 })); if (r < 3) ds.push(rt[r]); });
-    R.plane(g, 7.4, 6.4, 0xa9b1b8, 2.95, 0.01, -1.1, -PI / 2);
+    R.plane(g, 7.4, 6.4, 0x7d8791, 2.95, 0.01, -1.1, -PI / 2);
     const desks = deskKit(g, ds);
     // red-team room (front left): glass on two sides, red rails, its own sign and whiteboard
     const gl = { transparent: true, opacity: 0.16, depthWrite: false };
@@ -645,18 +654,18 @@
     const racks = rackKit(g, rs, 'eval'); racks.set(6, 6);
     plant(g, 7.3, 6.2); plant(g, -2.1, -6.4, 0.9); R.box(g, 0.7, 0.95, 2.2, ASH, 7.4, 0.475, 3.6);
     panels(g, [[-4.5, -3.5], [0, -3.5], [4.5, -3.5], [0, 1.5], [4.5, 1.5], [-5, 4.5], [0, 5.2], [4.5, 5.2]]);
-    const stands = [[0.3, -5.6, PI], [3.1, -5.7, PI], [5.9, -5.6, PI], [-6.6, -2.6, -PI / 2], [6.5, -1.6, PI / 2], [-3.6, 5.2, -PI * 0.7]];
+    const stands = [[0.3, -5.6, PI], [3.1, -5.7, PI], [5.9, -5.6, PI], [-6.4, -4.6, -PI / 2], [6.5, -1.6, PI / 2], [-3.6, 5.2, -PI * 0.7]];
     const sit = crowd(g, desks.seats, 'sit', 41), stand = crowd(g, stands, 'stand', 42);
     const walk = walkers(g, [[-1.6, -5.0, -1.6, 1.6, 0.2, 0], [-1.6, 3.0, 6.4, 3.0, 0.16, 1.4], [-1.2, -5.2, 6.4, -5.2, 0.13, 2.5]], 4);
     const targets = [
       ev.target,
-      { id: 'safety.evals', label: 'Skill screens', box: [-1.1, 1.2, -7, 7.3, 3.35, -6.8], focus: { pos: [3.1, 3.3, 7.6], look: [3.1, 2.2, -7], fov: 64 } },
-      { id: 'safety.redteam', label: 'Red team', labelAt: [-5.25, 3.5, 2.3], box: [-7.9, 0, 2.1, -2.5, 3.1, 6.9], focus: { pos: [-1.2, 5.0, 9.6], look: [-5.2, 0.9, 4.4], fov: 60 } },
-      { id: 'safety.log', label: 'Incident log', box: [-7.95, 1.25, -4.35, -7.8, 3.35, -0.85], focus: { pos: [1.4, 2.4, -2.6], look: [-7.9, 2.3, -2.6], fov: 60 } }
+      { id: 'safety.evals', label: 'Skill screens', box: [-1.1, 1.2, -7, 7.3, 3.35, -6.8], focus: aim([3.1, 2.36, -6.9], 0, 10, fitD(8.4, 1.9)) },
+      { id: 'safety.redteam', label: 'Red team', labelAt: [-5.25, 3.5, 2.3], box: [-7.9, 0, 2.1, -2.5, 3.1, 6.9], focus: aim([-5.2, 0.9, 4.5], 18, 50, 10) },
+      { id: 'safety.log', label: 'Incident log', box: [-7.95, 1.25, -4.35, -7.8, 3.35, -0.85], focus: aim([-7.9, 2.3, -2.6], 90, 8, fitD(3.4, 2.0)) }
     ];
     let act = 0, nWalk = 0, sp = { walk: 0, sit: 0, stand: 0 }, worst = 'ok';
     const f = { group: g, elevator: ev, targets, hint: 'Tap the skill screens for each gap and its outlook.',
-      view: { pos: [4.4, 19.5, 13.0], look: [0.2, 0.3, -0.8], fov: 68 },
+      view: { pos: [3.23, 25.65, 15.19], look: [0, 0.8, 0], fov: 62, shift: -0.037, shiftX: -0.057 },
       light: { hemi: 0.8, sun: 0.55, bg: 0x0b1015 },
       refresh(s) {
         s = s || S(); const a = allocOf(s), p = part(s, a, 'safety'); act = activity(s, a, 'safety'); worst = 'ok';
@@ -738,7 +747,9 @@
     [[4.4, 4.3], [6.6, 6.4]].forEach(([x, z]) => { R.cyl(g, 0.02, 0.02, 1.5, GRAPH, x, 0.75, z, 6); const l = R.cyl(g, 0.16, 0.24, 0.28, 0xffe2b8, x, 1.55, z, 12); l.material = lampMat; lamps.push(l); });
     // round meeting table (front left), plants
     R.cyl(g, 0.7, 0.7, 0.05, ASH, -5.2, 0.74, 4.2, 20); R.cyl(g, 0.08, 0.2, 0.72, GRAPH, -5.2, 0.36, 4.2, 10);
-    plant(g, -7.3, 6.2); plant(g, -2.6, -6.4, 0.9); plant(g, 7.3, 0.6);
+    const rtc = [[-5.2, 3.2, 0], [-6.1, 4.6, 2.1], [-4.3, 4.6, -2.1]], rch = inst(g, boxes([[0.5, 0.08, 0.48, 0, 0.46, 0], [0.48, 0.5, 0.07, 0, 0.78, -0.25], [0.06, 0.4, 0.06, 0, 0.22, 0], [0.46, 0.04, 0.46, 0, 0.02, 0]]), R.mat(0x5a4a3e), 3);
+    rtc.forEach((c, i) => place(rch, i, c[0], 0, c[1], c[2]));
+    plant(g, -7.3, 6.2); plant(g, 0.6, -6.4, 0.8); plant(g, 7.3, 0.6);
     panels(g, [[-4.5, -3.5], [0.8, -4.6], [0.8, -0.8], [4.5, -3.5], [0.8, 2.8], [-4.5, 1.5], [5.4, 4.4]], 0.6);
     const seats = desks.seats.concat([[5.0, 3.2, PI / 2 + 0.3], [5.0, 5.4, PI / 2 - 0.3], [-5.2, 3.2, 0], [-6.1, 4.6, 2.1], [-4.3, 4.6, -2.1]]);
     const stands = [[-6.7, -3.3, -PI / 2], [-6.6, 0.1, -PI / 2], [6.9, 5.8, PI / 2], [4.3, -5.6, PI]];
@@ -746,27 +757,30 @@
     const walk = walkers(g, [[-3.4, -5.2, -3.4, 5.4, 0.18, 0], [-2.4, 2.6, 4.4, 2.6, 0.15, 1.6], [4.6, -4.6, -2.6, -4.6, 0.14, 2.8]], 5);
     const targets = [
       ev.target,
-      { id: 'research.offers', label: 'Offer board', box: [1.25, 0.9, -7, 7.35, 3.5, -6.8], focus: { pos: [4.3, 3.0, 5.6], look: [4.3, 2.2, -7], fov: 60 } },
-      { id: 'research.whiteboard', label: 'Whiteboards', box: [-7.95, 1.15, -4.8, -7.8, 2.85, 1.6], focus: { pos: [3.6, 2.4, -1.6], look: [-7.9, 2.0, -1.6], fov: 60 } },
-      { id: 'research.tier', label: 'Tier', box: [-3.1, 1.45, -7, -1.1, 2.95, -6.8], focus: { pos: [-2.1, 2.3, -2.4], look: [-2.1, 2.2, -7], fov: 60 } }
+      { id: 'research.offers', label: 'Offer board', box: [1.25, 0.9, -7, 7.35, 3.5, -6.8], focus: aim([4.3, 2.2, -6.9], 0, 10, fitD(6.0, 2.6)) },
+      { id: 'research.whiteboard', label: 'Whiteboards', box: [-7.95, 1.15, -4.8, -7.8, 2.85, 1.6], focus: aim([-7.9, 2.0, -1.6], 90, 12, fitD(6.4, 1.6)) },
+      { id: 'research.tier', label: 'Tier', box: [-3.1, 1.45, -7, -1.1, 2.95, -6.8], focus: aim([-2.1, 2.2, -6.9], 0, 6, fitD(1.9, 1.34)) }
     ];
     let act = 0, nWalk = 0, sp = { walk: 0, sit: 0, stand: 0 };
     const f = { group: g, elevator: ev, targets, hint: 'Tap the offer board to greenlight a project.',
-      view: { pos: [4.2, 19.5, 13.0], look: [0.2, 0.3, -0.9], fov: 68 },
+      view: { pos: [2.94, 25.31, 13.84], look: [0, 0.8, 0], fov: 60, shift: -0.029, shiftX: 0.018 },
       light: { hemi: 0.72, sun: 0.6, bg: 0x0e1014 },
       refresh(s) {
         s = s || S(); const a = allocOf(s), p = part(s, a, 'research'); act = activity(s, a, 'research');
         const rs = (s && s.research) || { points: 0, tier: 1 }, pr = (s && s.projects) || { slots: 3, active: [], offers: [] };
-        paint(tier, { t: rs.tier, p: Math.round(rs.points || 0) }, (x, w, h, d) => {
+        const nt = tryf(() => FR.projects.nextTier(s), null);
+        paint(tier, { t: rs.tier, p: Math.round(rs.points || 0), left: nt ? Math.ceil(nt.left) : null }, (x, w, h, d) => {
           rect(x, 0, 0, w, h, '#b89a58'); x.strokeStyle = '#6a5428'; x.lineWidth = 6; x.strokeRect(12, 12, w - 24, h - 24);
-          T(x, 'RESEARCH TIER', w / 2, 58, 30, '#2a2010', 'center', 700, DISP); T(x, String(d.t), w / 2, 138, 96, '#2a2010', 'center', 700, MONO);
-          T(x, d.p + ' research points', w / 2, 212, 26, '#3a2e18', 'center', 600, SANS, w - 40);
+          T(x, 'RESEARCH TIER', w / 2, 54, 30, '#2a2010', 'center', 700, DISP); T(x, String(d.t), w / 2, 128, 92, '#2a2010', 'center', 700, MONO);
+          T(x, d.p + ' points', w / 2, 194, 26, '#3a2e18', 'center', 600, SANS, w - 40);
+          T(x, d.left != null ? d.left + ' to tier ' + (d.t + 1) : 'Top tier', w / 2, 228, 22, '#3a2e18', 'center', 500, SANS, w - 40);
         });
         paint(offers, { tier: rs.tier || 1, refresh: pr.refreshAt || 0, slots: pr.slots || 3, free: Math.max(0, (pr.slots || 3) - (pr.active || []).length),
-          rows: (pr.offers || []).slice(0, 4).map(o => [o.name, KIND_NAME[themeOf(o)] || String(o.kind || ''), o.turns, o.cost, o.risk, o.tier || 1, KIND_COL[themeOf(o)]]) }, drawOffers);
-        paint(wb2, { staff: Math.round(p.staff), pf: FR.round(p.pf, 1), share: s && s.sliders ? s.sliders.research : 0 }, (x, w, h, d) => {
-          scribble(x, w, h, 71, 'Research', false); rect(x, 24, h - 96, w - 48, 76, 'rgba(45,106,168,.12)');
-          T(x, d.share + '% of compute · ' + fmtPF(d.pf) + ' · ' + d.staff + ' staff', w / 2, h - 58, 28, '#1b232c', 'center', 600, SANS, w - 70);
+          rows: (pr.offers || []).slice(0, 4).map(o => [o.name, (KIND_LABEL[o.kind] || String(o.kind || '')) + (o.pfPerTurn ? ' · ' + o.pfPerTurn + ' PF a week' : ''), o.turns, o.cost, o.risk, o.tier || 1, KIND_COL[themeOf(o)]]) }, drawOffers);
+        paint(wb2, { staff: Math.round(p.staff), pf: FR.round(p.pf, 1), share: s && s.sliders ? s.sliders.research : 0, rate: FR.round(tryf(() => FR.projects.researchRate(s), 0), 1) }, (x, w, h, d) => {
+          scribble(x, w, h, 71, 'Research', false); rect(x, 24, h - 110, w - 48, 92, 'rgba(45,106,168,.12)');
+          T(x, d.share + '% of compute · ' + fmtPF(d.pf) + ' · ' + d.staff + ' staff', w / 2, h - 82, 28, '#1b232c', 'center', 600, SANS, w - 70);
+          T(x, '+' + d.rate + ' research points a week', w / 2, h - 44, 26, '#2d6aa8', 'center', 600, SANS, w - 70);
         });
         sp = split(heads(p.staff), desks.n, stands.length, walk.length); sit.set(sp.sit); stand.set(sp.stand); nWalk = sp.walk; desks.set(Math.max(4, Math.min(desks.n, sp.sit + 2)));
         desks.scrMat.color.setScalar(0.35 + 0.65 * act); lampMat.emissiveIntensity = 0.15 + 0.85 * act;
@@ -778,13 +792,17 @@
   } };
 
   // ======================= PROJECT FLOORS (5..7): a war room themed by the slot's project; empty = dust sheets =======================
-  // theme from the project's kind (07_projects ids first, then words in kind / tpl / name)
-  const KIND_THEME = { training: 'racks', train: 'racks', run: 'racks', efficiency: 'racks', safety: 'evals', evals: 'evals', eval: 'evals', interp: 'evals',
-    interpretability: 'evals', redteam: 'evals', 'red-team': 'evals', alignment: 'evals', paper: 'evals', product: 'launch', launch: 'launch', enterprise: 'launch',
-    contract: 'launch', data: 'data', chips: 'crates', chip: 'crates', preorder: 'crates', compute: 'crates', hardware: 'crates' };
+  // theme from the project: its template id (07_projects), then its kind, then words in kind / tpl / name.
+  // training run: racks · safety, research, interpretability: eval screens · product: launch wall · data and business
+  // deals: file boxes · chip pre-order, supply contracts: crates
+  const TPL_THEME = { train: 'racks', train2: 'racks', frontier: 'racks', efficiency: 'racks', preorder: 'crates', supply: 'crates',
+    data: 'data', enterprise: 'data', platform: 'data', card: 'launch', launch: 'launch', flagship: 'launch' };
+  const KIND_THEME = { training: 'racks', safety: 'evals', research: 'evals', product: 'launch', business: 'data', compute: 'crates' };
   const KIND_NAME = { racks: 'Training run', evals: 'Safety and evals', launch: 'Product launch', data: 'Data deal', crates: 'Chip pre-order' };
+  const KIND_LABEL = { training: 'Training', safety: 'Safety', research: 'Research', product: 'Product', business: 'Business', compute: 'Compute' };
   function themeOf(p) {
-    if (!p) return null; const k = String(p.kind || '').toLowerCase(); if (KIND_THEME[k]) return KIND_THEME[k];
+    if (!p) return null; if (TPL_THEME[p.tpl]) return TPL_THEME[p.tpl];
+    const k = String(p.kind || '').toLowerCase(); if (KIND_THEME[k]) return KIND_THEME[k];
     const t = (k + ' ' + String(p.tpl || '') + ' ' + String(p.name || '')).toLowerCase();
     if (/chip|pre-?order|cluster|hardware|gpu/.test(t)) return 'crates';
     if (/data/.test(t)) return 'data';
@@ -793,6 +811,7 @@
     return 'evals';
   }
   function payoffText(p) {
+    const d = tryf(() => FR.projects.describe(p), ''); if (d) return d;
     const v = p && p.payoff; if (v == null) return ''; if (typeof v === 'string') return v; if (typeof v === 'number') return '+' + v;
     const out = []; const add = (label, n) => { if (typeof n === 'number' && n) out.push(label + ' ' + (n > 0 ? '+' : '') + (Math.abs(n) >= 1000 ? money(n) : FR.round(n, 1))); };
     Object.keys(v).forEach(key => { const n = v[key]; if (key === 'text' && typeof n === 'string') { out.length = 0; out.push(n); return; }
@@ -806,8 +825,7 @@
     if (!d.p) { T(x, 'No project in this slot', w / 2, h / 2 - 10, 52, HX.ink3, 'center', 600, SANS, w - 80); T(x, 'Greenlight one from the offer board on Research', w / 2, h / 2 + 50, 28, HX.ink3, 'center', 500, SANS, w - 80); return; }
     rrect(x, w - 320, 16, 292, 48, 24, d.col); T(x, d.kind.toUpperCase(), w - 174, 41, 22, HX.sunken, 'center', 700, MONO, 270);
     T(x, d.name, 28, 106, 58, HX.ink, 'left', 700, DISP, w - 56);
-    const done = clamp((d.turns - d.left) / Math.max(1, d.turns), 0, 1);
-    bar(x, 28, 150, w - 56, 30, done, d.col); T(x, 'Week ' + Math.min(d.turns, d.turns - d.left + 1) + ' of ' + d.turns, 28, 210, 30, HX.ink2, 'left', 600, SANS);
+    bar(x, 28, 150, w - 56, 30, d.done, d.col); T(x, Math.round(d.done * 100) + '% done · ' + d.turns + ' weeks of work', 28, 210, 30, HX.ink2, 'left', 600, SANS, w * 0.6);
     T(x, d.left + (d.left === 1 ? ' week left' : ' weeks left'), w - 28, 210, 30, HX.ink, 'right', 500, MONO);
     const cell = (i, a, b, c) => { const px = 28 + i * ((w - 56) / 3); T(x, a, px, 264, 20, HX.ink3, 'left', 600); T(x, b, px, 300, 32, c || HX.ink, 'left', 500, MONO, (w - 56) / 3 - 20); };
     cell(0, 'RISK', d.risk != null ? Math.round(d.risk * (d.risk <= 1 ? 100 : 1)) + '%' : '-', d.risk > 0.3 ? HX.warn : HX.ink); cell(1, 'COST', money(d.cost), HX.gold); cell(2, 'COMPUTE', fmtPF(d.pf), HX.brandT);
@@ -832,95 +850,103 @@
     const slot = META[id] && META[id].slot != null ? META[id].slot : Math.max(0, (+String(id).slice(-1) || 1) - 1);
     const s0 = S(), p = s0 && s0.projects && s0.projects.active ? s0.projects.active[slot] || null : null, theme = themeOf(p);
     const g = start(p ? null : 'vacant'), scr = [];
-    const EX = -0.8, ev = R.elevatorBank(g, EX, -HD, H); deptSign(g, id, EX);
-    frame(g, 5.2, 2.3, 4.5, 2.25, -HD + 0.05);
-    const board = csign(g, 5.2, 2.3, 1024, 452, 4.5, 2.25, -HD + 0.11, 0, { bg: HX.sunken }, scr);
-    // war room table (right half), chairs, laptops
-    const tb = grp(g, 3.4, 0.4); R.box(tb, 4.8, 0.07, 1.5, p ? ASH : 0xa9a49a, 0, 0.75, 0); [-1.6, 1.6].forEach(x => R.box(tb, 0.5, 0.72, 0.9, GRAPH, x, 0.36, 0));
-    const CH = []; [1.6, 2.8, 4.0, 5.2].forEach(x => { CH.push([x, 1.45, PI]); CH.push([x, -0.65, 0]); });
+    const EX = 0.4, ev = R.elevatorBank(g, EX, -HD, H); deptSign(g, id, EX);
+    frame(g, 4.6, 2.3, 5.0, 2.25, -HD + 0.05);
+    const board = csign(g, 4.6, 2.3, 1024, 512, 5.0, 2.25, -HD + 0.11, 0, { bg: HX.sunken }, scr);
+    // war room table (right half), chairs, laptops; the themed setup fills the left half (x -7..-1.6)
+    const tb = grp(g, 4.0, 1.4); R.box(tb, 4.4, 0.07, 1.5, p ? ASH : 0xa9a49a, 0, 0.75, 0); [-1.5, 1.5].forEach(x => R.box(tb, 0.5, 0.72, 0.9, GRAPH, x, 0.36, 0));
+    const CH = []; [2.4, 3.5, 4.6, 5.7].forEach(x => { CH.push([x, 2.45, PI]); CH.push([x, 0.35, 0]); });
     const chairs = inst(g, boxes([[0.5, 0.08, 0.48, 0, 0.46, 0], [0.48, 0.5, 0.07, 0, 0.78, -0.25], [0.06, 0.4, 0.06, 0, 0.22, 0], [0.46, 0.04, 0.46, 0, 0.02, 0]]), R.mat(FABRIC), CH.length);
     CH.forEach((c, i) => place(chairs, i, c[0], 0, c[1], c[2]));
     const setG = grp(g, 0, 0); let setupBox = null, setupLabel = '', setupFocus = null, tex = null, act2 = 0, stands = [], extra = null;
-    const people = []; let emptySign = null;
+    let emptySign = null;
     if (!p) {
       // dust sheets over the table and chairs, stacked chairs, a ladder, paint, a work light; the Available sign
-      R.box(g, 5.2, 0.9, 2.9, 0xcfccc4, 3.4, 0.45, 0.4); R.box(g, 5.0, 0.06, 2.7, 0xdad7cf, 3.4, 0.92, 0.4);
+      R.box(g, 4.8, 0.9, 2.9, 0xcfccc4, 4.0, 0.45, 1.4); R.box(g, 4.6, 0.06, 2.7, 0xdad7cf, 4.0, 0.92, 1.4);
       chairs.count = 0;
-      const st = inst(g, boxes([[0.5, 0.06, 0.48, 0, 0, 0], [0.48, 0.4, 0.05, 0, 0.2, -0.24]]), R.mat(0x4a5058), 6); for (let i = 0; i < 6; i++) place(st, i, -5.6, 0.46 + i * 0.1, -3.8, 0.1 * (i % 2));
-      [-0.2, 0.2].forEach(dx => { const r = R.box(g, 0.06, 2.6, 0.06, 0xc9a13b, -4.2 + dx, 1.25, -5.4); r.rotation.x = 0.18; }); for (let i = 0; i < 6; i++) R.box(g, 0.46, 0.04, 0.05, 0xc9a13b, -4.2, 0.3 + i * 0.4, -5.4 + 0.06 * i - 0.2);
-      R.cyl(g, 0.16, 0.16, 0.3, 0xe6ebf0, -3.1, 0.15, -4.6, 12); R.cyl(g, 0.16, 0.16, 0.3, 0xe6ebf0, -2.7, 0.15, -4.8, 12);
-      R.plane(g, 3.0, 2.4, 0xd8d5cc, -5.0, 0.012, -1.0, -PI / 2);
-      R.cyl(g, 0.02, 0.02, 1.6, GRAPH, -6.2, 0.8, 1.6, 6); R.box(g, 0.34, 0.24, 0.14, 0xfff0d0, -6.2, 1.66, 1.6, { emissive: 0xffe0b0, emissiveIntensity: 0.9 });
-      const sg = grp(g, 0, 2.6); R.box(sg, 3.76, 1.54, 0.06, 0x1e252c, 0, 1.55, -0.05);
+      const st = inst(g, boxes([[0.5, 0.06, 0.48, 0, 0, 0], [0.48, 0.4, 0.05, 0, 0.2, -0.24]]), R.mat(0x4a5058), 6); for (let i = 0; i < 6; i++) place(st, i, -5.0, 0.46 + i * 0.1, -3.8, 0.1 * (i % 2));
+      [-0.2, 0.2].forEach(dx => { const r = R.box(g, 0.06, 2.6, 0.06, 0xc9a13b, -3.4 + dx, 1.25, -5.4); r.rotation.x = 0.18; }); for (let i = 0; i < 6; i++) R.box(g, 0.46, 0.04, 0.05, 0xc9a13b, -3.4, 0.3 + i * 0.4, -5.4 + 0.06 * i - 0.2);
+      R.cyl(g, 0.16, 0.16, 0.3, 0xe6ebf0, -2.3, 0.15, -4.6, 12); R.cyl(g, 0.16, 0.16, 0.3, 0xe6ebf0, -1.9, 0.15, -4.8, 12);
+      R.plane(g, 3.0, 2.4, 0xd8d5cc, -4.4, 0.012, -1.0, -PI / 2);
+      R.cyl(g, 0.02, 0.02, 1.6, GRAPH, -5.4, 0.8, 1.6, 6); R.box(g, 0.34, 0.24, 0.14, 0xfff0d0, -5.4, 1.66, 1.6, { emissive: 0xffe0b0, emissiveIntensity: 0.9 });
+      const sg = grp(g, -1.6, 2.8); sg.rotation.x = -0.32; R.box(sg, 3.76, 1.54, 0.06, 0x1e252c, 0, 1.55, -0.05);
       emptySign = csign(sg, 3.6, 1.4, 1024, 398, 0, 1.55, 0, 0, { bg: '#1b232c' }, scr);
       [-1.55, 1.55].forEach(x => { R.box(sg, 0.08, 1.75, 0.08, 0x6a737c, x, 0.87, -0.12); R.box(sg, 0.1, 0.05, 0.7, 0x6a737c, x, 0.025, -0.12); });
       panels(g, [[-4.5, 1.5], [4.5, -3.5]], 0.35);
     } else {
-      stands = [[3.4, -5.6, PI], [5.6, -5.5, PI]];
+      stands = [[4.0, -5.6, PI], [6.2, -5.5, PI]];
       panels(g, [[-4.5, -3.5], [0, -3.5], [4.5, -3.5], [-4.5, 1.5], [0, 1.5], [4.5, 1.5], [0, 5.2], [4.5, 5.2]]);
-      const laps = inst(g, boxes([[0.36, 0.02, 0.26, 0, 0.79, 0], [0.36, 0.24, 0.02, 0, 0.9, -0.13, 0, -0.2]]), R.mat(0x3a424a), CH.length);
+      const laps = inst(g, boxes([[0.36, 0.02, 0.26, 0, 0.79, 0], [0.36, 0.24, 0.02, 0, 0.9, 0.13, 0, 0.2]]), R.mat(0x3a424a), CH.length);
       CH.forEach((c, i) => place(laps, i, c[0], 0, c[1] + (c[2] ? -0.45 : 0.45), c[2]));
+      R.plane(g, 5.8, 3.8, 0x3a4450, 4.0, 0.01, 1.4, -PI / 2);
+      R.plane(g, 6.2, 7.6, { racks: 0x2f3a48, evals: 0x2f4038, launch: 0x3e3a2c, data: 0x33404c, crates: 0x40372c }[theme] || 0x33404c, -4.3, 0.008, -2.4, -PI / 2);
+      const fc = grp(g, 6.9, -1.3, -0.6); R.box(fc, 0.9, 1.1, 0.04, 0xf1f3f5, 0, 1.45, 0); [-0.4, 0.4].forEach(x => R.box(fc, 0.04, 1.9, 0.04, GRAPH, x, 0.95, -0.1));
       if (theme === 'racks') {
-        const rs = []; [-4.8, -2.2, 0.4].forEach(z => { for (let i = 0; i < 7; i++) rs.push({ x: -7.2 + i * 0.64, z, ry: 0 }); });
+        const rs = []; [-5.2, -2.8, -0.4].forEach(z => { for (let i = 0; i < 8; i++) rs.push({ x: -6.6 + i * 0.64, z, ry: 0 }); });
         const racks = rackKit(setG, rs, 'train'); racks.set(rs.length, rs.length); tex = racks.tex; act2 = 0.8;
-        [-4.8, -2.2, 0.4].forEach(z => R.box(setG, 4.6, 0.06, 0.4, 0xc8a03a, -5.3, 2.55, z));
-        setupBox = [-7.6, 0, -5.4, -2.9, 2.3, 1.0]; setupLabel = 'Run hardware'; setupFocus = { pos: [0.6, 4.4, 5.6], look: [-5.2, 1.0, -2.2], fov: 60 };
-        stands.push([-6.0, -3.5, PI], [-4.2, -0.9, PI], [-3.2, 1.8, PI]);
+        [-5.2, -2.8, -0.4].forEach(z => R.box(setG, 5.4, 0.06, 0.4, 0xc8a03a, -4.36, 2.55, z));
+        setupBox = [-7.0, 0, -5.8, -1.7, 2.3, 0.2]; setupLabel = 'Run hardware'; setupFocus = aim([-4.4, 1.1, -2.8], -20, 32, 12);
+        stands.push([-5.6, -4.0, PI], [-3.4, -1.6, PI], [-4.8, 0.8, PI]);
       } else if (theme === 'evals') {
-        frame(setG, 4.4, 2.2, -7.95, 2.2, -2.4, PI / 2);
-        const ew = csign(setG, 4.4, 2.2, 1024, 512, -7.88, 2.2, -2.4, PI / 2, { bg: '#05080c' }, null); paint(ew, { seed: FR.hash(String(p.uid || p.name)) }, drawEvalWall);
-        [-5.4, -3.6].forEach((x, i) => { const st = grp(setG, x, 1.8); R.box(st, 1.3, 0.8, 0.08, BLACK, 0, 1.6, 0); R.box(st, 0.08, 1.2, 0.08, STEEL, 0, 0.6, -0.02); R.box(st, 0.8, 0.05, 0.6, GRAPH, 0, 0.03, 0);
+        const vw = grp(setG, -4.3, -4.6); frame(vw, 4.6, 2.3, 0, 1.95, -0.06);
+        const ew = csign(vw, 4.6, 2.3, 1024, 512, 0, 1.95, 0, 0, { bg: '#05080c' }, null); paint(ew, { seed: FR.hash(String(p.uid || p.name)) }, drawEvalWall);
+        [-2.0, 2.0].forEach(x => { R.box(vw, 0.1, 0.8, 0.1, STEEL, x, 0.4, -0.08); R.box(vw, 0.12, 0.05, 0.9, STEEL, x, 0.025, -0.08); });
+        [-6.0, -2.6].forEach((x, i) => { const st = grp(setG, x, 0.4); R.box(st, 1.3, 0.8, 0.08, BLACK, 0, 1.6, 0); R.box(st, 0.08, 1.2, 0.08, STEEL, 0, 0.6, -0.02); R.box(st, 0.8, 0.05, 0.6, GRAPH, 0, 0.03, 0);
           const sc = csign(st, 1.2, 0.7, 256, 150, 0, 1.6, 0.05, 0, { bg: '#05080c' }, null); paint(sc, { seed: 3 + i }, drawEvalWall); });
-        const dk = deskKit(setG, [{ x: -6.3, z: -4.6, ry: PI / 2 }, { x: -6.3, z: -0.2, ry: PI / 2 }]); dk.set(2); extra = dk;
-        setupBox = [-7.95, 0, -4.9, -2.9, 3.35, 2.4]; setupLabel = 'Eval screens'; setupFocus = { pos: [0.6, 2.8, -1.0], look: [-7.9, 1.9, -1.2], fov: 64 };
-        stands.push([-6.8, -2.4, -PI / 2], [-5.4, 2.8, PI], [-3.6, 2.8, PI]);
+        const dk = deskKit(setG, [{ x: -5.2, z: -2.3, ry: 0 }, { x: -3.4, z: -2.3, ry: 0 }]); dk.set(2); extra = dk;
+        setupBox = [-6.9, 0, -5.0, -1.7, 3.2, 1.0]; setupLabel = 'Eval screens'; setupFocus = aim([-4.3, 1.95, -4.6], 0, 14, fitD(4.8, 2.5));
+        stands.push([-4.3, -3.6, PI], [-6.0, 1.4, PI], [-2.6, 1.4, PI]);
       } else if (theme === 'launch') {
-        frame(setG, 5.0, 2.5, -5.2, 2.15, -HD + 0.05);
-        const lw = csign(setG, 5.0, 2.5, 1024, 512, -5.2, 2.15, -HD + 0.11, 0, { bg: '#0a0e13' }, scr); extra = lw;
-        R.box(setG, 4.2, 0.22, 1.8, GRAPH_L, -5.2, 0.11, -5.6); R.box(setG, 0.6, 1.1, 0.5, ASH, -5.2, 0.77, -5.3);
-        const seatsL = []; [-3.0, -1.8].forEach(z => [-7.0, -6.1, -5.2, -4.3, -3.4].forEach(x => seatsL.push([x, z, PI])));
+        frame(setG, 5.0, 2.5, -4.4, 2.15, -HD + 0.05);
+        const lw = csign(setG, 5.0, 2.5, 1024, 512, -4.4, 2.15, -HD + 0.11, 0, { bg: '#0a0e13' }, scr); extra = lw;
+        R.box(setG, 4.2, 0.22, 1.8, GRAPH_L, -4.4, 0.11, -5.6); R.box(setG, 0.6, 1.1, 0.5, ASH, -4.4, 0.77, -5.3);
+        const seatsL = []; [-3.2, -2.0].forEach(z => [-6.2, -5.3, -4.4, -3.5, -2.6].forEach(x => seatsL.push([x, z, PI])));
         const lc = inst(setG, boxes([[0.46, 0.06, 0.44, 0, 0.45, 0], [0.44, 0.44, 0.05, 0, 0.7, -0.22], [0.05, 0.42, 0.05, -0.2, 0.21, 0], [0.05, 0.42, 0.05, 0.2, 0.21, 0]]), R.mat(0x4a5d6e), seatsL.length);
         seatsL.forEach((c, i) => place(lc, i, c[0], 0, c[1], c[2]));
-        [-7.6, -2.8].forEach(x => { R.box(setG, 0.8, 2.0, 0.06, 0x2d6aa8, x, 1.0, -5.6); });
-        setupBox = [-7.8, 0, -7, -2.6, 3.45, -1.4]; setupLabel = 'Launch wall'; setupFocus = { pos: [-5.2, 3.2, 3.2], look: [-5.2, 1.8, -7], fov: 60 };
-        stands.push([-5.2, -5.6, 0], [-7.4, -4.4, 0.6], [-3.0, -4.4, -0.6]);
+        [-7.0, -1.8].forEach(x => { R.box(setG, 0.8, 2.0, 0.06, 0x2d6aa8, x, 1.0, -5.6); });
+        setupBox = [-7.1, 0, -7, -1.7, 3.45, -1.5]; setupLabel = 'Launch wall'; setupFocus = aim([-4.4, 2.15, -6.9], 0, 12, fitD(5.2, 2.7));
+        stands.push([-4.4, -5.6, 0], [-6.6, -4.4, 0.6], [-2.2, -4.4, -0.6]);
       } else if (theme === 'data') {
-        const bx = []; [-5.4, -3.8, -2.2, -0.6].forEach(z => { R.box(setG, 0.5, 2.2, 1.5, 0x6a737c, -7.45, 1.1, z); [0.1, 0.62, 1.14, 1.66].forEach(y => { R.box(setG, 0.5, 0.03, 1.5, 0x8a939c, -7.45, y, z); for (let i = 0; i < 3; i++) bx.push([-7.45, y + 0.2, z - 0.48 + i * 0.48, 0]); }); });
-        [[-5.0, -4.2], [-4.2, -2.8], [-5.2, -1.2]].forEach(([x, z], k) => { for (let i = 0; i < 4 + k; i++) bx.push([x + (i % 2) * 0.46, 0.18 + Math.floor(i / 2) * 0.36, z, (i * 0.13) % 0.3]); });
+        const bx = [];
+        [-5.4, -3.2].forEach(z => [-6.1, -4.5, -2.9].forEach(x => { R.box(setG, 1.5, 2.2, 0.06, 0x6a737c, x, 1.1, z - 0.22);
+          [0.1, 0.62, 1.14, 1.66].forEach(y => { R.box(setG, 1.5, 0.03, 0.5, 0x8a939c, x, y, z); for (let i = 0; i < 3; i++) bx.push([x - 0.48 + i * 0.48, y + 0.2, z, 0]); });
+          [-0.74, 0.74].forEach(dx => R.box(setG, 0.04, 2.2, 0.5, 0x5a636c, x + dx, 1.1, z)); }));
+        [[-5.6, -1.0], [-3.6, -1.2], [-4.6, 0.6]].forEach(([x, z], k) => { for (let i = 0; i < 4 + k; i++) bx.push([x + (i % 2) * 0.46, 0.18 + Math.floor(i / 2) * 0.36, z, (i * 0.13) % 0.3]); });
         const rb = FR.rng(13), boxesM = inst(setG, new THREE.BoxGeometry(0.44, 0.34, 0.4), new THREE.MeshLambertMaterial({ color: 0xffffff }), bx.length, true);
         bx.forEach((q, i) => { place(boxesM, i, q[0], q[1], q[2], q[3]); boxesM.setColorAt(i, _col.set(rb() < 0.7 ? 0xc9a878 : 0xe6e2d6)); }); boxesM.instanceColor.needsUpdate = true;
-        R.box(setG, 0.06, 1.2, 0.06, 0x3a424a, -3.4, 0.6, 0.6); R.box(setG, 0.5, 0.06, 0.4, 0x3a424a, -3.4, 0.05, 0.75);
-        R.sign(setG, ['DATA ROOM'], 1.8, 0.36, -7.88, 2.75, -3.0, PI / 2, { bg: '#1b232c', fg: HX.info, w: 512, h: 104, size: 64, font: 'display', weight: '700' });
-        setupBox = [-7.75, 0, -6.2, -3.6, 2.3, 0.2]; setupLabel = 'Data room'; setupFocus = { pos: [0.4, 3.6, 2.8], look: [-6.0, 1.0, -2.8], fov: 60 };
-        stands.push([-6.6, -3.0, -PI / 2], [-4.6, -3.6, 0.5], [-3.6, -0.6, -0.8]);
+        R.box(setG, 0.06, 1.2, 0.06, 0x3a424a, -2.2, 0.6, 0.4); R.box(setG, 0.5, 0.06, 0.4, 0x3a424a, -2.2, 0.05, 0.55);
+        const deal = p.tpl !== 'data';
+        R.sign(setG, [deal ? 'DEAL ROOM' : 'DATA ROOM'], 1.8, 0.36, -4.5, 2.75, -5.1, 0, { bg: '#1b232c', fg: HX.info, w: 512, h: 104, size: 64, font: 'display', weight: '700' });
+        setupBox = [-6.9, 0, -5.8, -1.8, 2.4, 1.1]; setupLabel = deal ? 'Deal room' : 'Data room'; setupFocus = aim([-4.5, 1.1, -3.6], -15, 30, 11);
+        stands.push([-4.5, -4.2, PI], [-3.0, -2.2, PI], [-5.8, 0.0, 0.6]);
       } else {
-        const cr = [[-6.6, 0.6, -4.8, 0.1], [-6.6, 1.8, -4.8, -0.05], [-5.0, 0.6, -4.9, 0], [-5.0, 0.6, -3.2, 0.2], [-6.6, 0.6, -3.1, -0.1], [-6.5, 1.8, -3.1, 0.05], [-3.8, 0.6, -1.4, 0.35], [-6.2, 0.6, -0.8, -0.2], [-4.9, 0.6, 0.6, 0.1]];
+        const cr = [[-5.8, 0.6, -4.8, 0.1], [-5.8, 1.8, -4.8, -0.05], [-4.2, 0.6, -4.9, 0], [-4.2, 0.6, -3.2, 0.2], [-5.8, 0.6, -3.1, -0.1], [-5.7, 1.8, -3.1, 0.05], [-3.0, 0.6, -1.4, 0.35], [-5.4, 0.6, -0.8, -0.2], [-4.1, 0.6, 0.6, 0.1]];
         const crM = inst(setG, boxes([[1.4, 1.2, 1.2, 0, 0, 0]]), R.mat(0xa07a4a), cr.length), bat = inst(setG, boxes([[1.44, 0.12, 0.08, 0, 0.5, 0.6], [1.44, 0.12, 0.08, 0, -0.5, 0.6], [0.1, 1.2, 0.08, -0.66, 0, 0.6], [0.1, 1.2, 0.08, 0.66, 0, 0.6], [1.44, 0.12, 0.08, 0, 0.5, -0.6], [1.44, 0.12, 0.08, 0, -0.5, -0.6]]), R.mat(0x6a4a2a), cr.length);
         cr.forEach((c, i) => { place(crM, i, c[0], c[1], c[2], c[3]); place(bat, i, c[0], c[1], c[2], c[3]); });
-        R.sign(setG, ['HANDLE WITH CARE'], 1.1, 0.26, -5.0, 0.7, -4.28, 0, { bg: '#a07a4a', fg: '#1b1a17', w: 512, h: 120, size: 60, font: 'display', weight: '800', glow: false });
-        R.box(setG, 0.6, 0.12, 1.4, 0xc8a03a, -2.9, 0.12, -3.6); R.box(setG, 0.1, 1.1, 0.1, 0x2a3036, -2.9, 0.65, -4.25);
-        R.sign(setG, ['RECEIVING'], 1.8, 0.36, -5.2, 3.46, -HD + 0.02, 0, { bg: '#1b232c', fg: HX.warn, w: 512, h: 104, size: 64, font: 'display', weight: '700' });
-        setupBox = [-7.4, 0, -5.5, -3.0, 2.5, 1.3]; setupLabel = 'Crates'; setupFocus = { pos: [0.8, 4.2, 4.2], look: [-5.2, 0.9, -2.2], fov: 60 };
-        stands.push([-5.2, -2.2, 0.4], [-3.4, -2.2, -0.8], [-4.0, 1.6, PI]);
+        R.sign(setG, ['HANDLE WITH CARE'], 1.1, 0.26, -4.2, 0.7, -4.28, 0, { bg: '#a07a4a', fg: '#1b1a17', w: 512, h: 120, size: 60, font: 'display', weight: '800', glow: false });
+        R.box(setG, 0.6, 0.12, 1.4, 0xc8a03a, -2.2, 0.12, -3.6); R.box(setG, 0.1, 1.1, 0.1, 0x2a3036, -2.2, 0.65, -4.25);
+        R.sign(setG, ['RECEIVING'], 1.8, 0.36, -4.4, 3.46, -HD + 0.02, 0, { bg: '#1b232c', fg: HX.warn, w: 512, h: 104, size: 64, font: 'display', weight: '700' });
+        setupBox = [-6.6, 0, -5.5, -2.2, 2.5, 1.3]; setupLabel = 'Crates'; setupFocus = aim([-4.4, 1.0, -2.6], -20, 32, 11);
+        stands.push([-4.4, -2.2, 0.4], [-2.6, -2.2, -0.8], [-3.2, 1.6, PI]);
       }
     }
     plant(g, 7.3, 6.2); plant(g, -7.3, 6.2);
     const sit = crowd(g, CH, 'sit', 61 + slot), stand = crowd(g, stands, 'stand', 62 + slot);
-    const walk = walkers(g, [[1.0, 3.2, 6.8, 3.2, 0.16, 0], [-2.2, -5.2, -2.2, 4.8, 0.18, 1.7]], 6 + slot);
+    const walk = walkers(g, [[1.8, 4.2, 6.8, 4.2, 0.16, 0], [-0.8, -4.4, -0.8, 4.6, 0.18, 1.7]], 6 + slot);
     const targets = [ev.target];
     if (p) {
-      targets.push({ id: id + '.board', label: 'Progress', box: [1.75, 1.0, -7, 7.25, 3.5, -6.8], focus: { pos: [4.5, 2.9, 4.6], look: [4.5, 2.2, -7], fov: 60 } });
+      targets.push({ id: id + '.board', label: 'Progress', box: [2.6, 1.0, -7, 7.4, 3.5, -6.8], focus: aim([5.0, 2.25, -6.9], 0, 14, fitD(4.8, 2.5)) });
       targets.push({ id: id + '.setup', label: setupLabel, box: setupBox, focus: setupFocus });
-      targets.push({ id: id + '.table', label: 'War room', box: [0.9, 0, -1.0, 5.9, 1.4, 1.8], focus: { pos: [3.4, 4.0, 6.8], look: [3.4, 0.8, 0.4], fov: 60 } });
+      targets.push({ id: id + '.table', label: 'War room', box: [1.6, 0, 0.0, 6.4, 1.4, 2.8], focus: aim([4.0, 0.8, 1.4], 0, 45, 9) });
     } else {
-      targets.push({ id: id + '.board', label: 'Available', box: [-1.95, 0, 2.35, 1.95, 2.35, 2.75], focus: { pos: [0, 2.0, 8.6], look: [0, 1.5, 2.6], fov: 70 } });
-      targets.push({ id: id + '.table', label: 'War room', box: [0.7, 0, -1.2, 6.1, 1.0, 2.0], focus: { pos: [3.4, 4.0, 6.8], look: [3.4, 0.8, 0.4], fov: 60 } });
+      targets.push({ id: id + '.board', label: 'Available', box: [-3.55, 0, 2.1, 0.35, 2.3, 3.1], focus: aim([-1.6, 1.55, 2.8], 0, 24, fitD(3.8, 1.6)) });
+      targets.push({ id: id + '.table', label: 'War room', box: [1.5, 0, -0.1, 6.5, 1.0, 2.9], focus: aim([4.0, 0.6, 1.4], 0, 45, 9) });
     }
     const sig = p ? p.uid + '|' + theme : 'empty';
     let pending = 0, nWalk = 0, sp = { walk: 0, sit: 0, stand: 0 };
     const f = { group: g, elevator: ev, targets, _psig: sig,
       hint: p ? 'Tap the progress board for this project.' : 'This floor is free. Tap the sign to greenlight a project into it.',
-      view: { pos: [3.6, 19.5, 13.0], look: [-0.2, 0.3, -0.9], fov: 68 },
+      view: { pos: [-1.4, 23.92, 13.28], look: [0, 0.8, 0], fov: 60, shift: -0.031, shiftX: -0.028 }, // front, a little left: the setup faces the camera
       light: { hemi: 0.68, sun: 0.55, bg: 0x090d12 },
       refresh(s) {
         s = s || S(); const q = s && s.projects && s.projects.active ? s.projects.active[slot] || null : null;
@@ -929,7 +955,8 @@
           if (!pending) pending = setTimeout(() => { pending = 0; if (R.current === f && !(FR.elevator && FR.elevator.riding)) R.loadFloor(id, { keep: true }); }, 0); return;
         }
         const th = themeOf(q);
-        paint(board, q ? { slot: slot + 1, p: 1, name: q.name, kind: KIND_NAME[th] || String(q.kind || ''), col: KIND_COL[th] || HX.brandB, turns: q.turns || 1, left: q.turnsLeft != null ? q.turnsLeft : q.turns,
+        paint(board, q ? { slot: slot + 1, p: 1, name: q.name, kind: KIND_LABEL[q.kind] || KIND_NAME[th] || String(q.kind || ''), col: KIND_COL[th] || HX.brandB, turns: q.turns || 1,
+          left: q.turnsLeft != null ? q.turnsLeft : q.turns, done: FR.round(clamp(q.progress != null ? q.progress / Math.max(1, q.turns) : 1 - (q.turnsLeft || 0) / Math.max(1, q.turns), 0, 1), 3),
           risk: q.risk, cost: q.cost, pf: q.pfPerTurn || 0, payoff: payoffText(q), overrun: !!q.overrun } : { slot: slot + 1, p: 0 }, drawProgress);
         if (emptySign) paint(emptySign, { slot: slot + 1, free: s && s.projects ? Math.max(0, (s.projects.slots || 3) - (s.projects.active || []).length) : 3 }, (x, w, h, d) => {
           rect(x, 0, 0, w, h, '#1b232c'); rect(x, 0, 0, w, 14, HX.brandB);
@@ -1020,7 +1047,7 @@
     const CH = [[0.2, 2.35, PI], [0.2, -5.45, 0]]; [-4.1, -2.9, -1.7, -0.5, 0.7].forEach(z => { CH.push([-1.0, z, PI / 2]); CH.push([1.4, z, -PI / 2]); });
     const chairs = inst(g, boxes([[0.54, 0.08, 0.52, 0, 0.47, 0], [0.52, 0.62, 0.08, 0, 0.86, -0.27], [0.07, 0.42, 0.07, 0, 0.22, 0], [0.5, 0.04, 0.5, 0, 0.02, 0]]), R.mat(0x1f262e), CH.length);
     CH.forEach((c, i) => place(chairs, i, c[0], 0, c[1], c[2]));
-    const laps = inst(g, boxes([[0.34, 0.02, 0.24, 0, 0.81, 0.02], [0.34, 0.22, 0.02, 0, 0.92, -0.1, 0, -0.25]]), R.mat(0x9aa4ae), CH.length);
+    const laps = inst(g, boxes([[0.34, 0.02, 0.24, 0, 0.81, 0.02], [0.34, 0.22, 0.02, 0, 0.92, 0.12, 0, 0.25]]), R.mat(0x9aa4ae), CH.length);
     CH.forEach((c, i) => place(laps, i, c[0] + Math.sin(c[2]) * 0.55, 0, c[1] + Math.cos(c[2]) * 0.55, c[2]));
     // pendants over the table (cables above the cutaway line vanish with the ceiling)
     [-3.6, -1.6, 0.4].forEach(z => { R.box(g, 0.02, 0.9, 0.02, GRAPH, 0.2, 3.45, z); R.cyl(g, 0.26, 0.34, 0.22, 0xffe2b8, 0.2, 2.95, z, 16).material = R.mat(0xffe2b8, { emissive: 0xffc890, emissiveIntensity: 0.9 }); });
@@ -1032,13 +1059,13 @@
     const targets = [
       ev.target,
       { id: 'boardroom.table', label: 'Board table', labelAt: [0.2, 1.1, 1.2], box: [-1.45, 0, -7, 1.85, 3.3, 2.75], focus: { pos: [0.2, 4.4, 5.8], look: [0.2, 1.5, -3.8], fov: 64 } },
-      { id: 'boardroom.rivals', label: 'Rivals', box: [2.8, 1.0, -7, 7.4, 3.4, -6.8], focus: { pos: [5.1, 2.6, 3.8], look: [5.1, 2.2, -7], fov: 60 } },
-      { id: 'boardroom.compute', label: 'Compute', box: [-7.95, 1.2, -2.7, -7.8, 3.2, 0.7], focus: { pos: [0.8, 2.4, -1.0], look: [-7.9, 2.2, -1.0], fov: 60 } },
-      { id: 'boardroom.team', label: 'Team', box: [7.8, 1.2, -2.7, 7.95, 3.2, 0.7], focus: { pos: [-0.4, 2.4, -1.0], look: [7.9, 2.2, -1.0], fov: 60 } }
+      { id: 'boardroom.rivals', label: 'Rivals', box: [2.8, 1.0, -7, 7.4, 3.4, -6.8], focus: aim([5.1, 2.2, -6.9], 0, 14, fitD(4.6, 2.4)) },
+      { id: 'boardroom.compute', label: 'Compute', box: [-7.95, 1.2, -2.7, -7.8, 3.2, 0.7], focus: aim([-7.9, 2.2, -1.0], 90, 18, fitD(3.4, 2.0)) },
+      { id: 'boardroom.team', label: 'Team', box: [7.8, 1.2, -2.7, 7.95, 3.2, 0.7], focus: aim([7.9, 2.2, -1.0], -90, 18, fitD(3.4, 2.0)) }
     ];
     let nBoard = 0;
     const f = { group: g, elevator: ev, targets, hint: 'Tap the board table for money and rounds.',
-      view: { pos: [-2.4, 21.0, 16.0], look: [1.0, 0.3, -1.4], fov: 66 },
+      view: { pos: [-2.41, 24.79, 13.64], look: [0, 0.8, 0], fov: 60, shift: -0.034, shiftX: -0.015 }, // from above the window wall, the skyline behind
       light: { hemi: 0.6, sun: 0.55, bg: 0x08101c },
       refresh(s) {
         s = s || S(); const m = (s && s.money) || { cash: 0, founderPct: 100, valuation: 0, roundsDone: [], revenue: 0, burn: 0, net: 0 };
