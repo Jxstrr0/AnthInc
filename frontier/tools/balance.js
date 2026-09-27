@@ -1,8 +1,19 @@
 // Bot probe: plays seeds through the real sim with four strategies (race, safe, balanced, revenue-first) and prints one
 // table per bot plus a summary line. Usage: node tools/balance.js [--seeds N] [--turns N] [--bot name]
+// [--set module.key=value,...]   e.g. --set model.trainBase=0.08,money.rounds.seed.amount=12e6 (tries a tuning without editing K)
 const FR = require('../test/_load')();
-const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 && process.argv[i + 1] != null ? process.argv[i + 1] : d; };
+const argv = process.argv.slice(2);
+const arg = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 && argv[i + 1] != null ? argv[i + 1] : d; };
 const SEEDS = +arg('seeds', 10), TURNS = +arg('turns', 312), ONLY = arg('bot', null);
+argv.forEach((a, i) => {
+  if (a !== '--set') return;
+  String(argv[i + 1] || '').split(',').filter(Boolean).forEach(kv => {
+    const [p, v] = kv.split('='), keys = p.split('.'), mod = FR[keys.shift()], last = keys.pop();
+    const o = keys.reduce((x, k) => x && x[k], mod && mod.K);
+    if (!o || !(last in o)) throw new Error('No tuning constant ' + p);
+    o[last] = isNaN(+v) ? JSON.parse(v) : +v;
+  });
+});
 
 const SK = FR.SKILLS, sk = (s, k) => s.model.skills[k], CK = FR.compute.K, MK = FR.money.K;
 const gap = (s, k) => Math.max(0, sk(s, k).cap - sk(s, k).safe);
