@@ -108,7 +108,9 @@
     FR.ui.sheet(`<h3>Elevator</h3><div class="floors" id="elevFloors">${rowsHtml()}</div>`, 'elevator');
     const box = document.getElementById('elevFloors'); if (!box) return; bindRows(box);
     // nine rows outgrow a phone sheet: bring the current floor into view (the sheet body scrolls)
-    const h = box.querySelector('.here'); if (h && h.scrollIntoView) try { h.scrollIntoView({ block: 'nearest' }); } catch (e) { /* old engines */ }
+    // (set scrollTop on the body itself: scrollIntoView would also scroll the overflow:hidden sheet frame)
+    const h = box.querySelector('.here'), sc = document.getElementById('sheetBody') || box.parentElement;
+    if (h && sc) { const r = h.getBoundingClientRect(), cr = sc.getBoundingClientRect(); if (r.bottom > cr.bottom) sc.scrollTop += r.bottom - cr.bottom + 12; }
   };
   // the open elevator sheet re-renders its rows in place after a command or End Turn (no reopen, no sound)
   function refreshOpen() {
