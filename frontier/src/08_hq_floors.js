@@ -293,7 +293,7 @@
     // glass line with a revolving door, set back from the room edge so the cutaway never hides it
     const GZ = 6.3, gl = { transparent: true, opacity: 0.14, depthWrite: false };
     R.plane(g, 6.6, 3.7, GLASS, -4.7, 1.85, GZ, null, gl); R.plane(g, 6.6, 3.7, GLASS, 4.7, 1.85, GZ, null, gl);
-    [-7.9, -5.4, -2.9, -1.4, 1.4, 2.9, 5.4, 7.9].forEach(x => R.box(g, 0.1, 3.7, 0.12, GRAPH, x, 1.85, GZ));
+    [-7.9, -6.7, -2.9, -1.4, 1.4, 2.9, 6.7, 7.9].forEach(x => R.box(g, 0.1, 3.7, 0.12, GRAPH, x, 1.85, GZ));
     R.box(g, W, 0.26, 0.3, GRAPH, 0, 3.8, GZ); R.box(g, W, 0.08, 0.3, GRAPH, 0, 0.04, GZ);
     const rd = grp(g, 0, GZ); const ring = new THREE.Mesh(new THREE.TorusGeometry(1.28, 0.06, 6, 28), R.mat(GRAPH)); ring.rotation.x = PI / 2; ring.position.y = 3.62; rd.add(ring);
     const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.26, 1.26, 3.5, 20, 1, true), new THREE.MeshLambertMaterial({ color: GLASS, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }));
@@ -481,7 +481,7 @@
     const targets = [
       ev.target,
       { id: 'serving.wall', label: 'Status wall', box: [-1.3, 0.75, -7, 6.5, 3.8, -6.8], focus: aim([2.6, 2.15, -6.9], 0, 10, fitD(7.8, 2.8)) },
-      { id: 'serving.racks', label: 'Rack row', box: [-6.85, 0, -4.4, -5.75, 2.3, 5.4], focus: aim([-6.3, 1.1, 0.5], 55, 22, 11) },
+      { id: 'serving.racks', label: 'Rack row', box: [-6.85, 0, -4.4, -5.75, 2.3, 5.4], focus: aim([-6.3, 1.1, 0.5], 68, 18, 10.5) },
       { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: aim([2.6, 0.8, -2.0], 0, 45, 11) }
     ];
     let act = 0, dark = false, nWalk = 0, split0 = { walk: 0, sit: 0, stand: 0 }, scroll = 0;
@@ -660,7 +660,7 @@
     const targets = [
       ev.target,
       { id: 'safety.evals', label: 'Skill screens', box: [-1.1, 1.2, -7, 7.3, 3.35, -6.8], focus: aim([3.1, 2.36, -6.9], 0, 10, fitD(8.4, 1.9)) },
-      { id: 'safety.redteam', label: 'Red team', labelAt: [-5.25, 3.5, 2.3], box: [-7.9, 0, 2.1, -2.5, 3.1, 6.9], focus: aim([-5.2, 1.0, 4.5], 30, 40, 10) },
+      { id: 'safety.redteam', label: 'Red team', labelAt: [-5.25, 3.5, 2.3], box: [-7.9, 0, 2.1, -2.5, 3.1, 6.9], focus: aim([-5.2, 0.9, 4.5], 18, 50, 10) },
       { id: 'safety.log', label: 'Incident log', box: [-7.95, 1.25, -4.35, -7.8, 3.35, -0.85], focus: aim([-7.9, 2.3, -2.6], 90, 8, fitD(3.4, 2.0)) }
     ];
     let act = 0, nWalk = 0, sp = { walk: 0, sit: 0, stand: 0 }, worst = 'ok';
@@ -749,7 +749,7 @@
     R.cyl(g, 0.7, 0.7, 0.05, ASH, -5.2, 0.74, 4.2, 20); R.cyl(g, 0.08, 0.2, 0.72, GRAPH, -5.2, 0.36, 4.2, 10);
     const rtc = [[-5.2, 3.2, 0], [-6.1, 4.6, 2.1], [-4.3, 4.6, -2.1]], rch = inst(g, boxes([[0.5, 0.08, 0.48, 0, 0.46, 0], [0.48, 0.5, 0.07, 0, 0.78, -0.25], [0.06, 0.4, 0.06, 0, 0.22, 0], [0.46, 0.04, 0.46, 0, 0.02, 0]]), R.mat(0x5a4a3e), 3);
     rtc.forEach((c, i) => place(rch, i, c[0], 0, c[1], c[2]));
-    plant(g, -7.3, 6.2); plant(g, -2.6, -6.4, 0.9); plant(g, 7.3, 0.6);
+    plant(g, -7.3, 6.2); plant(g, 0.6, -6.4, 0.8); plant(g, 7.3, 0.6);
     panels(g, [[-4.5, -3.5], [0.8, -4.6], [0.8, -0.8], [4.5, -3.5], [0.8, 2.8], [-4.5, 1.5], [5.4, 4.4]], 0.6);
     const seats = desks.seats.concat([[5.0, 3.2, PI / 2 + 0.3], [5.0, 5.4, PI / 2 - 0.3], [-5.2, 3.2, 0], [-6.1, 4.6, 2.1], [-4.3, 4.6, -2.1]]);
     const stands = [[-6.7, -3.3, -PI / 2], [-6.6, 0.1, -PI / 2], [6.9, 5.8, PI / 2], [4.3, -5.6, PI]];
