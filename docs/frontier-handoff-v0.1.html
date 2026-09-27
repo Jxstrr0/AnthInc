@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier - Cowork Handoff V0.1</title>
+<style>
+  :root{--ink:#1a1a1a;--mute:#666;--line:#ddd;--acc:#1f4e79;--bg:#fff}
+  body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);max-width:820px;margin:0 auto;padding:24px 18px}
+  h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:28px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px;color:var(--acc)}h3{font-size:16px;margin:18px 0 6px}
+  .meta{color:var(--mute);margin-bottom:18px}
+  table{border-collapse:collapse;width:100%;margin:8px 0;font-size:14px}th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{background:#f4f6f9}
+  code,pre{font-family:ui-monospace,Menlo,monospace;font-size:13px}pre{background:#f6f6f6;padding:10px;overflow-x:auto;border-radius:4px}
+  ul{padding-left:20px}li{margin:3px 0}
+  .lock{background:#f1f5fa;border-left:3px solid var(--acc);padding:8px 12px;margin:8px 0}
+  .warn{background:#fff7e6;border-left:3px solid #d08a00;padding:8px 12px;margin:8px 0}
+</style>
+</head>
+<body>
+
+<h1>Frontier</h1>
+<div class="meta">Cowork handoff · V0.1 (pre-build) · Prairie Blue Studio · designed Sep 27 2026 via popups in the Anthropology Inc. project</div>
+
+<div class="lock"><b>Read this first, then <code>plan/status.md</code> once it exists.</b> Build under the cheap-game-build doctrine (read that skill at session start). Ask the owner with popups (AskUserQuestion) whenever a direction is unclear; make small calls alone when confident and say so plainly.</div>
+
+<h2>1. What the game is</h2>
+<p>A lab-management sim. You run a frontier AI lab in today's market: rivals shipping, chips scarce, money from investors early and customers later, and a model that ends you if safety falls behind capability. Turn-based (one week per turn), career-length across multiple real days, permadeath. A dead lab is gone; the next one starts from nothing.</p>
+<p><b>Tone:</b> straight. Every line of text in the game could sit in a real board memo. No jokes in the UI copy.</p>
+<p><b>Language:</b> JavaScript, one-file HTML artifact for the phone (same as Kick and Red Skies). Not Java.</p>
+
+<h2>2. Locked design decisions (owner's calls — do not re-pitch)</h2>
+<table>
+<tr><th>Area</th><th>Decision</th></tr>
+<tr><td>Run</td><td>One startup, founded to finished, then start over. Career-length, spanning multiple real days. Save codes, like Kick.</td></tr>
+<tr><td>Time</td><td>Turn-based. One turn = one week. Time moves only on End Turn.</td></tr>
+<tr><td>Losing</td><td>Cash hits zero, OR the model does the unwalkable thing. Both are permadeath. A rival reaching the frontier first is a <i>loss on the record</i> (scored, remembered in the news) but does NOT end the run.</td></tr>
+<tr><td>Winning</td><td>Reach the frontier safely — capability AND safety both at the top — and hold it for a full year (52 consecutive turns).</td></tr>
+<tr><td>Carry-over</td><td>Nothing. No unlocks, no perks. Pure knowledge.</td></tr>
+<tr><td>Directing the lab</td><td>Both: standing <b>sliders</b> split compute and staff across Training / Serving / Safety / Research; greenlit <b>projects</b> are big bets with a cost, a duration and a risk.</td></tr>
+<tr><td>The model</td><td>A few skills — Coding, Reasoning, Agents — each with its own capability bar and its own safety bar. The per-skill gap is the danger.</td></tr>
+<tr><td>Disaster</td><td>Slow burn. Warnings first (internal reports), then incidents (cost money and public trust), then one final incident that ends the run. The player always sees it coming.</td></tr>
+<tr><td>Money</td><td>Both sources. Investor rounds early (raise, dilute, milestones or they walk). Customer revenue later, scaling with model quality. The mix is the strategy.</td></tr>
+<tr><td>Compute</td><td>Rent (monthly bill scaling with use), buy (big upfront, yours, but chips age out), and rival deals that share compute for a cut.</td></tr>
+<tr><td>Market</td><td>A few named rivals, each with a personality, a strategy and a deal on offer. The public is a force (trust rises and falls). No separate regulator actor.</td></tr>
+<tr><td>Rival names</td><td>Owner asked for nods to real labs. Ship as fictional labs that clearly rhyme with the real ones; the strategies make them obvious. If the owner insists on real names, ask once and do it.</td></tr>
+<tr><td>People</td><td>Headcount only — a number you grow. No named staff, no poaching.</td></tr>
+<tr><td>Screen</td><td>The 3D HQ building (like Mogul): floors as departments, activity readable at a glance, sliders and projects living on the floors they affect. Confirm the exact camera (exterior cutaway vs floor-by-floor) with a popup on the first visual pass.</td></tr>
+<tr><td>Code</td><td>Small files. One module per system so an edit touches one file. Red Skies layout below.</td></tr>
+</table>
+
+<h2>3. Architecture (Red Skies layout)</h2>
+<pre>frontier/
+  VERSION                 Major.Minor.Patch.Build, e.g. 0.1.0.0
+  build.js                ~20 lines: concatenates ORDER into dist/
+  plan/status.md          version, decisions, APIs, back-burner  (memory that survives sessions)
+  plan/contracts.md       every event payload, state field, command
+  src/00_shell.html       CSS + markup + &lt;!-- SCRIPTS --&gt; marker
+  src/01_core.js          window.FR namespace, event bus on/emit, rng(seed), save codes
+  src/02_sim.js           fixed-step turn resolver; never touches the DOM; runs in node
+  src/03_model.js         skills: capability + safety per skill, drift, the slow-burn ladder
+  src/04_compute.js       rent / buy / share deals, chip ageing, capacity vs demand
+  src/05_money.js         cash, burn, investor rounds, dilution, milestones, revenue
+  src/06_market.js        rivals (strategies, frontier race), the public trust score, news feed
+  src/07_projects.js      greenlit bets: cost, duration, risk, payoff; generator
+  src/08_hq.js            three.js HQ building, floors, LOD, instanced crowds; reads sim only
+  src/09_ui.js            sliders, project cards, end-turn, memos, save/load; reads sim only
+  src/10_audio.js         optional, off by default; reads bus only
+  src/99_main.js          boot, loop, wiring
+  tools/balance.js        bot probe: plays N seeds with fixed strategies, prints outcomes
+  test/*.test.js          node tests per module
+  dist/game.html, dist/game.artifact.html, "Frontier - V&lt;ver&gt;.html"</pre>
+<ul>
+<li><b>Sim is pure.</b> <code>FR.sim.endTurn(state, commands) → state'</code>. Render, UI and audio only read state and listen to the bus.</li>
+<li><b>Debug getters</b> on every module (<code>debug()</code>) so tests assert numbers, not screenshots.</li>
+<li><b>Publish</b> <code>dist/game.artifact.html</code> to the same artifact URL every time, title <b>"Frontier"</b>, version as the label. Bump VERSION before every publish. Update <code>plan/status.md</code> after.</li>
+</ul>
+
+<h2>4. Systems — first-pass numbers (tune with the bot, not by feel)</h2>
+
+<h3>4.1 Turn loop</h3>
+<ol>
+<li>Player sets sliders (Training / Serving / Safety / Research, sum 100%), greenlights or cancels projects, takes or declines deals and rounds.</li>
+<li>End Turn: compute is allocated by slider → training raises capability on the skill the current run targets; serving earns revenue; safety raises safety bars and reduces warning pressure; research feeds project speed and unlocks project tiers.</li>
+<li>Money resolves: burn (payroll = headcount × rate, rent, ops) vs revenue; rounds close or investors walk on missed milestones.</li>
+<li>Market resolves: rivals advance on their own curves; news events roll; public trust moves.</li>
+<li>Model resolves: drift check per skill; the slow-burn ladder advances or cools.</li>
+<li>Memo: a one-screen weekly memo in board language — what changed, what's flagged, what's due.</li>
+</ol>
+
+<h3>4.2 The model</h3>
+<ul>
+<li>Skills: <code>coding</code>, <code>reasoning</code>, <code>agents</code>. Each: <code>cap 0–100</code>, <code>safe 0–100</code>.</li>
+<li>Danger per skill = <code>max(0, cap − safe)</code>. Total pressure = weighted sum, agents weighted highest.</li>
+<li>Slow-burn ladder, per skill: <b>Warning</b> (internal report, free; appears when gap &gt; 10 for 2 turns) → <b>Incident</b> (gap &gt; 20 and a roll; costs cash and public trust, headline in the feed) → <b>Final</b> (gap &gt; 30 sustained 4 turns, or a third incident on the same skill within a year) = run over.</li>
+<li>Safety slider closes gaps but earns nothing. Safety projects close them faster and stay closed.</li>
+<li>"The frontier" = the highest <code>cap</code> in the market per skill. You're at the frontier when your average cap ≥ the best rival's. You're <i>safely</i> at the frontier when also every <code>safe ≥ cap − 5</code>. Hold that 52 turns to win.</li>
+</ul>
+
+<h3>4.3 Compute</h3>
+<ul>
+<li>Unit: PF-weeks (petaflop-weeks). Demand = training + serving + research allocations.</li>
+<li><b>Rent:</b> pay per PF-week used, price drifts with the market (scarcity events raise it).</li>
+<li><b>Buy:</b> a cluster costs a lump sum, adds fixed capacity, ages: −8% capacity per year and higher power cost, retires at 4 years.</li>
+<li><b>Share:</b> a rival deal grants capacity in exchange for a % of revenue or a capability licence (they gain some of your cap). Each rival offers one style of deal.</li>
+</ul>
+
+<h3>4.4 Money</h3>
+<ul>
+<li>Start: seed cash, small headcount, rented compute, no revenue.</li>
+<li>Rounds: Seed → A → B → C. Each sets a valuation from cap, trust and revenue; sets a milestone (e.g. "reach cap 40 on any skill within 26 weeks"). Miss it and the next round is off the table for a year.</li>
+<li>Revenue = serving allocation × f(average cap) × public trust multiplier. Starts near zero; becomes the engine mid-game.</li>
+<li>Headcount grows by hiring (costs cash, takes weeks). Payroll is the biggest fixed cost.</li>
+</ul>
+
+<h3>4.5 Market</h3>
+<ul>
+<li>Four rivals, fictional names that rhyme with real labs. Each has a strategy the player can read: the cap-first racer, the safety-first slow mover, the platform giant with infinite compute but slow shipping, the open-weights lab that drags prices down. Each offers one deal style (compute share, distribution, licence, acquisition).</li>
+<li>Rivals advance on curves plus events; they can have their own incidents, which move public trust for everyone.</li>
+<li>Public trust 0–100: moves on your ships, incidents, safety publications, rival incidents. Multiplies revenue and valuations.</li>
+<li>News feed: one to three lines a week, straight wire-service voice. The record of rivals hitting the frontier first lives here and on the end-of-run sheet.</li>
+</ul>
+
+<h3>4.6 Projects</h3>
+<ul>
+<li>Card: name, cost (cash + PF-weeks), duration (turns), risk (chance of overrun or failure), payoff (cap, safe, trust, revenue or a compute discount). Tiers unlocked by research.</li>
+<li>Generator with real variety; examples: a new training run on one skill, a safety eval suite, a product launch, a data deal, an interpretability push, a chip pre-order.</li>
+<li>Three project slots at start; a floor of the HQ per active project.</li>
+</ul>
+
+<h2>5. The HQ screen</h2>
+<ul>
+<li>three.js, own inline build if a library is too heavy for the artifact host; test at 390×844 portrait.</li>
+<li>Floors from the ground up: Lobby/Press, Serving, Training, Safety, Research, Projects (one floor each), Boardroom on top. Floors fill with instanced desks and people as headcount grows; lights and activity reflect the sliders.</li>
+<li>Tap a floor → that floor's panel (its slider, its projects, its numbers). End Turn is a fixed bottom button. The weekly memo is a sheet that slides up.</li>
+<li>Incidents show on the building: a floor goes dark, press gathers in the lobby. Warnings are a memo line only.</li>
+<li>Cutaway vs exterior: ask the owner on the first visual pass with a contact-sheet screenshot.</li>
+</ul>
+
+<h2>6. v1 scope (ship this, nothing more)</h2>
+<ul>
+<li>Full turn loop, three skills, slow-burn ladder, win and both loss conditions, end-of-run sheet.</li>
+<li>Rent + buy compute; one rival deal type live, others stubbed.</li>
+<li>Seed and A rounds, revenue engine, hiring.</li>
+<li>Four rivals with strategies and a news feed; public trust.</li>
+<li>Project generator with ~20 templates across three tiers.</li>
+<li>HQ building with floors filling; floor panels; memo sheet.</li>
+<li>Save codes; three career slots.</li>
+</ul>
+
+<h2>7. Verify</h2>
+<ul>
+<li><code>tools/balance.js</code>: bots for "race" (all training), "safe" (heavy safety), "balanced", "revenue-first" over 10 seeds; print turn of death / win, cause, peak cap. Target before ship: balanced wins ~25% of seeds within 6 years; race dies by incident most seeds; safe stalls behind rivals.</li>
+<li>Node tests per module; a Playwright flow check (boot → 10 turns → save → load → no console errors) with sections by env var.</li>
+</ul>
+
+<h2>8. Ask the owner (popups, batched) before or during the build</h2>
+<ul>
+<li>Cutaway or exterior HQ camera.</li>
+<li>Real rival names or rhyming fictional ones (default fictional).</li>
+<li>Career horizon: does a run end on the win, or continue as a "hold the frontier" endgame?</li>
+<li>Does an acquisition offer count as a win, a loss, or an exit with a score?</li>
+</ul>
+
+<h2>9. Back-burner (parked, not v1)</h2>
+<ul>
+<li>Remaining rival deal types (distribution, licence, acquisition).</li>
+<li>B and C rounds, IPO.</li>
+<li>Audio pack.</li>
+<li>Regions / jurisdictions (owner did not ask; only pitch if the market layer feels thin).</li>
+</ul>
+
+<div class="warn"><b>Do not add:</b> named staff, a regulator actor, a deckbuilder layer, a real-time clock, meta-unlocks. All were asked and answered.</div>
+
+</body>
+</html>
