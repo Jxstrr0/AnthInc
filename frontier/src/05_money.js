@@ -39,6 +39,7 @@
     msTurns: 36, msWarn: [8, 4, 1],          // milestone window; memo when 8, 4 and 1 weeks remain
     msPaceAt: [30, 24, 18, 12],              // weeks left at which the memo flags a capability milestone the current pace misses
     ms: { capFrac: 0.12, avgFrac: 0.18, revMin: 50000, revMult: 2.5, trustAdd: 10, trustMax: 80,
+      bWait: 26,                             // the B milestone cannot be met until this many weeks after the A closes (owner call V0.3)
       bRevMin: 400000, bRevMult: 3,          // the Series B milestone: weekly revenue max(bRevMin, trailing revenue × bRevMult)
       bRevAgain: 1.3, bRevWeeks: 8 },        //   when the A closes; after a miss (or on a 0.2 save) × bRevAgain. Trailing = the
                                              //   mean of the last bRevWeeks weeks, so one starved week cannot rig the target
@@ -147,7 +148,8 @@
   M.progress = function (s, m) {
     m = m || s.money.milestone; if (!m) return null;
     const cur = m.kind === 'cap' ? s.model.skills[m.skill || best(s)].cap : m.kind === 'avgCap' ? avg(s) : m.kind === 'revenue' ? s.money.revenue : trust(s);
-    return { current: cur, value: m.value, met: cur >= m.value, weeksLeft: m.due - s.turn };
+    const early = !!(m.opens && s.turn < m.opens);   // the window has not opened yet: reaching the value does not count
+    return { current: cur, value: m.value, met: !early && cur >= m.value, early, opensIn: early ? m.opens - s.turn : 0, weeksLeft: m.due - s.turn };
   };
   // capability milestones: where today's settings leave the measure by the due week (FR.sim.forecast gains held flat, so
   // slightly generous as gains shrink with capability). null for revenue and trust milestones, or without the full sim.
@@ -179,8 +181,9 @@
     else if (kind === 'revenue' && round === 'b') value = sig2(Math.max(Q.bRevMin, M.trailRevenue(s) * (again ? Q.bRevAgain : Q.bRevMult)));
     else if (kind === 'revenue') value = sig2(Math.max(Q.revMin, s.money.revenue * Q.revMult));
     else value = Math.min(Q.trustMax, ceil5(trust(s) + Q.trustAdd));
-    const m = { round, kind, skill: null, value, due: from + K.msTurns, text: '' };
-    m.text = RN(round) + ' opens if ' + REACH[kind](m) + ' by ' + FR.dateLabel(m.due) + '.';
+    const wait = round === 'b' && !again ? Q.bWait : 0;
+    const m = { round, kind, skill: null, value, opens: wait ? from + wait : 0, due: from + wait + K.msTurns, text: '' };
+    m.text = RN(round) + ' opens if ' + REACH[kind](m) + (wait ? ' between ' + FR.dateLabel(m.opens) + ' and ' : ' by ') + FR.dateLabel(m.due) + '.';
     return (s.money.milestone = m);
   }
   function pickKind(rng, round) {

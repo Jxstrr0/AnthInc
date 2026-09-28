@@ -1,6 +1,6 @@
 # Frontier — status (read this first every session)
 
-- **Version:** 0.3.0.0 built and tested, not yet published (0.2.0.0 published 2026-09-28 is what the artifact and Pages serve)
+- **Version:** 0.3.0.0 (published 2026-09-28 to the artifact and GitHub Pages)
 - **Artifact URL:** https://claude.ai/artifact/AFXyxwEKHRKuKf9oMy5Ms5 (title "Frontier", label = version; republish dist/game.artifact.html to it)
 - **Repo:** `Jxstrr0/AnthInc`, folder `frontier/`. Design: `docs/frontier-handoff-v0.1.html`. Contracts: `plan/contracts.md` (sim), `plan/contracts_ui.md` (HQ + UI).
 - **GitHub Pages:** https://jxstrr0.github.io/AnthInc/ serves `/index.html` at the repo root = the last PUBLISHED build.
@@ -26,33 +26,30 @@
   section's Open rides to the floor that manages it); sliders get **Undo** (back to this week's start) and **Default** (40/20/25/15).
 - V0.3 build calls (2026-09-28): account names fully fictional sector names (30, straight tone); a churned account is gone
   for the run. Lapsed (unanswered) offers may come back on a later board; signed, declined and lost names never do.
-- **Pending owner call: the sector raise.** Once the lab's Series B closes, every rival trains 48% faster from 13 weeks later
-  (`FR.market.K.raiseLift` 0.48, `raiseLag` 13; set `raiseLift` 0 to remove). Added in the build because the B cash (at least
-  10% of valuation, then ~$180M, now $150M) otherwise won balanced 95%, and a global rival speed-up killed the no-B path. The B offer and B
-  milestone cards say so before the player decides. Rival pace `gainBase` 0.44 → 0.48 for accounts. Owner: keep or veto.
-- Still to ask (handoff §7): first visual pass of the client wall (plaques, as built, vs a ledger board). Contact sheets:
-  `test/shots/contact-clientwall-390.png` (reworked plaques, 390x844) and `test/shots/contact-accounts.png`.
+- V0.3 owner calls (2026-09-28): **keep the sector raise** (rivals train 48% faster from 13 weeks after the B closes;
+  `FR.market.K.raiseLift` 0.48, `raiseLag` 13); **keep the plaques** on the client wall; the **B milestone opens 26 weeks after
+  the A closes** (`money.K.ms.bWait` 26; the window runs 36 weeks from there; `milestone.opens`, `progress().early`);
+  a rival incident costs accounts **half the mood (−5) when every safety is within 5 of capability** (`accounts.K.mood.rivalShield`).
 - V0.3 review round, lead's calls (2026-09-28): a declined or expired buyer returns after 52 weeks (churned: never);
   B re-offer waits 13, then 26, then 52 weeks; a round's amount grows at most 25% past its base, then the stake sold falls
   below pctMin; the B milestone uses 8-week trailing revenue (×1.3 after a miss); renewals go one tier up only when the lab
   meets that tier (PF scaled with the tier); deals within trust reach (minTrust 45/48/52); book of 5 before the B (was 4);
   Series B $150M (was $180M); an account below 30 is off the book at once and always leaves the next week.
-- Pending owner calls from the review round: (1) Series B timing: the B milestone ($400k weekly revenue) is met about 10
-  weeks after the A (bots: week 31-35), so the funding track ends inside Year 1; keep, or raise bRevMin / require the A to
-  have closed 26+ weeks? (2) Rival incidents cost every account 10 mood even when the lab is in step (trust is shielded,
-  mood is not); keep −10, shield it, or change the copy? (3) The account era goes quiet once the book is full and renews
-  itself: add a term-end decision, a drop option, sector-specific sensitivity, or leave it? (4) Keying the sector raise to
-  the B closing still rewards a short delay a little (the late-B bot now wins 15% against 25%, so no longer an exploit).
+- Open for a later batch: the account era goes quiet once the book is full and renews itself (term-end decision, drop
+  option or sector sensitivity?).
 - PR flow: one PR per milestone; the owner merges once the game builds, passes tests and is published.
 
 ## Build log
+- 0.3.0.0 published after the owner's calls: B milestone window opens 26 weeks after the A; rival-incident mood halved
+  when in step. Balance (20 seeds, --noB): balanced 30%, customer-first 5% (19 alive past year 4), balanced-noB 10%,
+  lateB 15%, race dies of the final incident at median week 67; B median week 43. Node ALL PASS; browser 7 sections ALL PASS.
 - 0.3.0.0 — Series B and the customer era (docs/frontier-handoff-v0.3.html). Series B ($150M, 10-20%) opens on a weekly
   revenue milestone (max($400k, 3× trailing 8-week revenue)) after the A; optional. Enterprise accounts (src/05b_accounts.js): unlock at avg
   cap 20 + trust 45, board of 1-3 every 8 weeks, tiers 1-3 (52/104/156 weeks, reserved PF, fee tier × $60k × (1 + 0.1 ×
   year)), mood/churn/renewal, max 5 live (6 after the B); fees count in revenue and valuation (+4× backlog). Two tier-2
   projects (Enterprise readiness work, Reference customer program). Serving floor client wall (plaques), Accounts section
   with Sign / Decline, serving readout split, HUD Cash chip split card, Series B in the Boardroom. Sector raise after the
-  B (pending owner call, above). Slider Undo / Default buttons; company overview sheet. Same-week churns share one memo line.
+  B (owner kept it). Slider Undo / Default buttons; company overview sheet. Same-week churns share one memo line.
   Tests: test/accounts.test.js, test/v03.test.js; browser SECTION=accounts; balance bot customer-first and --noB.
   Review round (37 sim/playtest/visual findings): capped late rounds, re-offer backoff, trailing B milestone and 0.2-save
   migration, trust-reach dealing, renewal PF scaling, name cooldown, leaving flag, one memo flush after shock, merged

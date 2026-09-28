@@ -164,10 +164,14 @@ step(4); assert.strictEqual(a.mood, 75.5, 'readiness work halves the unserved pe
 s.turn += 26; assert.ok(!A.ready(s)); a.starts = 0; step(4); assert.strictEqual(a.mood, 72.5);
 // incidents: -25 for the lab, -10 for a rival, after the ladder
 a.mood = 70; let q = rep(s.turn); q.events.push({ type: 'model:incident', skill: 'agents', gap: 22 }); A.shock(s, q); assert.strictEqual(a.mood, 45);
+s.model.skills.agents.cap = s.model.skills.agents.safe + 12;   // out of step: a rival incident costs the full 10
 q = rep(s.turn); q.events.push({ type: 'market:rivalIncident', rivalId: 'opal', trust: 2 }); A.shock(s, q); assert.strictEqual(a.mood, 35);
 assert.ok(/^Account mood down 10 after the Opal AI incident: Live Buyer 0 35\.$/.test(q.memo[0].text), q.memo[0].text);
 a.mood = 70; q = rep(s.turn); q.events.push({ type: 'market:rivalIncident', rivalId: 'opal', trust: 2 }, { type: 'market:rivalIncident', rivalId: 'zeta', trust: 2 }); A.shock(s, q);
 assert.ok(/^Account mood down 20 after incidents at Opal AI and Zeta: Live Buyer 0 50\.$/.test(q.memo[0].text), q.memo[0].text);
+// in step (every safe within 5 of cap): a rival incident costs half (owner call V0.3)
+s.model.skills.agents.cap = s.model.skills.agents.safe; assert.ok(FR.sim.inStep(s));
+a.mood = 70; q = rep(s.turn); q.events.push({ type: 'market:rivalIncident', rivalId: 'opal', trust: 2 }); A.shock(s, q); assert.strictEqual(a.mood, 65, 'in step: rival incident -5');
 
 // ---- churn on an incident: below 30 the account leaves next turn, trust -2, memo and news, gone for the run ----
 s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = s.turn + 3; a = live(s, 2, { mood: 50, name: 'Halden Mutual' });
@@ -298,7 +302,7 @@ q = step(30); assert.ok(q.memo.some(m => m.kind === 'good' && /^Live Buyer 0 and
 s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = 999; live(s, 1, { pfPerWeek: 10 });
 q = step(0); assert.ok(q.memo.some(m => m.kind === 'flag' && /^Live Buyer 0 contract live but short: 0 of 10 reserved PF served/.test(m.text)), JSON.stringify(q.memo));
 // shock: the plural says "contracts"; a book over 3 is summarised by its average
-s = game(); for (let i = 0; i < 4; i++) live(s, 1, { mood: 35 });
+s = game(); for (let i = 0; i < 4; i++) live(s, 1, { mood: 35 }); s.model.skills.agents.cap = s.model.skills.agents.safe + 12;   // out of step: full −10
 q = rep(s.turn); q.events.push({ type: 'market:rivalIncident', rivalId: 'opal' }); A.shock(s, q);
 assert.ok(/^Account mood down 10 after the Opal AI incident: average 25 across 4 accounts\. Below 30, Live Buyer 0, Live Buyer 1, Live Buyer 2 and Live Buyer 3 end their contracts next week\.$/.test(q.memo[0].text), q.memo[0].text);
 assert.ok(s.accounts.active.every(x => x.leaving));

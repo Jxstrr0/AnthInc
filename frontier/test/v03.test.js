@@ -33,15 +33,17 @@ let s = throughA(4);
 let ms = s.money.milestone;
 assert.deepStrictEqual([ms.round, ms.kind, ms.skill], ['b', 'revenue', null]);
 assert.strictEqual(ms.value, sig2(Math.max(K.ms.bRevMin, M.trailRevenue(s) * K.ms.bRevMult)));
-assert.strictEqual(ms.due, s.turn + K.msTurns);
-assert.ok(new RegExp('^Series B opens if weekly revenue reaches \\$[\\d.]+[kM] by ' + DATE + '\\.$').test(ms.text), ms.text);
+assert.strictEqual(ms.opens, s.turn + K.ms.bWait); assert.strictEqual(ms.due, s.turn + K.ms.bWait + K.msTurns);
+assert.ok(new RegExp('^Series B opens if weekly revenue reaches \\$[\\d.]+[kM] between ' + DATE + ' and ' + DATE + '\\.$').test(ms.text), ms.text);
 assert.ok(new RegExp('^Series A closed: \\$[\\d.]+M for \\d+%\\. Series B opens if weekly revenue reaches').test(s.pendingMemo.slice(-1)[0].text));
 const afterA = FR.clone(s);
 
 // ---- revenue reaches the milestone: the B offer, inside the bounds, and the money:milestone event for round 'b' ----
 setCap(s, 45); s.compute.rentPF = 900; s.sliders = { training: 10, serving: 80, safety: 5, research: 5 };
 let guard = 0;
-while (!s.money.offer && guard++ < 30) s = run(s, 1);
+s = run(s, 1); assert.ok(!s.money.offer, 'no B before the window opens'); assert.ok(M.progress(s).early);
+while (!s.money.offer && guard++ < 60) s = run(s, 1);
+assert.ok(s.turn >= ms.opens, 'the B milestone counts only from ' + ms.opens);
 assert.ok(s.money.offer && s.money.offer.round === 'b', 'B offered once weekly revenue reaches the mark');
 assert.ok(s.money.revenue >= ms.value);
 assert.deepStrictEqual(ev(s, 'money:milestone'), [{ type: 'money:milestone', round: 'b', hit: true }]);

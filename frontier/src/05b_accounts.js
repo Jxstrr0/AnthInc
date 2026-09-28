@@ -19,7 +19,7 @@
     cooldown: 52,                            // a declined or expired buyer can be dealt again this many weeks later
     signCost: 150000, signWeeks: 2,          // onboarding $ × tier at signing; the fee starts 2 weeks later
     signTrust: [1, 1, 2],                    // public trust on signing, by tier
-    mood: { start: 70, top: 80, up: 1, unserved: 3, incident: 25, rival: 10, churn: 30, renew: 60, watch: 45 },
+    mood: { start: 70, top: 80, up: 1, unserved: 3, incident: 25, rival: 10, rivalShield: 0.5, churn: 30, renew: 60, watch: 45 },
     readyShare: 0.5,                         // Enterprise readiness work: the unserved-PF penalty × this while it runs
     churnTrust: 2,                           // public trust lost when an account churns
     dueWarn: 8,                              // memo when a contract has this many weeks left
@@ -286,11 +286,13 @@
     auto(report);
   };
 
-  // after the ladder (02_sim): this week's incidents move every account's mood. A lab incident −25, a rival incident −10.
+  // after the ladder (02_sim): this week's incidents move every account's mood. A lab incident −25, a rival incident −10,
+  // halved (K.mood.rivalShield) when every skill's safety is within 5 of capability (owner call V0.3, like the trust shield).
   A.shock = function (s, report) {
     const st = s.accounts; if (!st || !st.active.length || s.status !== 'playing') return auto(report);
     const lab = report.events.filter(e => e.type === 'model:incident'), rival = report.events.filter(e => e.type === 'market:rivalIncident');
-    const hit = K.mood.incident * lab.length + K.mood.rival * rival.length; if (!hit) return auto(report);
+    const inStep = FR.sim && FR.sim.inStep ? FR.sim.inStep(s) : false;
+    const hit = K.mood.incident * lab.length + K.mood.rival * (inStep ? K.mood.rivalShield : 1) * rival.length; if (!hit) return auto(report);
     const leaving = [];
     st.active.forEach(a => { const was = a.mood; a.mood = FR.clamp(a.mood - hit, 0, 100); if (a.mood < K.mood.churn && was >= K.mood.churn) { a.leaving = true; leaving.push(a.name); } });
     const rivals = rival.map(e => { const r = s.market && s.market.rivals.find(x => x.id === e.rivalId); return r ? r.name : 'a rival'; });
