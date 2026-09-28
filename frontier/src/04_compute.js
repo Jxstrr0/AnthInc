@@ -52,7 +52,9 @@
   // $/week. During End Turn, once step has run, the bill for the week just worked (the price and fleet the player saw);
   // otherwise the projection for the coming week.
   C.cost = (s) => { const b = s.compute.bill; return b && b.turn === s.turn ? b.cash : Math.round(C.rentCost(s) + C.powerCost(s)); };
-  C.revShare = (s) => sum(s.compute.deals, d => d.revShare);
+  // fraction of revenue owed to deals; during End Turn, the share for the week just worked (a deal that ends this week
+  // still takes its cut for the week its PF was used)
+  C.revShare = (s) => { const b = s.compute.bill; return b && b.turn === s.turn && b.revShare != null ? b.revShare : sum(s.compute.deals, d => d.revShare); };
   // one cluster for the UI: effective PF now, power $/week, age and weeks left
   C.clusterInfo = function (s, x) {
     const a = age(s.turn, x);
@@ -179,7 +181,7 @@
 
   C.step = function (s, rng, report) {
     const c = s.compute, next = s.turn + 1, rent = C.rentCost(s), power = C.powerCost(s);
-    c.bill = { turn: s.turn, cash: Math.round(rent + power) };     // what 05_money charges for this week
+    c.bill = { turn: s.turn, cash: Math.round(rent + power), revShare: C.revShare(s) };   // what 05_money charges for this week
     price(s, rng, report);
     installs(s, next, report);
     retirements(s, next, report);

@@ -254,7 +254,7 @@
       B: () => bil(rng.range(1, 6) * grow(s)), V: () => bil(rng.range(30, 150) * grow(s)),
       P: () => rng.int(5, 35), P2: () => rng.int(40, 70), N: () => rng.int(2, 9), G: () => rng.int(1, 5), H: () => rng.int(20, 80),
       U: () => Math.round(rng.int(20, 120) * grow(s)), C: () => rng.pick(K.sites), W: () => rng.pick(K.cities), ST: () => rng.pick(K.states),
-      T: () => Math.round(m.trust), F: () => Math.round(M.best(s).avgCap), L: () => s.lab.name,
+      T: () => Math.round(m.trust), F: () => Math.round(Math.max(M.best(s).avgCap, you(s))), L: () => s.lab.name,
       RANK: () => ORD[m.rivals.filter(r => avg(r) > you(s)).length]
     };
     return { kind: KIND[k], text: text.replace(/\{(\w+)\}/g, (x, v) => (V[v] ? V[v]() : x)), fx, rival };

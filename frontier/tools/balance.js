@@ -81,8 +81,8 @@ function smart(s, o) {
   if (q.cash) v += (q.cash - o.cost) / 2e5;
   if (q.trust) v += q.trust * 0.3;
   if (q.trustRisk) v -= 2;
-  if (fx.demandMult) v += s.money.revenue > 0 ? 3 : -1;
-  if (fx.priceMult) v += s.money.revenue * 52 * (fx.priceMult - 1) / o.cost - 1;
+  // a card-reading player: revenue effects by their return, extra revenue over the effect's weeks against the cost
+  if (fx.demandMult || fx.priceMult) v += 3 * (s.money.revenue * ((fx.demandMult || 1) * (fx.priceMult || 1) - 1) * fx.turns / o.cost - 1);
   if (fx.rentDiscount) v += FR.compute.rentCost(s) * fx.rentDiscount * fx.turns / o.cost - 1.5;
   return v;
 }

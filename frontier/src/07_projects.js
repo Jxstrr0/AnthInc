@@ -14,7 +14,9 @@
     growth: 0.2,                       // cost, PF and cash payoffs grow 20% per game year
     dimFloor: 0.3,                     // cap and safe payoffs × max(dimFloor, 1 − level/100) of the skill at offer time
     cashCapDiv: 25,                    // cash payoffs × (1 + avgCap / cashCapDiv)
-    fxMax: { demandMult: 2.5, priceMult: 1.5, rentDiscount: 0.5 },   // limits when effects stack
+    fxMax: { demandMult: 1.5, priceMult: 1.25, rentDiscount: 0.5 },  // limits when effects stack
+    // perRev: cards whose payoff scales with revenue (demand, price, trust) also cost perRev × the lab's weekly revenue when
+    // dealt, so their return stays near 1.5x at most whatever the lab earns
     // templates. skill: 'one' picks a skill per offer, 'all' pays on every skill, null none. turns, pf (per week) and cost
     // (total $) are ranges. pay: cap (with drift = share of the cap gain lost from safe), safe, trust, cash,
     // trustRisk [chance, points], fx {demandMult, priceMult, rentDiscount, turns}. news: wire line on completion ({L} = lab).
@@ -25,7 +27,7 @@
         blurb: 'A standing evaluation suite for {s}. Closes the gap and keeps it measured.' },
       { id: 'redteam', tier: 1, kind: 'safety', skill: 'one', name: '{S} red-team exercise', turns: [2, 3], pf: [1, 3], cost: [1e5, 2e5], risk: 0.1, pay: { safe: 3, trust: 1 },
         blurb: 'An internal team attacks the {s} model and patches what it finds.' },
-      { id: 'card', tier: 1, kind: 'product', skill: null, name: 'Model card release', turns: [1, 2], pf: [0, 1], cost: [5e4, 1e5], risk: 0.05, pay: { trust: 3 },
+      { id: 'card', tier: 1, kind: 'product', skill: null, name: 'Model card release', turns: [1, 2], pf: [0, 1], cost: [5e4, 1e5], perRev: 0.6, risk: 0.05, pay: { trust: 3 },
         blurb: 'Publish evaluation results and known limits for the current model.', news: '{L} publishes a model card with evaluation results for its current model.' },
       { id: 'paper', tier: 1, kind: 'research', skill: 'all', name: 'Alignment research paper', turns: [3, 5], pf: [2, 4], cost: [2e5, 4e5], risk: 0.15, pay: { safe: 1, trust: 3 },
         blurb: 'Write up the lab\'s alignment work for peer review.', news: '{L} publishes alignment research for peer review.' },
@@ -40,9 +42,9 @@
         blurb: 'The interpretability team maps internal features across all three skills.' },
       { id: 'bounty', tier: 2, kind: 'safety', skill: 'one', name: '{S} bug bounty', turns: [4, 6], pf: [2, 4], cost: [4e5, 8e5], risk: 0.1, pay: { safe: 5, trust: 2 },
         blurb: 'Pay outside researchers for {s} failures they find and report.' },
-      { id: 'launch', tier: 2, kind: 'product', skill: null, name: 'Product launch', turns: [5, 7], pf: [8, 12], cost: [1.2e6, 2e6], risk: 0.2, pay: { trust: 2, fx: { demandMult: 1.3, turns: 39 } },
+      { id: 'launch', tier: 2, kind: 'product', skill: null, name: 'Product launch', turns: [5, 7], pf: [8, 12], cost: [1.2e6, 2e6], perRev: 2.5, risk: 0.2, pay: { trust: 2, fx: { demandMult: 1.15, turns: 26 } },
         blurb: 'Ship the model to a wider market with sales and support behind it.', news: '{L} launches its model to a wider market.' },
-      { id: 'efficiency', tier: 2, kind: 'compute', skill: null, name: 'Inference efficiency work', turns: [4, 6], pf: [6, 10], cost: [8e5, 1.4e6], risk: 0.15, pay: { fx: { priceMult: 1.15, turns: 52 } },
+      { id: 'efficiency', tier: 2, kind: 'compute', skill: null, name: 'Inference efficiency work', turns: [4, 6], pf: [6, 10], cost: [8e5, 1.4e6], perRev: 1.4, risk: 0.15, pay: { fx: { priceMult: 1.08, turns: 26 } },
         blurb: 'Distillation and serving work. More revenue from each PF served.' },
       { id: 'preorder', tier: 2, kind: 'compute', skill: null, name: 'Chip pre-order', turns: [3, 5], pf: [0, 0], cost: [1e6, 2e6], risk: 0.1, pay: { fx: { rentDiscount: 0.2, turns: 39 } },
         blurb: 'Commit to chip supply ahead of need at a fixed discount on rent.' },
@@ -59,8 +61,8 @@
         blurb: 'The model runs alignment experiments on itself under supervision. Fast and less certain.' },
       { id: 'evalpartner', tier: 3, kind: 'safety', skill: 'all', name: 'Frontier eval partnership', turns: [5, 7], pf: [6, 10], cost: [1.5e6, 2.5e6], risk: 0.1, pay: { safe: 3, trust: 5 },
         blurb: 'Independent evaluators test each release before it ships and publish the results.', news: 'Independent evaluators publish pre-release test results for {L}.' },
-      { id: 'flagship', tier: 3, kind: 'product', skill: null, name: 'Flagship model launch', turns: [6, 8], pf: [20, 30], cost: [4e6, 6e6], risk: 0.25,
-        pay: { trust: 3, fx: { demandMult: 1.5, priceMult: 1.1, turns: 52 } },
+      { id: 'flagship', tier: 3, kind: 'product', skill: null, name: 'Flagship model launch', turns: [6, 8], pf: [20, 30], cost: [4e6, 6e6], perRev: 5, risk: 0.25,
+        pay: { trust: 3, fx: { demandMult: 1.25, priceMult: 1.05, turns: 26 } },
         blurb: 'Launch the flagship model with a full commercial push.', news: '{L} launches its flagship model.' },
       { id: 'supply', tier: 3, kind: 'compute', skill: null, name: 'Compute supply contract', turns: [4, 6], pf: [0, 0], cost: [5e6, 8e6], risk: 0.15, pay: { fx: { rentDiscount: 0.3, turns: 104 } },
         blurb: 'A two-year supply contract at a fixed discount on rented compute.' }
@@ -122,7 +124,8 @@
   P.fx = (s) => fxOf((s.projects && s.projects.effects && s.projects.effects.grants) || [], s.turn);
   function setFx(s, report) {
     const e = s.projects.effects;
-    e.grants.forEach(g => { if (g.until === s.turn - 1) report.memo.push({ kind: 'change', text: g.name + ' effect ended: ' + fxText(g) + '.' }); });
+    // announced after the last week it applies, so the player can plan the week without it
+    e.grants.forEach(g => { if (g.until === s.turn) report.memo.push({ kind: 'change', text: g.name + ' effect ends: ' + fxText(g) + ' no longer applies from next week.' }); });
     e.grants = e.grants.filter(g => g.until >= s.turn);
     Object.assign(e, fxOf(e.grants, s.turn));
   }
@@ -138,12 +141,12 @@
     if (q.fx) o.fx = Object.assign({}, q.fx);
     return o;
   }
+  const fill = (x, sk) => { const S = sk && sk !== 'all' ? FR.SKILL_NAME[sk] : ''; return x.replace('{S}', S).replace('{s}', S.toLowerCase()); };
   function makeOffer(s, rng, t, turn, i) {
     const g = grow(turn), sk = t.skill === 'one' ? rng.pick(FR.SKILLS) : t.skill === 'all' ? 'all' : null;
-    const S = sk && sk !== 'all' ? FR.SKILL_NAME[sk] : '', fill = (x) => x.replace('{S}', S).replace('{s}', S.toLowerCase());
-    return { id: 'o' + turn + String.fromCharCode(97 + i), tpl: t.id, name: fill(t.name), kind: t.kind, skill: sk, tier: t.tier,
+    return { id: 'o' + turn + String.fromCharCode(97 + i), tpl: t.id, name: fill(t.name, sk), kind: t.kind, skill: sk, tier: t.tier,
       turns: rng.int(t.turns[0], t.turns[1]), pfPerTurn: Math.round(rng.range(t.pf[0], t.pf[1]) * g),
-      cost: Math.round(rng.range(t.cost[0], t.cost[1]) * g / 1e4) * 1e4, risk: t.risk, payoff: pay(s, t.pay, sk, g), blurb: fill(t.blurb) };
+      cost: Math.round((rng.range(t.cost[0], t.cost[1]) * g + (t.perRev || 0) * Math.max(0, (s.money && s.money.revenue) || 0)) / 1e4) * 1e4, risk: t.risk, payoff: pay(s, t.pay, sk, g), blurb: fill(t.blurb, sk) };
   }
   // a tier's weight is shared by its templates, so the board's tier mix follows tierW whatever the template counts
   const weight = (t, tier) => (t.tier <= tier ? K.tierW[tier - t.tier] || 0 : t.tier === tier + 1 ? K.teaserW : 0) / K.T.filter(x => x.tier === t.tier).length;
@@ -159,11 +162,22 @@
     pj.refreshAt = turn + K.refreshTurns;
   }
 
-  // the payoff as one line for cards: "Coding capability +5, safety -1.5."
-  P.describe = function (o) {
+  // safety a payoff would add today, per skill: safe never rises above cap + the model's safeLead
+  const lead = () => (FR.model && FR.model.K ? FR.model.K.safeLead : 3);
+  const room = (s, k) => { const x = s.model.skills[k]; return Math.max(0, Math.min(100, x.cap + lead()) - x.safe); };
+  P.safeToday = function (s, o) {
+    const q = o.payoff || {}; if (!(q.safe > 0) || !o.skill || !s || !s.model) return null;
+    const ks = o.skill === 'all' ? FR.SKILLS : [o.skill], got = sum(ks, k => Math.min(q.safe, room(s, k)));
+    return { full: q.safe * ks.length, now: got, each: got / ks.length };
+  };
+  // the payoff as one line for cards: "Coding capability +5, safety -1.5." With the state, a safety payoff that today's
+  // ceiling (capability + 3) would cut is shown with what it would add now.
+  P.describe = function (o, s) {
     const q = o.payoff || {}, b = [], sk = o.skill, S = sk && sk !== 'all' ? FR.SKILL_NAME[sk] + ' ' : '';
+    const st = P.safeToday(s, o), cut = st && st.now < st.full - 0.05 ?
+      ' (' + sg(st.each) + (sk === 'all' ? ' on average' : '') + ' at today\'s levels: safety stops at capability + ' + lead() + ')' : '';
     if (q.cap) b.push(S + 'capability ' + sg(q.cap) + (q.safe ? ', safety ' + sg(q.safe) : ''));
-    else if (q.safe) b.push(sk === 'all' ? 'safety ' + sg(q.safe) + ' on every skill' : S + 'safety ' + sg(q.safe));
+    else if (q.safe) b.push((sk === 'all' ? 'safety ' + sg(q.safe) + ' on every skill' : S + 'safety ' + sg(q.safe)) + cut);
     if (q.trust) b.push('public trust ' + sg(q.trust));
     if (q.cash) b.push(money(q.cash) + ' on delivery');
     if (q.fx) b.push(fxText(q.fx) + ' for ' + wk(q.fx.turns));
@@ -184,10 +198,17 @@
     p.turnsLeft = weeksLeft(p, pace(s).speed);
     return { ok: true, from: 'projects', uid: p.uid };
   };
+  // no work done yet: the card goes back on the board (so cancelling cannot empty the board and force a fresh one);
+  // otherwise the card is spent and nothing is refunded
   P.cancel = function (s, uid) {
     const pj = s.projects, i = pj.active.findIndex(p => p.uid === uid);
     if (i < 0) return no('No active project with that id');
-    const p = pj.active.splice(i, 1)[0];
+    const p = pj.active.splice(i, 1)[0], t = tpl(p.tpl);
+    if (!p.progress && t) {
+      pj.offers.push({ id: p.uid, tpl: p.tpl, name: p.name, kind: p.kind, skill: p.skill, tier: t.tier, turns: p.turns, pfPerTurn: p.pfPerTurn,
+        cost: p.cost, risk: p.risk, payoff: p.payoff, blurb: fill(t.blurb, p.skill) });
+      return { ok: true, from: 'projects', memo: p.started < s.turn ? { kind: 'change', text: 'Withdrawn before work began: ' + p.name + '. No cost; the offer is back on the board.' } : null };
+    }
     record(s, p, false, 'cancelled', Math.round(rate(p) * p.progress));
     return { ok: true, from: 'projects' };
   };
@@ -213,7 +234,12 @@
   }
   function finish(s, p, rng, report) {
     const q = p.payoff, b = [], t = tpl(p.tpl);
-    if ((q.cap || q.safe) && p.skill && FR.model && FR.model.boost) b.push(modelText(s, p, FR.model.boost(s, p.skill, { cap: q.cap || 0, safe: q.safe || 0 })));
+    if ((q.cap || q.safe) && p.skill && FR.model && FR.model.boost) {
+      const d = FR.model.boost(s, p.skill, { cap: q.cap || 0, safe: q.safe || 0 });
+      b.push(modelText(s, p, d));
+      const got = p.skill === 'all' ? sum(FR.SKILLS, k => d[k].safe) : d.safe, full = q.safe * (p.skill === 'all' ? FR.SKILLS.length : 1);
+      if (q.safe > 0 && !q.cap && got < full - 0.05) b.push(n1(full - got) + ' of the safety payoff unused: safety stops at capability + ' + lead());
+    }
     if (q.trust) b.push(trustText(s, nudge(s, q.trust, p.name, report)));
     if (q.cash && s.money) { s.money.cash += q.cash; report.flows.projectPayout = (report.flows.projectPayout || 0) + q.cash; b.push(money(q.cash) + ' received'); }
     if (q.fx) {
@@ -285,8 +311,8 @@
     keep.forEach(p => { p.turnsLeft = weeksLeft(p, k.speed); });
     pj.spend = { turn: T, cash: Math.round(cash) };
     setFx(s, report);
-    // the offer board: every K.refreshTurns, when empty, or when a tier opens
-    if (opened || !pj.offers.length || T + 1 >= pj.refreshAt) {
+    // the offer board: every K.refreshTurns, when nothing on it can be greenlit, or when a tier opens
+    if (opened || !pj.offers.some(o => o.tier <= r.tier) || T + 1 >= pj.refreshAt) {
       refresh(s, rng, T + 1);
       if (!opened) report.memo.push({ kind: 'change', text: 'Project board refreshed: ' + pj.offers.length + ' offers until ' + FR.dateLabel(pj.refreshAt - 1) + '.' });
     }

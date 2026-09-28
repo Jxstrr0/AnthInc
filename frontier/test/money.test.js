@@ -14,7 +14,7 @@ const nudges = [];
 FR.market = { init: s => { s.market = { trust: 50, rivals: [{ id: 'zeta', name: 'Zeta', cap: { coding: 0, reasoning: 0, agents: 0 } }] }; },
   step() {}, best: () => ({ rivalId: 'opal', avgCap: 99 }), trustMult: s => 0.5 + s.market.trust / 100,
   nudgeTrust: (s, d, why) => { nudges.push({ d, why }); s.market.trust = FR.clamp(s.market.trust + d, 0, 100); } };
-FR.projects = { init: s => { s.projects = { cash: 0 }; }, pfDemand: () => 0, step() {}, cashDemand: s => s.projects.cash };
+FR.projects = { init: s => { s.projects = { cash: 0 }; }, pfDemand: () => 0, step() {}, cashDemand: s => s.projects.once && s.projects.once.turn === s.turn ? s.projects.once.cash : s.projects.cash };
 
 const game = (seed) => FR.sim.newGame({ seed: seed || 3 });
 const rep = (t) => ({ turn: t || 1, events: [], memo: [], news: [], flows: {}, commands: [] });
@@ -63,6 +63,10 @@ let t = cmd(s, { type: 'hire', n: 5 });
 assert.strictEqual(t.money.cash, s.money.cash - 5 * K.hireFee);
 assert.deepStrictEqual(t.staff.hiring, [{ n: 5, arrives: 1 + K.hireTurns }]);
 assert.deepStrictEqual(cmd(t, { type: 'hire', n: '2' }).staff.hiring, [{ n: 7, arrives: 1 + K.hireTurns }]);
+// at most K.maxHire a week across commands
+{ const r = FR.sim.applyCommands(s, [{ type: 'hire', n: K.maxHire - 5 }, { type: 'hire', n: 5 }, { type: 'hire', n: 1 }]);
+  assert.deepStrictEqual(r.results.map(x => x.ok), [true, true, false]); assert.ok(/0 left this week/.test(r.results[2].why));
+  let w = FR.sim.endTurn(r.state, []); assert.strictEqual(M.hireRoom(w), K.maxHire); assert.ok(cmd(w, { type: 'hire', n: K.maxHire })); }
 s = run(s, 1, [{ type: 'hire', n: 5 }]);
 assert.ok(memo(s, /^Hiring 5: recruiting fees \$100k/));
 while (s.turn < 1 + K.hireTurns) {
@@ -175,6 +179,12 @@ s = run(s, 1); assert.ok(memo(s, /^Runway 25 weeks at current burn/)); assert.ok
 s = run(s, 1); assert.ok(!memo(s, /^Runway/));
 s.money.cash = Math.round(13.5 * b); s = run(s, 1); assert.ok(memo(s, /^Runway 12 weeks/));
 s.money.cash = Math.round(5.5 * b); s = run(s, 1); assert.ok(memo(s, /^Runway 4 weeks/)); s = run(s, 1); assert.ok(memo(s, /^Runway 3 weeks/));
+s.money.cash = Math.round(2.5 * b); s = run(s, 1); assert.ok(memo(s, /^Runway 1 week at current burn/));
+s = run(s, 1); assert.ok(memo(s, /^Cash runs out next week at current burn/));
+// the memo's runway is next week's forecast (the HUD's), not the bills of the week just closed
+s = game(); s.money.cash = Math.round(9 * b); s.projects.once = { turn: 1, cash: 3 * b }; s = run(s, 1);   // a costly week that will not repeat
+{ const f = FR.sim.forecast(s), line = s.lastReport.memo.find(m => /^Runway/.test(m.text)), w = f.runway;
+  assert.ok(line && line.text.startsWith('Runway ' + w + ' weeks at current burn: ' + FR.fmtMoney(f.burn) + ' a week out'), line && line.text); }
 
 // bankruptcy: cash <= 0 after the turn ends the run
 s = game(); s.money.cash = 50000; s = run(s, 1);

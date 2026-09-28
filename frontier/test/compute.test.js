@@ -8,7 +8,7 @@ const skill = () => ({ cap: 8, safe: 8, warnStreak: 0, critStreak: 0, warned: fa
 FR.model = { init: s => { s.model = { skills: { coding: skill(), reasoning: skill(), agents: skill() }, peakCap: 0 }; }, train() {}, ladder() {} };
 FR.money = {
   init: s => { s.money = { cash: 1e9, founderPct: 100, valuation: 0, revenue: 0, burn: 0, net: 0 }; s.staff = { headcount: 10, hiring: [] }; },
-  step: s => { const b = C.cost(s); s.money.burn = b; s.money.cash -= b; }
+  step: s => { const b = C.cost(s); s.money.burn = b; s.money.cash -= b; s.money.share = C.revShare(s); }
 };
 FR.market = { init: s => { s.market = { trust: 50, rivals: [{ id: 'deepfield', name: 'DeepField' }], firsts: [], dealOffer: null }; }, step() {}, best: () => ({ rivalId: 'deepfield', avgCap: 99 }) };
 FR.projects = { init() {}, pfDemand: () => 0, step() {} };
@@ -90,6 +90,7 @@ s = run(s, 23); assert.strictEqual(s.turn, 24);
 s = run(s, 1); assert.ok(s.lastReport.memo.some(m => m.kind === 'due' && /DeepField compute share ends in/.test(m.text)));
 s = run(s, 1); assert.strictEqual(s.turn, 26); assert.strictEqual(s.compute.deals.length, 1);   // live for turns 1..26
 s = run(s, 1); assert.strictEqual(s.compute.deals.length, 0); assert.strictEqual(C.revShare(s), 0);
+assert.strictEqual(s.money.share, 0.12, 'the last week the deal PF is used still pays its share');
 assert.ok(s.lastReport.memo.some(m => /DeepField compute share ended: 80 PF/.test(m.text)));
 s.market.dealOffer = { rivalId: 'deepfield', kind: 'compute', pf: 50, revShare: 0.1, turns: 52, expires: 99 };
 assert.ok(C.acceptDeal(s).ok); assert.strictEqual(C.endDeal(s, 'opal').ok, false);
