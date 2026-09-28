@@ -22,6 +22,8 @@
   agents gaps bite harder (pressure weights incident odds and trust cost; gauge on the Safety floor); a lab with every safe
   within 5 of cap takes half the trust hit from rival incidents. Lead's calls: Series A dilution ~20-25%; DeepField share
   stays free to end.
+- V0.3 extras (2026-09-28): a **company overview** sheet opened from a new dock button on any floor (09_ui_overview.js; each
+  section's Open rides to the floor that manages it); sliders get **Undo** (back to this week's start) and **Default** (40/20/25/15).
 - PR flow: one PR per milestone; the owner merges once the game builds, passes tests and is published.
 
 ## Build log

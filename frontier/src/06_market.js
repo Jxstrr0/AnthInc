@@ -11,6 +11,7 @@
     gainBase: 0.44, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
     startJitter: 1.5, safeJitter: 2, speedJitter: 0.12,  // start cap ± points, start safe ± points, base speed ± fraction
     speedMin: 0.85, speedMax: 1.15,                     // speed bounds, multiples of the rival's base speed
+    follow: 0, followMax: 10,                           // fast follow (V0.3): a rival behind the lab gains follow × points behind faster
     fundLift: 0.02, incSlow: 0.015,                     // a funding line speeds a rival up 2%; its own incident slows it 1.5%
     safeFollow: 0.1,                                    // rival safe closes 10% of the way to cap − margin each week, never falls
     incBase: 0.004, incGap: 8, incSlope: 0.004,         // rival incident chance = risk × (incBase + (worst gap − incGap) × incSlope)
@@ -172,7 +173,8 @@
 
   // ---- the week ----
   function advance(s, r, rng, report) {
-    const d = RV(r.id), rate = K.gainBase * r.speed * (1 + d.ramp * (s.turn - 1) / 52), a0 = avg(r);
+    const d = RV(r.id), a0 = avg(r), lead = s.model ? Math.max(0, FR.sim.avgCap(s) - a0) : 0;
+    const rate = K.gainBase * r.speed * (1 + d.ramp * (s.turn - 1) / 52) * (1 + K.follow * Math.min(lead, K.followMax));
     const gain = (k) => rate * d.w[k] * Math.pow(Math.max(0, 1 - r.cap[k] / 100), K.dimExp);
     const noise = FR.clamp(1 + rng.normal() * K.gainNoise, 0.2, 1.8);
     FR.SKILLS.forEach(k => { r.cap[k] = r2(Math.min(100, r.cap[k] + gain(k) * d.steady * noise)); });
