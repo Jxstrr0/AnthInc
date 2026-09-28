@@ -64,7 +64,7 @@
   --text-xl:20px;   /* sheet and card titles (display) */
   --text-2xl:26px;  /* screen titles (display) */
   --text-3xl:34px;  /* hero numbers */
-  --text-logo:clamp(44px,14vw,62px);
+  --text-logo:clamp(40px,12.5vw,60px);
   --lh-tight:1.1; --lh-snug:1.3; --lh-body:1.45;
   /* weights: IBM Plex Sans ships 400/500/600; Archivo 600-800 (display only) */
   --w-regular:400; --w-medium:500; --w-bold:600; --w-black:600; --w-display:700; --w-logo:800;
@@ -327,7 +327,7 @@ h1.logo.md{font-size:clamp(36px,11vw,46px)}
 .menu-art{display:flex;justify-content:center;margin:0 0 var(--sp-3)}
 .hero-art.sm{width:min(34vw,128px);margin:0}
 .menu-pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
-.menu-pair .btn{margin:var(--sp-2) 0 0}
+.menu-pair .btn{margin:var(--sp-2) 0 0;padding:10px 8px;font-size:var(--text-md);white-space:nowrap}
 .btn.menu-credits{width:auto;margin:var(--sp-4) auto 0;color:var(--ink-3)}
 /* menu newswire: a glass band at the bottom (content pads above it, so it never covers a button) */
 #menu{padding-bottom:calc(var(--ticker-h) + var(--sp-10) + var(--safe-b))}
@@ -441,6 +441,8 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 .end-record li.rival .mk{background:var(--bad-tint);color:var(--bad)}
 .end-record li.open{background:transparent;border:1px dashed var(--line)}
 .end-record li.open .by{color:var(--ink-3)}
+.end-memo{margin-top:var(--sp-3)}
+.end-memo li{background:var(--raised);font-size:var(--text-sm)}
 /* ---- HUD over the 3D view: status chips, frontier strip, bottom dock, Back chip, first-visit hint.
    Icons come from --icon-* masks because 09_ui_hud.js rewrites the chip and button text. ---- */
 #hud{position:fixed;inset:0;z-index:var(--z-hud);display:none;pointer-events:none}
@@ -470,7 +472,9 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 /* the frontier strip: your average capability against the best rival's, and the safe-hold count once it runs */
 #hud .strip{position:absolute;top:calc(var(--sp-2) + var(--safe-t) + var(--chip-h) + 6px);left:var(--sp-3);right:var(--sp-3);display:flex;align-items:center;gap:10px;max-width:560px;height:var(--strip-h);margin:0 auto;padding:0 12px;border:1px solid var(--glass-line);border-radius:var(--r-pill);background:var(--glass);box-shadow:var(--sh-1);color:var(--ink-2);font-size:var(--text-xs);line-height:1;white-space:nowrap;overflow:hidden;pointer-events:none}
 #hud .strip .st-k{flex:none;font-weight:var(--w-bold);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-3)}
-#hud .strip .st-v{display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+#hud .strip .st-v{display:flex;align-items:center;gap:5px;flex:none}
+#hud .strip .st-riv{flex:0 1 auto;min-width:0;overflow:hidden}
+#hud .strip .st-riv .nm{min-width:0;overflow:hidden;text-overflow:ellipsis}
 #hud .strip .st-v b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--ink)}
 #hud .strip .st-you b{color:var(--cap)}
 #hud .strip .st-gap{flex:none;padding:2px 6px;border-radius:var(--r-pill);font-family:var(--font-num);font-weight:var(--w-medium);background:var(--raised-2);color:var(--ink-2)}
@@ -478,9 +482,12 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #hud .strip .st-gap.warn{background:var(--warn-tint);color:var(--warn)}
 #hud .strip .st-hold{flex:none;margin-left:auto;display:flex;align-items:center;gap:5px;color:var(--good)}
 #hud .strip .st-hold b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--good)}
-#hud .strip .st-hold i{display:block;width:40px;height:4px;border-radius:2px;background:var(--sunken);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+#hud .strip .st-hold i{display:none;width:40px;height:4px;border-radius:2px;background:var(--sunken);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
 #hud .strip .st-hold i::before{content:"";display:block;height:100%;width:calc(var(--v,0) * 1%);background:var(--good)}
-@media (max-width:374px){#hud .strip .st-k,#hud .strip .st-hold i{display:none}}
+/* the hold count takes the label's room; the hold bar shows only where it fits */
+#hud .strip.holding .st-k{display:none}
+@media (min-width:430px){#hud .strip .st-hold i{display:block}#hud .strip.holding .st-k{display:inline}}
+@media (max-width:374px){#hud .strip .st-k{display:none}}
 
 /* bottom dock */
 #hud .bottom{position:absolute;left:var(--sp-3);right:var(--sp-3);bottom:calc(var(--sp-3) + var(--safe-b));display:flex;gap:6px;max-width:440px;min-height:var(--dock-h);margin:0 auto;padding:6px;border:1px solid var(--glass-line);border-radius:22px;background:var(--glass);box-shadow:var(--sh-2);pointer-events:auto}
@@ -551,8 +558,8 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #toast.on{display:block;animation:toast-in var(--dur-3) var(--ease-spring)}
 #toast.bad{border-left-color:var(--bad)}
 #toast.good{border-left-color:var(--good)}
-/* no HUD (menus): the toast sits near the top */
-body:not(.in-world) #toast{top:calc(var(--sp-4) + var(--safe-t))}
+/* no HUD (menus and full screens): the toast sits low, clear of the screen titles and above the menu newswire */
+body:not(.in-world) #toast{top:auto!important;bottom:calc(var(--ticker-h) + var(--sp-6) + var(--safe-b))}
 @keyframes toast-in{from{opacity:0;transform:translate(-50%,-10px) scale(.97)}to{opacity:1;transform:translate(-50%,0)}}
 /* landscape phones: the room's targets fill the central band, so the toast takes the left side slot under the week chip */
 @media (orientation:landscape) and (max-height:500px){body:not(.hq-focus) #toast,body.hq-back #toast{top:calc(var(--hud-clear-top) + var(--sp-2));bottom:auto;left:var(--gutter);transform:none;max-width:clamp(160px,calc(50vw - 200px),240px);font-size:var(--text-sm)}body:not(.hq-focus) #toast.on,body.hq-back #toast.on{animation:toast-in-side var(--dur-3) var(--ease-spring)}}
@@ -1057,6 +1064,10 @@ body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + 
     <p class="screen-lead" id="endCause"></p>
     <div class="end-score"><small>Final score</small><b id="endTotal">0</b></div>
     <div class="stats end-facts" id="endFacts"></div>
+    <section class="set-group" id="endMemoSec" aria-labelledby="endMemoH" hidden>
+      <h3 class="set-h" id="endMemoH"><i data-icon="memo"></i>The last memo</h3>
+      <ul class="wk-lines end-memo" id="endMemo"></ul>
+    </section>
     <section class="set-group" aria-labelledby="endPartsH">
       <h3 class="set-h" id="endPartsH"><i data-icon="chart"></i>How the score adds up</h3>
       <table class="end-parts" id="endParts"></table>

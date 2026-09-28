@@ -105,8 +105,7 @@
   // ---------- settings: the controls re-read FR.settings on every visit (the game menu changes them too) ----------
   const SEGS = [['sndSeg', 'sound'], ['motionSeg', 'reduceMotion']];
   function syncSegs() { SEGS.forEach(([id, key]) => { const el = $(id); if (!el) return; const b = Array.from(el.querySelectorAll('.btn')).find(x => (x.dataset.v === '1') === !!FR.settings[key]); if (b) select(el, b); }); }
-  let setFrom = 'menu';
-  function openSettings(from) { if (from) setFrom = from; syncSegs(); U.show('settings'); $('settings').scrollTop = 0; }
+  function openSettings() { syncSegs(); U.show('settings'); $('settings').scrollTop = 0; }
 
   // ---------- careers: continue any slot, copy a slot's save code, import a code into a chosen slot, delete ----------
   let impSlot = 0, expSlot = -1, askImport = false, askDelete = -1;
@@ -221,6 +220,9 @@
       + tile('Records set', st.firstsWon || 0) + tile('Peak valuation', U.kmoney(peakVal)) + tile('Your stake', Math.round(s.money.founderPct || 0) + '%');
     $('endParts').innerHTML = sc.parts.map(p => `<tr><td>${esc(p.label)}</td><td class="${p.value < 0 ? 'neg' : ''}">${p.value > 0 ? '+' : ''}${signed(p.value)}</td></tr>`).join('')
       + `<tr class="total"><td>Total</td><td>${signed(sc.total)}</td></tr>`;
+    const ml = (s.memo && s.memo.lines) || [], MI = { change: 'info', flag: 'alert', due: 'clock', good: 'check' };
+    $('endMemoSec').hidden = !ml.length;
+    $('endMemo').innerHTML = ml.map(l => `<li class="${esc(l.kind || 'change')}">${ico(MI[l.kind] || 'info')}<span>${esc(l.text)}</span></li>`).join('');
     const firsts = (s.market && s.market.firsts) || [], rivals = (s.market && s.market.rivals) || [];
     const byName = (by) => by === 'player' ? s.lab.name : ((rivals.find(r => r.id === by) || {}).name || by);
     $('endRecord').innerHTML = MARKS().map(mark => {
@@ -289,7 +291,7 @@
       $('mNew').addEventListener('click', () => { sfx('tap'); openNew(); });
       $('mCareers').addEventListener('click', () => { sfx('tap'); openCareers('menu'); });
       $('mHelp').addEventListener('click', () => { sfx('tap'); openHelp('menu'); });
-      $('mSettings').addEventListener('click', () => { sfx('tap'); openSettings('menu'); });
+      $('mSettings').addEventListener('click', () => { sfx('tap'); openSettings(); });
       $('mCredits').addEventListener('click', () => { sfx('tap'); U.show('credits'); });
       $('crBack').addEventListener('click', () => { sfx('tap'); FR.menu.open(); });
       $('ncBack').addEventListener('click', () => { sfx('tap'); hideReplace(); FR.menu.open(); });

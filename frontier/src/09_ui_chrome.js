@@ -105,10 +105,12 @@
   U.icon = (name, o) => svg(name, o);
   U.esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const sfx = U.sfx = (n) => { try { if (FR.audio && FR.audio.play) FR.audio.play(n); } catch (e) { /* sound never blocks the UI */ } };
-  // compact money for chips and tight rows: $950 · $4.2k · $38k · $4.5M · $12M · $1.25B (minus is a real minus sign)
+  // compact money for chips and tight rows: $950 · $4.2k · $38k, then three significant figures from $1M up so a chip
+  // moves visibly week to week: $3.97M · $39.7M · $397M · $1.25B (minus is a real minus sign)
   U.kmoney = (n) => {
     n = Math.round(n || 0); const a = Math.abs(n), t = (x, d) => x.toFixed(d).replace(/\.0+$/, '');
-    return (n < 0 ? '−$' : '$') + (a >= 1e9 ? t(a / 1e9, a >= 1e10 ? 1 : 2) + 'B' : a >= 1e6 ? t(a / 1e6, a >= 1e7 ? 0 : 1) + 'M'
+    const sig = (x) => x.toFixed(x >= 99.95 ? 0 : x >= 9.995 ? 1 : 2);
+    return (n < 0 ? '−$' : '$') + (a >= 999.5e6 ? sig(a / 1e9) + 'B' : a >= 999.5e3 ? sig(a / 1e6) + 'M'
       : a >= 1e4 ? Math.round(a / 1000) + 'k' : a >= 1000 ? t(a / 1000, 1) + 'k' : a);
   };
   // tap-tip markup: <details class="tip"> (chrome keeps one open at a time)

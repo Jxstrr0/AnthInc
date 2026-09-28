@@ -30,7 +30,7 @@
     $('hudWeekChip').setAttribute('aria-label', `Year ${yr}, Week ${wk}, ${s.lab ? s.lab.name : ''}`);
     const rw = U.runway(s), cash = $('hudCashChip');
     $('hudCash').textContent = U.kmoney(s.money.cash);
-    $('hudRunway').textContent = rw === Infinity ? 'Cash-positive' : Math.max(0, rw) + ' wk runway';
+    $('hudRunway').textContent = rw === Infinity ? 'Cash-positive' : rw >= 104 ? '2+ yr runway' : Math.max(0, rw) + ' wk runway';
     cash.classList.toggle('warn', rw !== Infinity && rw < RUNWAY_WARN && rw >= 4);
     cash.classList.toggle('bad', rw !== Infinity && rw < 4);
     cash.setAttribute('aria-label', `Cash ${FR.fmtMoney(s.money.cash)}, ${rw === Infinity ? 'cash-positive' : Math.max(0, rw) + ' weeks of runway'}`);
@@ -47,7 +47,7 @@
       const you = FR.sim.avgCap(s), b = FR.market.best(s), rv = (s.market.rivals || []).find(r => r.id === b.rivalId), d = you - b.avgCap;
       const hold = (s.win && s.win.streak) || 0, rname = rv ? rv.name : 'Best rival';
       html = `<span class="st-k">Frontier</span><span class="st-v st-you">You <b>${you.toFixed(1)}</b></span>`
-        + `<span class="st-v st-riv">${esc(rname)} <b>${(+b.avgCap).toFixed(1)}</b></span>`
+        + `<span class="st-v st-riv"><span class="nm">${esc(rname)}</span> <b>${(+b.avgCap).toFixed(1)}</b></span>`
         + `<span class="st-gap ${d >= 0 ? 'good' : 'warn'}">${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}</span>`
         + (hold > 0 ? `<span class="st-hold">Hold <b>${hold}/${WIN}</b><i style="--v:${Math.min(100, Math.round(hold / WIN * 100))}"></i></span>` : '');
       label = `Average capability: yours ${you.toFixed(1)}, ${rname} ${(+b.avgCap).toFixed(1)}.` + (hold > 0 ? ` Safe frontier hold ${hold} of ${WIN} weeks.` : '');
@@ -162,7 +162,10 @@
     FR.on('hq:hotspot', d => route(d && d.hotspotId));
     FR.on('game:save:failed', d => { U._saveFailed = true; sfx('error'); U.toast(`The lab was not saved: ${U.saveWhy(d && d.reason)}. Free some space, or copy a save code from Careers.`, 5000, 'bad'); });
     FR.on('game:saved', () => { U._saveFailed = false; });
-    ['turn:ended', 'state:changed', 'game:new', 'game:loaded'].forEach(e => FR.on(e, U.refresh));
+    // a slider drag fires state:changed per input event: the chips redraw once per frame at most
+    let rq = 0; const refreshSoon = () => { if (!rq) rq = requestAnimationFrame(() => { rq = 0; U.refresh(); }); };
+    FR.on('state:changed', refreshSoon);
+    ['turn:ended', 'game:new', 'game:loaded'].forEach(e => FR.on(e, U.refresh));
     // a ride disables End Turn; re-enable it on arrival
     ['elevator:ride', 'elevator:arrived', 'ui:sheet'].forEach(e => FR.on(e, U.updateEnd));
     ['game:new', 'game:loaded'].forEach(e => FR.on(e, () => { memoSeen = -1; last.strip = null; U.memoDot(); }));
