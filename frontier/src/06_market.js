@@ -9,7 +9,7 @@
     // 0.44 since 2026-09-28: the balance bots accept the DeepField share when it is cheap, as a reading player does;
     // 0.48 for V0.3: enterprise account fees carry a lab that never raises past the A (balanced-noB wins ~13%)
     // a `steady` share arrives every week, the rest in releases (chance `ship` a week) so the expected pace is the same
-    gainBase: 0.48, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
+    gainBase: 0.52, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
     startJitter: 1.5, safeJitter: 2, speedJitter: 0.12,  // start cap ± points, start safe ± points, base speed ± fraction
     speedMin: 0.85, speedMax: 1.15,                     // speed bounds, multiples of the rival's base speed
     raiseLift: 0.48, raiseLag: 13,                      // V0.3 sector raise: once the lab's Series B closes (market.raised = that
