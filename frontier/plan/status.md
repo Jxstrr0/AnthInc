@@ -35,8 +35,10 @@
   below pctMin; the B milestone uses 8-week trailing revenue (×1.3 after a miss); renewals go one tier up only when the lab
   meets that tier (PF scaled with the tier); deals within trust reach (minTrust 45/48/52); book of 5 before the B (was 4);
   Series B $150M (was $180M); an account below 30 is off the book at once and always leaves the next week.
-- Open for a later batch: the account era goes quiet once the book is full and renews itself (term-end decision, drop
-  option or sector sensitivity?).
+- V0.4 owner calls (2026-09-28, docs/frontier-handoff-v0.4.html): renewal meetings (Renew / Push up / Let go), client asks,
+  sector swings, client work trains the sector's skill (map kept: coding = Banking, Retail, Energy, Telecoms; reasoning =
+  Insurance, Pharma, Legal; agents = Logistics, Public sector). **An unanswered meeting renews at the same tier if mood
+  allows (≥ 45, +10 in a cold sector), otherwise lapses.**
 - PR flow: one PR per milestone; the owner merges once the game builds, passes tests and is published.
 
 ## Build log
