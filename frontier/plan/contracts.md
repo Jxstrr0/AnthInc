@@ -550,7 +550,8 @@ active[]: { ..., meeting: null | { opens, answer: null | 'renew' | 'up' | 'go' }
             ask: null | { type: 'cap'|'inStep'|'peak'|'clean'|'cost', skill, target, arrived, from, due, weeks, progress,
                           reward, answered: null | true, declineBy },
             field,                 // last week's field PF (served × K.field.rate), for the readout
-            hot?, cut? }           // hot: signed from an offer dealt while its sector was hot (+25% for the term);
+            hot?, cut? }           // hot: signed from an offer dealt while its sector was hot, or renewed while it was
+                                   // hot (V0.5), +25% for the term;
                                    // cut: the fee cut a cost ask applied
 offers[]: { ..., hot? }            // dealt while its sector is hot: fee already × K.sector.hotFee
 lost[].why / cool[].why            // adds 'let go' (rests K.cooldown weeks like 'expired'; no trust cost)
@@ -683,3 +684,12 @@ inside the window). The summary line adds renewals (ups) and asks met / missed.
   (a new swing wins the p3 place). When more account lines than places, the last place becomes "Also this week: <short>;
   <short>." (a line's `short`, else its text to the first ". " or ": ").
 - Renewal line: "… at $66k a week, unchanged, …" when the repriced fee equals the old one.
+
+## V0.5 — owner calls after V0.4 (binding)
+
+- **Hot-sector renewals.** A renewal settled (the contract's last week) while the account's sector is hot carries the hot
+  fee for its new term: `A.renewFee(s, a, tier, turn)` = `cap$(fee(tier, turn) × K.sector.hotFee)` when
+  `A.swing(s, a.sector) === 'hot'`, else `fee(tier, turn)`; the account is marked `hot` (a renewal outside a hot sector drops
+  the flag, and a fee cut's `cut` flag ends with its term). The `account:renewed` event carries `hot`; the memo line reads
+  "X renews in a hot sector for …". The meeting card's terms show the hot fee with "(hot sector +25%, if still hot then)".
+  Push-up odds and the cold fee-cut ask are unchanged (owner).

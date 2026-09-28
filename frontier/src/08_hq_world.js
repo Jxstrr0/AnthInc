@@ -339,6 +339,27 @@
     return need > 0 && isFinite(need) ? Object.assign({}, p, { shift: p.shift - Math.min(need, 0.16 * H()) / H() }) : p;
   }
 
+  // a stay target's pose once nothing covers the scene: its focus with the lighter `rest` lens shift. On a wide screen
+  // (landscape, desktop) the portrait-framed close-up would leave the object a small patch mid-screen: there the focus's
+  // `fit` box is fitted into the HUD-safe rect (the fov narrows, a lens shift centres it), never zooming out past the pose.
+  R.restPose = function (t) {
+    const p = Object.assign(norm(t.focus), { shift: t.focus.rest }), b = t.focus.fit;
+    if (!b || W() / H() <= R.FIT_ASPECT) return p;
+    if (!fitCam) fitCam = new THREE.PerspectiveCamera();
+    fitCam.position.set(p.pos[0], p.pos[1], p.pos[2]); fitCam.lookAt(p.look[0], p.look[1], p.look[2]); fitCam.updateMatrixWorld(true);
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      _v.set(i & 1 ? b[3] : b[0], i & 2 ? b[4] : b[1], i & 4 ? b[5] : b[2]).applyMatrix4(fitCam.matrixWorldInverse); if (_v.z > -0.1) return p;
+      const u = _v.x / -_v.z, v = _v.y / -_v.z; if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v;
+    }
+    const top = R.SAFE_TOP + R.TAG_ROOM, sw = W() - 48, sh = H() - top - R.SAFE_BOTTOM - 16;
+    if (!(u1 > u0 && v1 > v0) || sw <= 0 || sh <= 0) return p;
+    const s = Math.max(H() / (2 * Math.tan(effFov(p.fov) * Math.PI / 360)), Math.min(sw / (u1 - u0), sh / (v1 - v0)));
+    const ys = (top + H() - R.SAFE_BOTTOM) / 2;
+    return { pos: p.pos, look: p.look, fov: 2 * Math.atan(H() / (2 * s)) * 180 / Math.PI,
+      shift: (H() / 2 - (v0 + v1) / 2 * s - ys) / H(), shiftX: (u0 + u1) / 2 * s / W() };
+  };
+
   // ---------- picking ----------
   function toScreen(x, y, z, out) {
     const cam = R.camera; _v.set(x, y, z).applyMatrix4(cam.matrixWorldInverse);
@@ -708,7 +729,7 @@
     // (a stay target keeps the camera: Back / Escape / an empty tap leave it; one with focus.rest
     // eases to that lighter lens shift, since nothing covers the lower screen any more)
     if (R.mode === 'focus') { if (R.paused) covered = true; else if (covered && !glide) { covered = false; const t = byId[R.focusId];
-      if (!(t && t.stay)) R.home(); else if (t.focus && t.focus.rest != null) R.glideTo(Object.assign({}, t.focus, { shift: t.focus.rest }), R.HOME_MS * 0.6); } }
+      if (!(t && t.stay)) R.home(); else if (t.focus && t.focus.rest != null) R.glideTo(R.restPose(t), R.HOME_MS * 0.6); } }
     applyPose(); stepFlash(now); syncUi();
     R.renderer.render(R.scene, R.camera); countFps(raw);
   };

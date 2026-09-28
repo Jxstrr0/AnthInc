@@ -978,6 +978,22 @@ async function accountsV04(T) {
   await T.page.setViewportSize(SMALL); await sleep(400);
   await T.fitsWidth('V0.4 accounts at 360x740');
   await T.closeSheet(); await T.settle();
+  // V0.5: landscape, the client wall close-up at rest (sheet closed) fills the HUD-safe band instead of a small patch
+  await T.page.setViewportSize({ width: 844, height: 390 }); await sleep(400);
+  await T.ev(() => FR.r.focus('serving.accounts'));
+  await T.until(() => FR.ui.sheetId && !FR.r.debug().gliding, null, 8000, 'the Serving sheet from the client wall');
+  await T.closeSheet(); await sleep(300); await T.until(() => !FR.r.debug().gliding, null, 5000, 'the rest glide'); await sleep(200);
+  const fr = await T.ev(() => {
+    const t = FR.r.targets().find(x => x.id === 'serving.accounts'), b = t.focus.fit, cam = FR.r.camera, W = innerWidth, H = innerHeight;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (let i = 0; i < 8; i++) { const v = new THREE.Vector3(i & 1 ? b[3] : b[0], i & 2 ? b[4] : b[1], i & 4 ? b[5] : b[2]).project(cam);
+      const x = (v.x + 1) / 2 * W, y = (1 - v.y) / 2 * H; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    return { mode: FR.r.mode, x0, x1, y0, y1, band: H - FR.r.SAFE_TOP - FR.r.SAFE_BOTTOM, top: FR.r.SAFE_TOP, bot: H - FR.r.SAFE_BOTTOM, W };
+  });
+  assert(fr.mode === 'focus' && fr.y1 - fr.y0 > 0.6 * fr.band && fr.y0 >= fr.top - 1 && fr.y1 <= fr.bot + 1 && fr.x0 >= 0 && fr.x1 <= fr.W,
+    'the landscape client wall close-up does not fill the safe band: ' + JSON.stringify(fr));
+  await T.shot('v04-wall-landscape');
+  await T.ev(() => FR.r.home(0)); await T.settle();
   await T.page.setViewportSize(PHONE); await sleep(300);
 }
 

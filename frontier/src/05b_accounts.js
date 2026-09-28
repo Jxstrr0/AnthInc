@@ -104,6 +104,8 @@
 
   // ---- reads ----
   A.fee = (tier, turn) => Math.round(tier * K.feeBase * (1 + K.feeYear * FR.year(turn)) / 1000) * 1000;
+  // after-V0.4 owner call: a renewal settled while the account's sector is hot carries the hot fee for its new term
+  A.renewFee = (s, a, tier, turn) => A.swing(s, a.sector) === 'hot' ? cap$(A.fee(tier, turn) * K.sector.hotFee) : A.fee(tier, turn);
   A.maxActive = (s) => s.money && s.money.roundsDone.indexOf('b') >= 0 ? K.maxActiveB : K.maxActive;
   // fee started and not leaving: PF reserved, fee paid. An account below the churn line is off the book at once.
   A.live = (s) => (s.accounts ? s.accounts.active : []).filter(a => a.starts <= s.turn && !out(s, a));
@@ -249,7 +251,7 @@
     const lc = (x) => x.charAt(0).toLowerCase() + x.slice(1);
     // the terms a renewal at `tier` would carry (what resolve() writes): fee repriced to the week after ends, PF scaled
     const terms = (tier) => { const pf = scalePF(a.pfPerWeek, a.tier, tier), d = pf - a.pfPerWeek;
-      return money(A.fee(tier, a.ends + 1)) + ' a week from ' + FR.dateLabel(a.ends + 1) + ', ' + pf + ' PF' + (d ? ' (' + (d > 0 ? '+' : '') + d + ')' : '') + ', ' + wk(K.turns[tier - 1]); };
+      return money(A.renewFee(s, a, tier, a.ends + 1)) + (A.swing(s, a.sector) === 'hot' ? ' (hot sector +' + Math.round((K.sector.hotFee - 1) * 100) + '%, if still hot then)' : '') + ' a week from ' + FR.dateLabel(a.ends + 1) + ', ' + pf + ' PF' + (d ? ' (' + (d > 0 ? '+' : '') + d + ')' : '') + ', ' + wk(K.turns[tier - 1]); };
     const stands = renewOk ? 'renews at tier ' + a.tier : 'ends: renewal needs mood ' + renewNeed;
     const upText = up > 3 ? 'Push up: tier 3 is the top tier; it renews at tier 3.'
       : !reqUp.ok ? 'Push up to tier ' + up + ' ' + lc(reqUp.why) + '. As things stand it ' + stands + '.'
@@ -304,10 +306,11 @@
       return;
     }
     const was = a.feePerWeek, pf0 = a.pfPerWeek, up = tier > a.tier;
-    a.pfPerWeek = scalePF(pf0, a.tier, tier); a.tier = tier; a.feePerWeek = A.fee(tier, T + 1); a.ends = T + K.turns[tier - 1]; a.turns = K.turns[tier - 1];
-    a.meeting = null; a.ask = null; delete a.hot;
-    report.events.push({ type: 'account:renewed', id: a.id, name: a.name, tier, up });
-    L.push({ p: 1, kind: 'good', text: a.name + ' renews' + (up ? ' at tier ' + tier : '') + ' for ' + wk(K.turns[tier - 1]) + ' at ' + money(a.feePerWeek) + ' a week, ' +
+    const hot = A.swing(s, a.sector) === 'hot';
+    a.pfPerWeek = scalePF(pf0, a.tier, tier); a.tier = tier; a.feePerWeek = A.renewFee(s, a, tier, T + 1); a.ends = T + K.turns[tier - 1]; a.turns = K.turns[tier - 1];
+    a.meeting = null; a.ask = null; delete a.hot; delete a.cut; if (hot) a.hot = true;
+    report.events.push({ type: 'account:renewed', id: a.id, name: a.name, tier, up, hot });
+    L.push({ p: 1, kind: 'good', text: a.name + ' renews' + (up ? ' at tier ' + tier : '') + (hot ? ' in a hot sector' : '') + ' for ' + wk(K.turns[tier - 1]) + ' at ' + money(a.feePerWeek) + ' a week, ' +
       (a.feePerWeek === was ? 'unchanged' : (a.feePerWeek > was ? 'up' : 'down') + ' from ' + money(was)) + (a.pfPerWeek !== pf0 ? ', reserving ' + a.pfPerWeek + ' PF, up from ' + pf0 : '') +
       ', through ' + FR.dateLabel(a.ends) + '. Mood ' + mood + '.' + (pick ? note : ' No answer to the renewal meeting: same tier.') });
   }
@@ -522,7 +525,7 @@
     report.events.push({ type: 'account:sector', name, kind, until });
     L.push({ p: 3, kind: kind === 'hot' ? 'good' : 'flag', text: kind === 'hot'
       ? name + ' turns hot through ' + FR.dateLabel(until) + ': ' + name + ' offers come ' + S.hotWeight + '× as often at fees ' + Math.round((S.hotFee - 1) * 100) +
-        '% higher for their term; ' + name + ' accounts gain ' + S.hotMood + ' more mood a week (top ' + S.hotTop + '). Client work trains ' + skill + '.'
+        '% higher for their term, renewals settled while hot included; ' + name + ' accounts gain ' + S.hotMood + ' more mood a week (top ' + S.hotTop + '). Client work trains ' + skill + '.'
       : name + ' turns cold through ' + FR.dateLabel(until) + ': no new ' + name + ' offers; ' + name + ' accounts lose ' + S.coldMood +
         ' mood a week unless every safety is within ' + (FR.sim && FR.sim.K ? FR.sim.K.safeMargin : 5) + ' of capability, and their renewals need ' + K.meet.coldAdd + ' more mood.' });
   }
