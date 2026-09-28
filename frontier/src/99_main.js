@@ -6,6 +6,7 @@
 //                                        on won/dead/exited → the end-of-run screen
 //   FR.cmd.goFloor(floorId)              elevator ride
 //   FR.cmd.signAccount(id)  FR.cmd.declineAccount(id)   an enterprise account offer (V0.3), through FR.cmd.do
+//   FR.cmd.renewAccount(id, choice)  FR.cmd.answerAsk(id, accept)   renewal meetings and client asks (V0.4)
 //   FR.enterWorld(floorId)  FR.inWorld()  FR.debug()
 // The HQ floor the player last rode to is kept in the save as state.hq = { floor } (written on 'elevator:arrived', read on
 // load; an older save without it opens in the lobby). The sim carries the field through clone untouched.
@@ -80,6 +81,9 @@
     // enterprise accounts (V0.3): sign or decline an offer on the Serving floor's board; both wrap FR.cmd.do
     signAccount(id) { return FR.cmd.do({ type: 'signAccount', id }); },
     declineAccount(id) { return FR.cmd.do({ type: 'declineAccount', id }); },
+    // V0.4: a renewal meeting answer ('renew' | 'up' | 'go') and a client ask (accept true | false); both wrap FR.cmd.do
+    renewAccount(id, choice) { return FR.cmd.do({ type: 'renewAccount', id, choice }); },
+    answerAsk(id, accept) { return FR.cmd.do({ type: 'answerAsk', id, accept: !!accept }); },
     // why End Turn cannot run now, or null
     blocked() { return U.endWhy ? U.endWhy() : (!FR.state ? 'no game' : null); },
     endTurn() {
