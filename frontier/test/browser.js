@@ -21,6 +21,12 @@
 //   review  regressions from the 2026-09-28 review: no three.js / no WebGL still plays (elevator opens panels), a ride
 //           never lands after quitting, keys under the memo never end a week, chips route, typed lab name, careers at
 //           412 wide, portrait tags on screen, focus clears the HUD, rent jumps, GPU buffers freed on floor changes
+//   accounts (V0.3) a lab seeded to the unlock (average capability 32, trust 56) → End Turn → the first account offers →
+//           the Serving panel from the client wall tag → Sign (and Decline one) → 3 End Turns → one lit plaque on the wall,
+//           revenue split into open market and contracts (state, HUD Cash chip card, Money tab contracted revenue and
+//           backlog, serving readout, elevator line) → save → reload → Continue → same book and plaque → 360x740 fit →
+//           a crafted churn: the plaque goes dark for a week, then disappears. Shots at 390x844 and 360x740, and its own
+//           contact sheet test/shots/contact-accounts.png
 // Output: one line per section, 'ok <section>' or 'FAIL <section>: <reason>', then 'ALL PASS' or the failure count.
 // Screenshots: test/shots/<n>-<section>-<nn>-<name>.png, combined into test/shots/contact.png (python3 + PIL).
 'use strict';
@@ -40,7 +46,7 @@ const SKIP_SHOTS = process.env.SKIP_SHOTS === '1';
 const VERBOSE = process.env.VERBOSE === '1';
 const ORIGIN = 'http://frontier.test';
 const URL = ORIGIN + '/game.html';
-const ALL = ['boot', 'flow', 'floors', 'save', 'end', 'review'];
+const ALL = ['boot', 'flow', 'floors', 'save', 'end', 'review', 'accounts'];
 const SECTION_MS = 420000; // a section fails rather than hang; the whole section stays inside `timeout 500`
 const PHONE = { width: 390, height: 844 }, SMALL = { width: 360, height: 740 };
 const FLOORS = ['lobby', 'serving', 'training', 'safety', 'research', 'proj1', 'proj2', 'proj3', 'boardroom'];
@@ -688,12 +694,150 @@ const SECTIONS = {
   }
 };
 
+// the client wall close up without its panel: the focus pose, no hotspot (test only)
+async function wallView(T, id) {
+  await T.ev((t) => { FR.r.setMode('focus', t); FR.r.glideTo(FR.r.poseOf(t), 250); }, id || 'serving.accounts');
+  await T.until(() => !FR.r.debug().gliding, null, 5000, 'the client wall close-up');
+  await sleep(300);
+}
+SECTIONS.accounts = async function (T) {
+  await T.load(); await T.toMenu();
+  await T.newCareer('Accounts Check Labs');
+  const has = await T.ev(() => !!(FR.accounts && FR.accounts.sign && FR.money.revenueSplit && FR.cmd.signAccount));
+  assert(has, 'the accounts module or FR.cmd.signAccount is missing from the build');
+  // seed the lab to the unlock: the seed round, average capability 32 (every gap 1.5), public trust 56, serving compute
+  await T.ev(() => {
+    FR.cmd.do({ type: 'acceptRound' });
+    FR.SKILLS.forEach(k => { const x = FR.state.model.skills[k]; x.cap = 32; x.safe = 30.5; });
+    FR.state.market.trust = 56;
+    const f = FR.sim.forecast(FR.state), sv = f.alloc.serving.pf, share = FR.state.sliders.serving / 100;
+    const extra = sv < 70 && share > 0 ? Math.ceil((70 - sv) / share) : 0;
+    if (extra) FR.cmd.do({ type: 'rent', pf: Math.min(FR.compute.maxRent(FR.state), FR.state.compute.rentPF + extra) });
+    FR.emit('state:changed', {});
+  });
+  const lk = await T.ev(() => ({ unlocked: FR.state.accounts.unlocked, txt: (FR.ui.panel('serving.accounts'), document.getElementById('sheetBody').innerText) }));
+  assert(!lk.unlocked && /Locked/.test(lk.txt) && /capability 20/.test(lk.txt), 'the locked accounts section does not explain the unlock: ' + lk.txt.slice(0, 200));
+  await T.closeSheet(); await T.settle();
+  await T.endTurn();
+  const u = await T.ev(() => ({ unlocked: FR.state.accounts.unlocked, offers: FR.state.accounts.offers.length, memo: FR.state.memo.lines.map(l => l.text).join(' | ') }));
+  assert(u.unlocked && u.offers >= 1, 'no account offers after the unlock week: ' + JSON.stringify(u));
+  assert(/Enterprise buyers/.test(u.memo), 'the memo does not announce the account offers: ' + u.memo.slice(0, 200));
+  // the Serving panel from the client wall's tag
+  await T.ride('serving');
+  await T.shot('serving-room');
+  const how = await T.openPanel('serving', 'serving.accounts');
+  if (!/^tag serving\.accounts/.test(how)) T.note('accounts panel opened by ' + how);
+  const pos = await T.ev(() => { const b = document.getElementById('sheetBody'), el = b.querySelector('[data-focus="accounts"]'); const r = el.getBoundingClientRect(), br = b.getBoundingClientRect(); return { top: r.top - br.top, h: br.height, focus: FR.ui.panels.debug().focus }; });
+  assert(pos.focus === 'accounts' && pos.top >= 0 && pos.top < pos.h / 2, 'the client wall does not scroll the panel to Accounts: ' + JSON.stringify(pos));
+  await T.shot('accounts-panel');
+  const board = await T.ev(() => Array.from(document.querySelectorAll('#sheetBody .fp-aoff')).map(c => ({ id: c.dataset.acc, req: c.querySelectorAll('.fp-req li').length, met: c.querySelectorAll('.fp-req li.ok').length, sign: !!c.querySelector('[data-fp="sign"]:not([disabled])') })));
+  assert(board.length === u.offers, `the offer board shows ${board.length} cards for ${u.offers} offers`);
+  assert(board.every(c => c.req === 3), 'an offer card does not list its three requirements: ' + JSON.stringify(board));
+  await T.smallTargets('#sheet.on .fp-aoff button', 'account offers');
+  const pick = board.find(c => c.sign);
+  assert(pick, 'no offer can be signed: ' + JSON.stringify(board) + ' ' + (await T.ev(() => Array.from(document.querySelectorAll('#sheetBody .fp-aoff .pl-why')).map(e => e.textContent).join(' | '))));
+  const c0 = await T.ev((id) => ({ cash: FR.state.money.cash, o: FR.state.accounts.offers.find(x => x.id === id) }), pick.id);
+  const sign = T.page.locator(`#sheetBody .fp-aoff[data-acc="${pick.id}"] [data-fp="sign"]`);
+  await sign.scrollIntoViewIfNeeded(); await T.shot('offer-card'); await sign.click();
+  await T.until((id) => FR.state.accounts.active.some(a => a.id === id), pick.id, 4000, 'the signed account');
+  const c1 = await T.ev(() => ({ cash: FR.state.money.cash, n: FR.state.accounts.active.length, a: FR.state.accounts.active[0], toast: document.getElementById('toast').textContent, rows: document.querySelectorAll('#sheetBody .fp-acc').length }));
+  const cost = await T.ev((t) => FR.accounts.K.signCost * t, c0.o.tier);
+  assert(c1.n === 1 && Math.abs(c0.cash - c1.cash - cost) < 1, `signing: ${c1.n} active, cash ${c0.cash} → ${c1.cash}, expected −${cost}`);
+  assert(/Signed/.test(c1.toast) && c1.rows === 1, 'no Signed toast or no account row: ' + c1.toast);
+  await T.ev(() => { const el = document.querySelector('#sheetBody [data-focus="accounts"]'), b = document.getElementById('sheetBody'); b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top - 60; });
+  await T.shot('signed');
+  // decline another offer, through its confirm
+  const other = await T.ev(() => { const el = document.querySelector('#sheetBody .fp-aoff [data-fp="accNo"]:not([disabled])'); return el ? el.dataset.v : null; });
+  if (other) {
+    await T.page.locator(`#sheetBody [data-fp="accNo"][data-v="${other}"]`).click();
+    const ok = T.page.locator(`#sheetBody [data-fp="accNoOk"][data-v="${other}"]`);
+    assert(await ok.count(), 'no Decline confirm on the offer card');
+    await ok.scrollIntoViewIfNeeded(); await ok.click();
+    await T.until((id) => !FR.state.accounts.offers.some(o => o.id === id), other, 4000, 'the declined offer to leave the board');
+    const used = await T.ev((id) => FR.state.accounts.used.length, other);
+    assert(used >= 2, 'the declined buyer is not marked used');
+  } else T.note('one offer on the board: Decline not exercised');
+  await T.closeSheet(); await T.settle();
+  // three weeks: the fee starts two weeks after signing
+  for (let i = 0; i < 3; i++) await T.endTurn();
+  const st = await T.ev(() => { const s = FR.state, fd = FR.r.debug().floorDebug || {}; return { rev: s.money.revenue, mkt: s.money.revMarket, con: s.money.revContracts, act: s.accounts.active.map(a => a.name), fd, line: FR.elevator.line('serving').text }; });
+  assert(st.fd.plaques === st.act.length && st.fd.plaquesLit === 1 && st.fd.plaquesDark === 0, 'plaques on the client wall: ' + JSON.stringify(st.fd) + ' for ' + JSON.stringify(st.act));
+  assert(st.fd.clients[0] === st.act[0], 'the plaque names ' + st.fd.clients[0] + ', the book holds ' + st.act[0]);
+  assert(st.con > 0 && st.mkt >= 0 && st.mkt + st.con === st.rev, `revenue split: market ${st.mkt} + contracts ${st.con} vs revenue ${st.rev}`);
+  assert(/1 account/.test(st.line), 'the elevator line for Serving does not mention the account: ' + st.line);
+  await T.shot('wall-room');
+  await wallView(T); await T.shot('client-wall');
+  await T.ev(() => FR.r.home(0)); await T.settle();
+  // the HUD: Cash chip → the split card → Boardroom money
+  await T.page.click('#hudCashChip');
+  await T.until(() => FR.ui.splitOpen(), null, 3000, 'the revenue split card');
+  const sp = await T.ev(() => ({ t: document.getElementById('hudSplit').innerText, want: [FR.ui.kmoney(FR.state.money.revMarket), FR.ui.kmoney(FR.state.money.revContracts)], sheet: FR.ui.sheetId }));
+  assert(!sp.sheet && /Open market/.test(sp.t) && /Contracts · 1 account/.test(sp.t) && sp.want.every(w => sp.t.indexOf(w) >= 0), 'the split card reads: ' + sp.t.replace(/\s+/g, ' ') + ' want ' + sp.want.join(', '));
+  await T.fitsWidth('HUD split at 390');
+  await T.shot('hud-split');
+  await T.page.click('#hsMoney');
+  await T.until(() => FR.ui.sheetId === 'fp:boardroom' && FR.ui.panels.debug().tab === 'money' && !FR.ui.splitOpen(), null, 4000, 'the Money tab from the split card');
+  await sleep(350);
+  const mt = await T.ev(() => document.getElementById('sheetBody').innerText);
+  assert(/Contracted revenue · 1 account/.test(mt) && /Backlog/.test(mt) && /Revenue · contracts/.test(mt), 'the Money tab lacks contracted revenue or the backlog: ' + mt.slice(0, 300));
+  await T.shot('money-contracts');
+  await T.closeSheet(); await T.settle();
+  // the serving slider readout
+  await T.ev(() => FR.ui.panel('serving.wall')); await sleep(350);
+  const ro = await T.ev(() => (document.querySelector('#sheetBody [data-fpres]') || {}).textContent || '');
+  assert(/^Serving [\d.]+ PF · [\d.]+ reserved for accounts · [\d.]+ open market/.test(ro), 'the serving readout reads: ' + ro);
+  await T.closeSheet(); await T.settle();
+  // save → reload → Continue: the same book, the plaque back on the wall
+  const book = await T.ev(() => { FR.cmd.save(); return JSON.stringify(FR.state.accounts); });
+  await T.page.reload({ waitUntil: 'load' });
+  await T.until(() => !!(window.FR && FR.menu && document.getElementById('boot').classList.contains('on')), null, 15000, 'the boot screen after reload');
+  await T.toMenu();
+  await T.page.click('#mContinue');
+  await T.until(() => !!(FR.state && FR.inWorld() && FR.r.current && FR.r.current.id === 'serving'), null, 10000, 'the lab on Serving after Continue');
+  await T.settle();
+  await T.until(() => (FR.r.debug().floorDebug || {}).plaques === 1, null, 4000, 'the plaque after the load');
+  const book2 = await T.ev(() => JSON.stringify(FR.state.accounts));
+  assert(book2 === book, 'the account book changed across save and load');
+  // the small phone: the accounts section, the split card, the wall
+  await T.page.setViewportSize(SMALL); await sleep(500);
+  await T.ev(() => FR.ui.panel('serving.accounts')); await sleep(400);
+  await T.fitsWidth('accounts panel at 360x740');
+  await T.shot('accounts-360');
+  await T.ev(() => { const b = document.getElementById('sheetBody'), el = b.querySelector('[data-focus="accoffers"]'); if (el) b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top - 60; });
+  await T.shot('offers-360');
+  await T.closeSheet(); await T.settle();
+  await T.page.click('#hudCashChip');
+  await T.until(() => FR.ui.splitOpen(), null, 3000, 'the split card at 360');
+  await T.fitsWidth('HUD split at 360x740');
+  await T.shot('hud-split-360');
+  await T.page.mouse.click(180, 420);   // a tap elsewhere closes it
+  await T.until(() => !FR.ui.splitOpen(), null, 3000, 'the split card to close on a tap elsewhere');
+  await T.closeSheet(); await T.settle();
+  await wallView(T); await T.shot('client-wall-360');
+  await T.ev(() => FR.r.home(0)); await T.settle();
+  // a crafted churn: mood under the line → End Turn → the plaque goes dark for a week → End Turn → gone
+  await T.ev(() => { FR.state.accounts.active[0].mood = 20; });
+  await T.endTurn();
+  const ch = await T.ev(() => ({ act: FR.state.accounts.active.length, lost: FR.state.accounts.lost.slice(-1)[0], fd: FR.r.debug().floorDebug, turn: FR.state.turn }));
+  assert(ch.act === 0 && ch.lost && ch.lost.why === 'churn', 'the account did not churn: ' + JSON.stringify(ch));
+  assert(ch.fd.plaques === 1 && ch.fd.plaquesDark === 1 && ch.fd.plaquesLit === 0, 'the churned plaque is not dark: ' + JSON.stringify(ch.fd));
+  await wallView(T); await T.shot('churned-dark-360');
+  await T.ev(() => FR.r.home(0)); await T.settle();
+  await T.endTurn();
+  const gone = await T.ev(() => FR.r.debug().floorDebug.plaques);
+  assert(gone === 0, `the churned plaque is still up a week later (${gone})`);
+  const again = await T.ev((n) => FR.state.accounts.offers.some(o => o.name === n), ch.lost.name);
+  assert(!again, 'the churned buyer is back on the offer board');
+  T.noErrors();
+};
+
 // ---------- contact sheet (python3 + PIL) ----------
 const CONTACT_PY = `
 import os, sys
 from PIL import Image, ImageDraw, ImageFont
 d, out = sys.argv[1], sys.argv[2]
-files = sorted(f for f in os.listdir(d) if f.endswith('.png') and f != 'contact.png')
+pre = sys.argv[3] if len(sys.argv) > 3 else ''
+files = sorted(f for f in os.listdir(d) if f.endswith('.png') and not f.startswith('contact') and f.startswith(pre))
 if not files: sys.exit(0)
 S, CW, CH, LH, COLS, PAD = 0.4, 156, 338, 26, 8, 6
 rows = (len(files) + COLS - 1) // COLS
@@ -712,10 +856,10 @@ for i, f in enumerate(files):
 sheet.save(out)
 print(len(files))
 `;
-function contactSheet() {
-  const r = spawnSync('python3', ['-c', CONTACT_PY, SHOTS, path.join(SHOTS, 'contact.png')], { encoding: 'utf8' });
+function contactSheet(prefix, name) {
+  const r = spawnSync('python3', ['-c', CONTACT_PY, SHOTS, path.join(SHOTS, name || 'contact.png')].concat(prefix ? [prefix] : []), { encoding: 'utf8' });
   if (r.status !== 0) console.log('note: contact sheet not made: ' + String(r.stderr || r.error || '').trim().split('\n').pop());
-  else log(`contact sheet: ${String(r.stdout).trim()} shots → test/shots/contact.png`);
+  else log(`contact sheet: ${String(r.stdout).trim()} shots → test/shots/${name || "contact.png"}`);
 }
 
 // ---------- main ----------
@@ -753,7 +897,7 @@ async function main() {
     if (VERBOSE && T) Object.keys(T.warnings).forEach(k => console.log(`    console.warn ×${T.warnings[k]} ${name}: ${k}`));
   }
   await browser.close();
-  if (!SKIP_SHOTS) contactSheet();
+  if (!SKIP_SHOTS) { contactSheet(); if (list.indexOf('accounts') >= 0) contactSheet(ALL.indexOf('accounts') + 1 + '-accounts-', 'contact-accounts.png'); }
   console.log(fails ? `${fails} FAILED` : 'ALL PASS');
   process.exit(fails ? 1 : 0);
 }

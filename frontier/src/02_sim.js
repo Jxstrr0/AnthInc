@@ -46,6 +46,10 @@
     if (!d.history) d.history = []; if (!d.news) d.news = []; if (!d.pendingMemo) d.pendingMemo = []; if (!d.pendingEvents) d.pendingEvents = [];
     if (d.projects && !d.projects.spend) d.projects.spend = { turn: 0, cash: 0 };
     if (d.compute && !d.compute.bill) d.compute.bill = { turn: 0, cash: 0 };
+    // V0.3: enterprise accounts and the revenue split (0.2 saves have neither)
+    if (d.money && !d.accounts && FR.accounts) FR.accounts.init(d);
+    if (d.accounts) ['active', 'offers', 'lost', 'used'].forEach(k => { if (!d.accounts[k]) d.accounts[k] = []; });
+    if (d.money && d.money.revMarket == null) { d.money.revMarket = d.money.revenue || 0; d.money.revContracts = 0; }
     return d;
   };
 
@@ -94,6 +98,8 @@
       case 'acceptRound': return FR.money.acceptRound(s);
       case 'declineRound': return FR.money.declineRound(s);
       case 'greenlight': return FR.projects.greenlight(s, c.offerId);
+      case 'signAccount': return FR.accounts.sign(s, c.id);
+      case 'declineAccount': return FR.accounts.decline(s, c.id);
       case 'cancel': return FR.projects.cancel(s, c.uid);
       case 'retire': {
         const text = s.lab.name + ' closed by its founders in ' + FR.dateLabel(s.turn) + '. The record stands as filed.';
@@ -115,6 +121,9 @@
     const need = FR.projects.pfDemand(s), projPF = Math.min(cap, need), free = Math.max(0, cap - projPF);
     const hc = s.staff.headcount, alloc = { capacity: cap, capInfo, projects: { pf: projPF, need } };
     FR.ALLOCS.forEach(k => { alloc[k] = { pf: free * s.sliders[k] / 100, staff: hc * s.sliders[k] / 100 }; });
+    // serving: contract PF of live accounts first, the open market on the rest
+    const reserved = FR.accounts && s.accounts ? FR.accounts.reservedPF(s) : 0;
+    alloc.serving.reserved = Math.min(reserved, alloc.serving.pf); alloc.serving.open = alloc.serving.pf - alloc.serving.reserved;
     return alloc;
   };
 
@@ -143,6 +152,7 @@
     FR.market.step(s, rng, report);
     if (s.status === 'playing') FR.model.ladder(s, rng, report);
     if (s.status === 'playing' && s.money.cash <= 0) FR.money.bankrupt(s, report);   // an incident bill can empty the bank
+    if (s.status === 'playing' && FR.accounts) FR.accounts.shock(s, report);          // this week's incidents move account mood
 
     // win check
     if (s.status === 'playing') {
@@ -205,7 +215,8 @@
     const burn = FR.money.burnEstimate(s);
     const g = FR.model.gains(s, alloc);
     const net = revenue - burn;
-    return { capacity: alloc.capacity, alloc, revenue, burn, net, runway: net >= 0 ? Infinity : Math.floor(s.money.cash / -net), capGain: g.cap, safeGain: g.safe };
+    const split = FR.money.revenueSplit(s, alloc.serving.pf);
+    return { capacity: alloc.capacity, alloc, revenue, market: split.market, contracts: split.contracts, burn, net, runway: net >= 0 ? Infinity : Math.floor(s.money.cash / -net), capGain: g.cap, safeGain: g.safe };
   };
 
   // end-of-run sheet. Plain, explainable parts.

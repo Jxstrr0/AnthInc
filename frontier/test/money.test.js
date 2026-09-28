@@ -33,7 +33,7 @@ function meet(s, ms) {   // make a milestone true for the next resolution
 
 // init: exactly the §1 shape, seed on the table at turn 1, 9-12 months of runway before any round
 let s = game();
-assert.deepStrictEqual(Object.keys(s.money).sort(), ['burn', 'cash', 'founderPct', 'lockedUntil', 'milestone', 'net', 'offer', 'revenue', 'roundsDone', 'valuation']);
+assert.deepStrictEqual(Object.keys(s.money).sort(), ['burn', 'cash', 'founderPct', 'lockedUntil', 'milestone', 'net', 'offer', 'revContracts', 'revMarket', 'revenue', 'roundsDone', 'valuation']);
 assert.deepStrictEqual(s.staff, { headcount: K.startHead, hiring: [] });
 assert.strictEqual(s.money.founderPct, 100); assert.deepStrictEqual(s.money.roundsDone, []);
 assert.strictEqual(s.money.milestone, null); assert.strictEqual(s.money.lockedUntil, 0); assert.strictEqual(s.money.cash, K.startCash);
@@ -101,7 +101,8 @@ assert.ok(M.layoff(s, 3).ok);
 assert.strictEqual(s.money.cash, c0 - 3 * K.wage * K.severanceWeeks); assert.strictEqual(s.staff.headcount, K.startHead - 3);
 assert.strictEqual(nudges.length, 1); assert.ok(nudges[0].d < 0 && nudges[0].d >= -K.layoffTrust[1]); assert.ok(s.market.trust < 50);
 
-// dilution: seed then A; each close adds cash, dilutes by pct, sets the next milestone; after A no more rounds
+// dilution: seed then A; each close adds cash, dilutes by pct, sets the next milestone; after A the B opens on revenue
+// (the B and the end of the rounds: test/v03.test.js)
 s = run(game(), 1, [{ type: 'acceptRound' }]);
 assert.deepStrictEqual(ev(s, 'money:round'), [{ type: 'money:round', round: 'seed', amount: 18e6, pct: 0.2 }]);
 assert.ok(memo(s, /^Seed round closed: \$18\.0M for 20%\. Series A opens if any skill reaches capability \d+ by Year 1, Week \d+\.$/));
@@ -120,9 +121,8 @@ assert.ok(A.pct >= K.rounds.a.pctMin && A.pct <= K.rounds.a.pctMax); near(A.amou
 const cashA = s.money.cash;
 s = cmd(s, { type: 'acceptRound' });
 near(s.money.founderPct, 80 * (1 - A.pct), 1e-4); assert.strictEqual(s.money.cash, cashA + A.amount);
-assert.deepStrictEqual(s.money.roundsDone, ['seed', 'a']); assert.strictEqual(s.money.milestone, null); assert.strictEqual(s.money.valuation, A.valuation);
-setCap(s, 95);
-for (let i = 0; i < 120; i++) { s = run(s, 1); assert.strictEqual(s.money.offer, null); assert.strictEqual(s.money.milestone, null); assert.strictEqual(s.money.lockedUntil, 0); }
+assert.deepStrictEqual(s.money.roundsDone, ['seed', 'a']); assert.strictEqual(s.money.valuation, A.valuation);
+assert.deepStrictEqual([s.money.milestone.round, s.money.milestone.kind], ['b', 'revenue']);
 
 // milestone miss: due-soon memos, miss at due, rounds locked 52 turns even at high cap, then a fresh milestone
 s = cmd(game(), { type: 'acceptRound' }); ms = s.money.milestone;

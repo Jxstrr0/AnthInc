@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier - Cowork Handoff V0.3</title>
+<style>
+  :root{--ink:#1a1a1a;--mute:#666;--line:#ddd;--acc:#1f4e79;--bg:#fff}
+  body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);max-width:820px;margin:0 auto;padding:24px 18px}
+  h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:28px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px;color:var(--acc)}h3{font-size:16px;margin:18px 0 6px}
+  .meta{color:var(--mute);margin-bottom:18px}
+  table{border-collapse:collapse;width:100%;margin:8px 0;font-size:14px}th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{background:#f4f6f9}
+  code,pre{font-family:ui-monospace,Menlo,monospace;font-size:13px}pre{background:#f6f6f6;padding:10px;overflow-x:auto;border-radius:4px}
+  ul{padding-left:20px}li{margin:3px 0}
+  .lock{background:#f1f5fa;border-left:3px solid var(--acc);padding:8px 12px;margin:8px 0}
+  .warn{background:#fff7e6;border-left:3px solid #d08a00;padding:8px 12px;margin:8px 0}
+</style>
+</head>
+<body>
+
+<h1>Frontier — V0.3: Series B and the customer era</h1>
+<div class="meta">Cowork handoff · V0.3 (feature batch on top of 0.2.0.0) · Prairie Blue Studio · designed Sep 27 2026 via popups in the Anthropology Inc. project</div>
+
+<div class="lock"><b>Read <code>frontier/plan/status.md</code> first, then this.</b> Build under the cheap-game-build doctrine. The V0.1 handoff (<code>docs/frontier-handoff-v0.1.html</code>) and every locked decision in <code>status.md</code> still stand; nothing here re-opens them. Ask the owner with popups whenever a direction is unclear; make small calls alone when confident and say so plainly. Tone stays straight: board-memo language, no jokes.</div>
+
+<h2>1. Why this batch</h2>
+<p>V0.2 plays well for the first two years and then plateaus: the money game ends at the Series A, and revenue is a faceless number from the serving slider. This batch gives the run a second act. A <b>Series B</b> that opens on a revenue milestone, and a <b>customer era</b> in which named enterprise accounts sign multi-year contracts, pay real money, and leave when the lab has an incident. The mix of investor money and customer money becomes the strategy it was always meant to be.</p>
+
+<h2>2. Owner's calls for V0.3 (locked — do not re-pitch)</h2>
+<table>
+<tr><th>Area</th><th>Decision</th></tr>
+<tr><td>Series B unlock</td><td>A <b>weekly revenue</b> milestone. Not capability, not trust.</td></tr>
+<tr><td>Customer era</td><td><b>Named enterprise accounts</b>: multi-year contracts, revenue on top of open-market serving, churn on incidents. No pricing slider. No "self-funded" status mechanic (parked).</td></tr>
+<tr><td>Is the B optional?</td><td><b>Yes.</b> Declining or letting it lapse costs nothing beyond the normal re-offer delay. A lab that never raises again is a valid path; accounts must be able to carry it.</td></tr>
+<tr><td>Scope guard</td><td>Series C, IPO, the three stubbed rival deals, audio: still back-burner. Do not add them here.</td></tr>
+</table>
+
+<h2>3. Systems</h2>
+
+<h3>3.1 Series B (05_money.js)</h3>
+<ul>
+<li>Add <code>K.rounds.b = { name: 'Series B', amount: 120e6, pctMin: 0.10, pctMax: 0.20 }</code> and <code>K.order = ['seed','a','b']</code>. Everything else in the round machinery (offer, lapse, re-offer, lock) already works from data; check <code>makeOffer</code> holds the raise inside the bounds at B-era valuations and widen <code>amount</code> rather than the bounds if it clamps every seed.</li>
+<li>The B milestone is <b>always</b> <code>kind: 'revenue'</code>. Set it when the A closes: <code>value = sig2(max(K.ms.bRevMin, revenue × K.ms.bRevMult))</code>, first pass <code>bRevMin = 400000</code>, <code>bRevMult = 3</code>, same 36-week window and warn cadence. A missed B milestone locks for 52 turns and comes back as a fresh <b>revenue</b> milestone (override <code>msKinds</code> for the B: revenue only).</li>
+<li>B cash is the late-game compute lever: it should be enough to buy one year-3 cluster at the raised ceiling with runway to spare, and not enough to make accounts irrelevant. Tune with the bots.</li>
+<li>Founder stake after seed + A + B typically 45–55%. Show it on the Boardroom panel as today.</li>
+<li>Memo lines: "Series B opens if weekly revenue reaches $X by <date>." · "Series B offer: $120M for 15% at a $800M valuation. Expires <date>." · "Series B milestone missed…" — same voice as the A.</li>
+</ul>
+
+<h3>3.2 Enterprise accounts (new: 05_money.js owns the state, new file <code>src/05b_accounts.js</code> owns the logic)</h3>
+<p>New module so the edit surface stays one file. Pure, rng-only, same IIFE pattern. <code>05_money.step</code> calls <code>FR.accounts.step(s, rng, report)</code> after revenue resolves.</p>
+
+<p><b>State</b> (add to <code>plan/contracts.md</code> §1):</p>
+<pre>accounts: {                          // 05b_accounts owns
+  active: [ { id, name, sector, tier, pfPerWeek, feePerWeek, ends, signed, mood } ],
+                                     //   tier 1..3; ends = last turn under contract; mood 0..100, drops on incidents
+  offers: [ { id, name, sector, tier, pfPerWeek, feePerWeek, turns, minCap, minSafe, minTrust, expires } ],
+  refreshAt,                         // turn the offer board refreshes (every 8 weeks)
+  lost: [ { name, turn, why } ]      // last 10. why: 'churn' | 'expired' | 'dropped'
+}</pre>
+
+<ul>
+<li><b>Unlock:</b> the first offer appears when average cap ≥ 20 and public trust ≥ 45 (<code>K.unlockCap</code>, <code>K.unlockTrust</code>). One memo line: "Enterprise buyers are asking for meetings. First account offers on the Serving floor."</li>
+<li><b>Offer board:</b> 1–3 offers, refreshed every 8 weeks, at most <code>K.maxActive</code> (4 at start, 6 after the B closes) accounts live. Each names a fictional buyer (bank, retailer, insurer, logistics, government agency, pharma — a name generator with ~30 names, straight tone: "Halden Mutual", "Coastline Freight", "Province Health Authority"). Requirements: <code>minCap</code>, <code>minSafe</code> (every skill within N of cap) and <code>minTrust</code>; higher tiers ask more and pay more.</li>
+<li><b>Contract:</b> length 52 / 104 / 156 weeks by tier. <code>pfPerWeek</code> is reserved capacity: it comes out of the serving allocation before open-market demand (unserved contract PF breaches the contract; see churn). <code>feePerWeek</code> is a fixed fee, first pass <code>tier × K.feeBase × (1 + 0.1 × year)</code> with <code>feeBase = 60000</code>, paid on top of open-market revenue and <b>not</b> subject to the Zeta price drag (contracts are locked) but <b>is</b> subject to the incident revenue factor (a client under review pays half).</li>
+<li><b>Signing:</b> a small onboarding cost (<code>K.signCost = 150000 × tier</code>) and 2 weeks before revenue starts. Signing raises public trust +1 (tier 3: +2). Declining costs nothing.</li>
+<li><b>Mood and churn:</b> mood starts 70. Each week: +1 toward 80 if every skill's safe ≥ cap − 5 and the contract's PF was fully served; −3 for each week of unserved contract PF; −25 on any incident in the lab; −10 on a rival incident (sector-wide nerves). Mood &lt; 30 → the account churns at the next turn with a memo and a news line ("Halden Mutual ends its contract with <lab> citing reliability concerns."). Churn costs trust −2. A final incident ends the run anyway; churn is the slow-burn version.</li>
+<li><b>Expiry:</b> at <code>ends</code>, the account renews automatically at the next tier's fee if mood ≥ 60, otherwise leaves quietly (<code>why: 'expired'</code>).</li>
+<li><b>Interaction with deals:</b> DeepField's revenue share applies to account fees too (the share is on revenue, not on a channel).</li>
+<li><b>Valuation:</b> contracted annual fees count in <code>M.valuation</code> at <code>K.revMultiple</code> like other revenue; add a contracted-backlog term at a lower multiple (<code>K.backlogMultiple = 4</code>) so a full book lifts the B valuation.</li>
+</ul>
+
+<h3>3.3 Serving floor (08_hq_floors.js, 09_ui_panels.js)</h3>
+<ul>
+<li>The Serving floor gains a second hotspot: <code>'serving.accounts'</code>, a client wall beside the existing serving wall. Panel: active accounts as rows (name, tier, PF, fee/week, weeks left, a mood bar in board blue → amber → red), then the offer board with Sign / Decline. 48 px targets, no horizontal scroll.</li>
+<li>Reserved PF shows on the serving slider readout: "Serving 38 PF · 14 reserved for accounts · 24 open market".</li>
+<li>Visual: one logo plaque per active account on the Serving floor's back wall (instanced quad + text sprite; no new geometry per frame). A churned account's plaque goes dark for a week then disappears.</li>
+<li>HUD: revenue readout splits on tap into open market / contracts.</li>
+</ul>
+
+<h3>3.4 Boardroom (09_ui_panels.js)</h3>
+<ul>
+<li>Series B appears in the rounds list exactly as the A does. Add a "Contracted revenue" line and the backlog figure to the cap table view.</li>
+</ul>
+
+<h3>3.5 Projects (07_projects.js)</h3>
+<ul>
+<li>Two templates only, both tier 2: <b>"Enterprise readiness work"</b> (4–6 turns, raises mood +10 on all accounts and cuts the unserved-PF penalty by half for 26 weeks) and <b>"Reference customer program"</b> (3–5 turns, next 2 offers arrive one tier higher). No more; the account board is the content.</li>
+</ul>
+
+<h2>4. Turn loop change (02_sim.js)</h2>
+<p>Step 2, serving: allocate contract PF first, then open market. Step 3, money: resolve fees with revenue, then <code>FR.accounts.step</code> (mood, churn, expiry, offers), then rounds and milestones as today. The weekly memo gains at most two account lines a week (signed / churned / renewal due), sorted after money lines.</p>
+
+<h2>5. Contracts to add (plan/contracts.md)</h2>
+<ul>
+<li>State: <code>accounts</code> block above. <code>money.roundsDone</code> may now contain <code>'b'</code>.</li>
+<li>Commands: <code>FR.cmd.signAccount(id)</code>, <code>FR.cmd.declineAccount(id)</code>. Round accept/decline commands unchanged.</li>
+<li>Events: <code>account:signed {id,name,tier}</code>, <code>account:churned {id,name,why}</code>, <code>account:offers {n}</code>. Existing <code>money:milestone</code> now fires for <code>round:'b'</code>.</li>
+<li>Debug: <code>FR.accounts.debug(s)</code> → <code>{ active, contracted, avgMood, unservedPF, lost }</code>.</li>
+</ul>
+
+<h2>6. Verify before publish</h2>
+<ul>
+<li><b>Node:</b> <code>test/accounts.test.js</code> (offer gating, reserved PF, mood arithmetic, churn on an incident, renewal), <code>test/v03.test.js</code> (B offer after a revenue milestone, B optional: a run that declines the B still reaches the frontier in some seeds).</li>
+<li><b>Bots:</b> add a fifth bot <b>"customer-first"</b> (heavy serving, signs every offer it qualifies for, never raises past the A). Targets over 20 seeds: balanced still wins 20–33%; customer-first survives past year 4 in most seeds and wins in a few; race churns its book and dies as before; a balanced bot that takes the B reaches the frontier ~1 year sooner than one that declines it.</li>
+<li><b>Browser:</b> extend the <code>flow</code> section: play to the first account offer, sign, end 3 turns, assert the plaque count and the revenue split; save → load → no console errors. <code>SECTION=accounts</code>.</li>
+<li>Bump <code>VERSION</code> to <b>0.3.0.0</b>, republish to the same artifact URL with the version as the label, update <code>status.md</code> (build log, new decisions, back-burner), one PR.</li>
+</ul>
+
+<h2>7. Ask the owner (popups, batched) during the build</h2>
+<ul>
+<li>Account names: fully fictional sector names (default) or nods to real companies like the rival names.</li>
+<li>Should a churned account be re-offerable a year later, or gone for the run (default: gone).</li>
+<li>First visual pass of the client wall: plaques vs a ledger board on the floor. One contact-sheet screenshot, one popup.</li>
+</ul>
+
+<h2>8. Back-burner (add to status.md)</h2>
+<ul>
+<li>Self-funded status (net positive 13 weeks ends milestones) — pitched, not picked.</li>
+<li>Pricing slider — pitched, not picked.</li>
+<li>Series C, IPO. Rival deals: distribution, licence, acquisition. Audio pack. Founding presets. Career ledger and shared seed. First-week onboarding memo.</li>
+</ul>
+
+<div class="warn"><b>Do not add:</b> named staff, a regulator actor, a real-time clock, meta-unlocks, or account-level negotiation screens. Sign or decline; the numbers on the card are the deal.</div>
+
+</body>
+</html>

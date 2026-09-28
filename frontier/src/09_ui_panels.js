@@ -79,7 +79,7 @@
   function gapTxt(g) { const K = MK(); return [K.warnGap, K.incidentGap, K.critGap].some(t => (g > t) !== (Math.round(g) > t)) ? g.toFixed(1) : String(Math.round(g)); }
   const rival = (s, id) => ((s.market && s.market.rivals) || []).find(r => r.id === id) || { id, name: String(id), cap: {}, safe: {}, incidents: 0 };
   const ravg = (r, key) => SK().reduce((t, k) => t + ((r[key] || {})[k] || 0), 0) / SK().length;
-  const roundName = (r) => tryr(() => FR.money.K.rounds[r].name, r === 'a' ? 'Series A' : r === 'seed' ? 'Seed round' : String(r));
+  const roundName = (r) => tryr(() => FR.money.K.rounds[r].name, r === 'a' ? 'Series A' : r === 'b' ? 'Series B' : r === 'seed' ? 'Seed round' : String(r));
   const fxOf = (s) => tryr(() => FR.projects.fx(s), { demandMult: 1, priceMult: 1, rentDiscount: 0 });
   const bestSkill = (s) => SK().reduce((b, k) => s.model.skills[k].cap > s.model.skills[b].cap ? k : b, SK()[0]);
   const has = (mod, fn) => !!(FR[mod] && typeof FR[mod][fn] === 'function');
@@ -88,6 +88,41 @@
     const v = has('compute', 'maxRent') ? tryr(() => +FR.compute.maxRent(s), NaN) : NaN;
     return Number.isFinite(v) && v >= 0 ? Math.floor(v) : CK().maxRent;
   }
+  // ---------- enterprise accounts (V0.3, 05b_accounts.js). Every read is guarded: before the module lands the Serving
+  // panel shows the locked state and revenue stays one number. ----------
+  const AK = () => {
+    const K = (FR.accounts && FR.accounts.K) || {}, M = Object.assign({ start: 70, top: 80, up: 1, unserved: 3, incident: 25, rival: 10, churn: 30, renew: 60, watch: 45 }, K.mood || {});
+    return { unlockCap: K.unlockCap || 20, unlockTrust: K.unlockTrust || 45, maxActive: K.maxActive || 4, maxActiveB: K.maxActiveB || 6, signCost: K.signCost || 150000,
+      startDelay: K.signWeeks || 2, renewMood: M.renew, churnMood: M.churn, watchMood: M.watch, mood: M, churnTrust: K.churnTrust || 2 };
+  };
+  const accOn = () => has('accounts', 'sign');
+  const accOf = (s) => (s && s.accounts) || { active: [], offers: [], lost: [], refreshAt: 0, unlocked: false };
+  const reservedPF = (s) => has('accounts', 'reservedPF') ? Math.max(0, +tryr(() => FR.accounts.reservedPF(s), 0) || 0) : 0;
+  const maxActive = (s) => has('accounts', 'maxActive') ? tryr(() => FR.accounts.maxActive(s), AK().maxActive) : AK().maxActive;
+  const backlog = (s) => has('accounts', 'backlog') ? Math.max(0, +tryr(() => FR.accounts.backlog(s), 0) || 0) : 0;
+  const unlocked = (s) => { const a = accOf(s); return !!(a.unlocked || (a.active || []).length || (a.offers || []).length); };
+  const signCost = (o) => o.signCost != null ? o.signCost : AK().signCost * (o.tier || 1);
+  // mood colour: board blue at the renewal mark and above, amber below it, red under the watch line (the sim's memo flag)
+  const moodHue = (m) => { const K = AK(); return m >= K.renewMood ? 'cap' : m >= K.watchMood ? 'warn' : 'bad'; };
+  // revenue split at `pf` served (default: next week's forecast serving PF): { market, contracts, total, reserved, open, pf }
+  function revSplit(s, pf) {
+    if (pf == null) { const f = fc(s); pf = f && f.alloc && f.alloc.serving ? f.alloc.serving.pf : 0; }
+    const r = has('money', 'revenueSplit') ? tryr(() => FR.money.revenueSplit(s, pf), null) : null;
+    if (r && Number.isFinite(+r.total)) return Object.assign({ market: 0, contracts: 0, reserved: 0, open: pf }, r, { pf });
+    const tot = tryr(() => FR.money.revenue(s, pf), 0);
+    return { market: tot, contracts: 0, total: tot, reserved: 0, open: pf, pf };
+  }
+  // last week's split: the report's money flow when the sim wrote one, else the fees the book pays now against last week's total
+  function revSplitLast(s) {
+    const fm = (s.lastReport && s.lastReport.flows && s.lastReport.flows.money) || {}, tot = s.money.revenue || 0;
+    let c = s.money.revContracts != null && Number.isFinite(+s.money.revContracts) ? +s.money.revContracts : Number.isFinite(+fm.contracts) ? +fm.contracts : NaN;
+    if (!Number.isFinite(c)) c = has('accounts', 'feeRevenue') && s.turn > 1 ? +tryr(() => FR.accounts.feeRevenue(s), 0) || 0 : 0;
+    c = clamp(c, 0, tot);
+    return { market: tot - c, contracts: c, total: tot };
+  }
+  U.revSplit = (s, pf) => { s = s || S(); return s && s.money ? revSplit(s, pf) : null; };
+  U.revSplitLast = (s) => { s = s || S(); return s && s.money ? revSplitLast(s) : null; };
+  U.accounts = { reservedPF: (s) => reservedPF(s || S()), maxActive: (s) => maxActive(s || S()), backlog: (s) => backlog(s || S()), moodHue, unlocked: (s) => unlocked(s || S()) };
   // hires still allowed this week (FR.money.hireRoom; else K.maxHire less the hires already joining in hireTurns weeks)
   function hireRoom(s) {
     const K = MoK(), v = has('money', 'hireRoom') ? tryr(() => +FR.money.hireRoom(s), NaN) : NaN; if (Number.isFinite(v)) return Math.max(0, Math.floor(v));
@@ -227,15 +262,23 @@
       const v = s.sliders[k];
       return `<div class="fp-sl${k === own ? ' own' : ''}"><div class="fp-sl-h"><span class="fp-sl-n">${ico(k)}<b>${esc(AN(k))}</b></span><span class="fp-sl-u num">${unitText(al[k])}</span><b class="fp-sl-v num">${v}%</b></div>
         <input class="pl-range" type="range" min="0" max="100" step="1" value="${v}" data-fps="${k}" aria-label="${esc(AN(k))} share of compute and staff, percent" style="--p:${v / 100};--rc:${ACOL[k]}">
-        <p class="fp-sl-f">${fcText(k, s, nums[k])}</p>
+        <p class="fp-sl-f">${fcText(k, s, nums[k])}</p>${k === 'serving' ? resLine(s, (al.serving || {}).pf) : ''}
         <div class="fp-nudge" role="group" aria-label="Adjust ${esc(AN(k))}">${[-5, -1, 1, 5].map(d => btn('nudge', k + ':' + d, (d > 0 ? '+' : '−') + Math.abs(d), 'quiet', !live(s) || (d < 0 ? v <= 0 : v >= 100))).join('')}</div></div>`;
     }).join('');
     return `<div class="card fp-sliders" id="fpSliders"><div class="fp-cardh"><span class="kicker">Allocation</span>${tip(TIPS.sliders, 'the allocation')}<span class="fp-sum num">Total 100%</span></div>${rows}<p class="fp-sl-foot" data-fpfoot>${footText(f, f)}</p></div>`;
   }
+  // the serving readout once accounts reserve PF: "Serving 38 PF · 14 reserved for accounts · 24 open market"
+  function resText(s, pf) {
+    const need = reservedPF(s); pf = Math.max(0, +pf || 0); if (!(need > 0)) return '';
+    const res = Math.min(pf, need), f = (v) => v >= 100 ? String(Math.round(v)) : trim1(v);
+    return `Serving <b class="num">${f(pf)} PF</b> · <b class="num">${f(res)}</b> reserved for accounts · <b class="num">${f(Math.max(0, pf - need))}</b> open market`
+      + (need > pf + 0.05 ? ` · <span class="neg">${f(need - pf)} PF short of the contracts</span>` : '');
+  }
+  const resLine = (s, pf) => { const t = resText(s, pf); return t ? `<p class="fp-sl-r" data-fpres>${t}</p>` : ''; };
   let drag = null, raf = 0, SL = null;
   function bindSliders() {
     SL = null; const box = $('fpSliders'); if (!box) return;
-    SL = { foot: box.querySelector('[data-fpfoot]') };
+    SL = { foot: box.querySelector('[data-fpfoot]'), res: box.querySelector('[data-fpres]') };
     AL().forEach(k => {
       const inp = box.querySelector(`[data-fps="${k}"]`); if (!inp) return; const r = inp.closest('.fp-sl');
       SL[k] = { inp, v: r.querySelector('.fp-sl-v'), u: r.querySelector('.fp-sl-u'), f: r.querySelector('.fp-sl-f') };
@@ -264,6 +307,7 @@
       r.f.innerHTML = fcText(k, pv.state, nums[k]) + fcDelta(k, nums[k] - base.nums[k]);
     });
     if (SL.foot) SL.foot.innerHTML = footText(pv.f, base.f);
+    if (SL.res) SL.res.innerHTML = resText(pv.state, (pv.f.alloc.serving || {}).pf);
   }
   // on release: one 'sliders' command, then the panel re-renders from the new state
   function commitSliders() {
@@ -304,6 +348,70 @@
       ${jumpRow}<div class="pl-tot"><span>Rent a week</span><b class="num">${kmoney(cost)}</b></div>
       ${c.rentPF >= top && !dead ? why(`Rent is at the ceiling of ${top} PF. Clusters add capacity beyond it.`, 'info') : ''}
       <p class="hint">Steps of ${step} PF, <span class="num">${kmoney(step * per)}</span> a week each; the buttons below move 50 or 250. Changes apply at once and bill at End Turn. ${ceil}${mkt}</p>`;
+  }
+  // ---------- enterprise accounts: the book (active rows), the offer board (Sign / Decline), the locked state ----------
+  // one requirement on an offer: met / unmet against the lab now
+  function reqList(s, o) {
+    const q = has('accounts', 'qualifies') ? tryr(() => FR.accounts.qualifies(s, o), null) : null, cap = avgCap(s), tr = s.market.trust;
+    const worst = SK().reduce((b, k) => gapOf(s, k) > gapOf(s, b) ? k : b, SK()[0]), wg = gapOf(s, worst);
+    const out = [];
+    if (o.minCap) out.push([cap >= o.minCap, `Average capability ${o.minCap}`, `now ${n1(cap)}`]);
+    if (o.minSafe != null) out.push([wg <= o.minSafe + 1e-9, `Every skill’s safety within ${o.minSafe} of capability`, `widest gap ${esc(SN(worst))} ${gapTxt(wg)}`]);
+    if (o.minTrust) out.push([tr >= o.minTrust, `Public trust ${o.minTrust}`, `now ${n1(tr)}`]);
+    return { ok: q ? !!q.ok : out.every(r => r[0]), why: q && q.why ? String(q.why) : '', rows: out };
+  }
+  function accRow(s, a) {
+    const left = Math.max(0, a.ends - s.turn + 1), pending = a.starts != null && a.starts > s.turn, mood = Math.round(+a.mood || 0), hue = moodHue(mood);
+    const short = a.starts != null && a.starts < s.turn && a.served != null && a.served < a.pfPerWeek - 0.05;
+    const tag = mood < AK().watchMood ? badge('At risk', 'bad', 'alert') : left <= 8 ? badge(mood >= AK().renewMood ? 'Renews' : 'Ends', mood >= AK().renewMood ? 'good' : 'warn', 'clock') : pending ? badge('Onboarding', 'info', 'clock') : '';
+    return `<div class="fp-acc"><div class="fp-acc-h"><b>${esc(a.name)}</b>${badge('Tier ' + a.tier, 'brand')}${tag}<span class="num fp-acc-fee">${kmoney(a.feePerWeek)}<small>/wk</small></span></div>
+      <p class="fp-acc-s">${esc(a.sector || '')} · <span class="num">${trim1(a.pfPerWeek)} PF</span> · <span class="num">${wks(left)}</span> left${pending ? ` · fee from ${esc(when(a.starts))}` : ''}</p>
+      <div class="fp-acc-m"><span>Mood</span><div class="meter ${hue}" style="--v:${clamp(mood, 0, 100)}" role="img" aria-label="Mood ${mood} of 100"><i></i></div><b class="num tone-${hue === 'cap' ? 'cap' : hue}">${mood}</b></div>
+      ${short ? `<p class="fp-acc-w">${ico('alert')}<span>Served ${n1(a.served)} of ${trim1(a.pfPerWeek)} PF last week. Each short week costs ${AK().mood.unserved} mood.</span></p>` : ''}</div>`;
+  }
+  function accOffer(s, o, room) {
+    const rq = reqList(s, o), cost = signCost(o), dead = !live(s), start = s.turn + AK().startDelay;
+    const dis = dead ? 'The run is over.' : room <= 0 ? `The book is full: ${maxActive(s)} accounts at most${(s.money.roundsDone || []).indexOf('b') < 0 ? `, ${AK().maxActiveB} once the Series B closes` : ''}.`
+      : !rq.ok ? (rq.why ? esc(rq.why.replace(/\.$/, '')) + '.' : 'The lab does not meet every requirement yet.')
+        : s.money.cash < cost ? `Signing costs ${kmoney(cost)}; cash is ${kmoney(s.money.cash)}.` : '';
+    const need = reservedPF(s) + o.pfPerWeek, sv = revSplit(s).pf;
+    const left = o.expires != null ? o.expires - s.turn + 1 : null;
+    const actions = P.confirm === 'accNo:' + o.id
+      ? confirmBox(false, `Decline ${esc(o.name)}?`, 'Declining costs nothing. The offer leaves the board and this buyer does not return this run.', 'Keep the offer', 'accNoOk', o.id, 'Decline')
+      : `<div class="card-actions">${btn('accNo', o.id, 'Decline', 'quiet', dead)}${btn2('sign', o.id, 'Sign', `${kmoney(cost)} now`, 'primary', !!dis, 'check')}</div>`;
+    return `<div class="card fp-aoff${rq.ok ? '' : ' ghost'}" data-acc="${esc(o.id)}">
+      <div class="fp-cardk"><span class="pl-kind">${esc(o.sector || 'Enterprise')}</span>${badge('Tier ' + o.tier, 'brand')}${left != null ? badge(left <= 1 ? 'Last week' : wks(left) + ' left', left <= 2 ? 'warn' : '', 'clock') : ''}</div>
+      <div class="card-head"><b class="card-title">${esc(o.name)}</b></div>
+      <div class="stats fp-st4">${stat('Fee', kmoney(o.feePerWeek), 'a week')}${stat('Reserved', trim1(o.pfPerWeek) + ' PF', 'a week')}${stat('Term', trim1(o.turns / 52) + ' yr', o.turns + ' wks')}${stat('Signing', kmoney(cost), 'once')}</div>
+      <ul class="fp-req">${rq.rows.map(r => `<li class="${r[0] ? 'ok' : 'no'}">${ico(r[0] ? 'check' : 'close')}<span>${r[1]}</span><em class="num">${r[2]}</em></li>`).join('')}</ul>
+      ${kv('clock', `Fee from <b>${esc(when(start))}</b>, ${wks(AK().startDelay)} after signing. <b class="num">${kmoney(o.feePerWeek * o.turns)}</b> over the term.`)}
+      ${!dis && need > sv + 0.05 ? why(`Serving is ${n1(sv)} PF; the contracts would reserve ${n1(need)} PF. Raise the serving share or rent more, or each account left short loses ${AK().mood.unserved} mood a week.`) : ''}
+      ${actions}${dis && P.confirm !== 'accNo:' + o.id ? why(dis, rq.ok && room > 0 ? 'warn' : 'info') : ''}</div>`;
+  }
+  function accountsBlock(s) {
+    const a = accOf(s), K = AK(), act = a.active || [], offers = a.offers || [], mx = maxActive(s), room = mx - act.length;
+    let out = sec('building', 'Accounts', unlocked(s) ? `${act.length} of ${mx} · new board ${esc(when(a.refreshAt || s.turn))}` : 'locked', 'accounts');
+    if (!unlocked(s)) {
+      const cap = avgCap(s), tr = s.market.trust;
+      return out + `<div class="card fp-alock"><div class="card-head">${ico('lock')}<b class="card-title">Enterprise accounts</b>${badge('Locked', '', 'lock')}</div>
+        <p class="card-meta">Buyers sign multi-year contracts once the lab averages capability ${K.unlockCap} and public trust is ${K.unlockTrust} or more. Each account reserves serving PF and pays a fixed weekly fee on top of open-market revenue.</p>
+        <div class="pl-mrow-l"><span>Average capability</span><span class="num"><b>${n1(cap)}</b> of ${K.unlockCap}</span></div>${meter(cap / K.unlockCap * 100, cap >= K.unlockCap ? 'good' : 'cap')}
+        <div class="pl-mrow-l"><span>Public trust</span><span class="num"><b>${n1(tr)}</b> of ${K.unlockTrust}</span></div>${meter(tr / K.unlockTrust * 100, tr >= K.unlockTrust ? 'good' : 'gold')}
+        ${!accOn() ? note('info', 'Accounts are not in this build.') : ''}</div>`;
+    }
+    if (act.length) {
+      const fees = act.reduce((t, x) => t + (x.starts != null && x.starts > s.turn ? 0 : +x.feePerWeek || 0), 0);
+      out += `<div class="stats">${stat('Contracted', kmoney(fees), 'a week')}${stat('Reserved', trim1(reservedPF(s)) + ' PF', 'from serving')}${stat('Backlog', kmoney(backlog(s)), 'fees to come')}</div>`;
+      out += `<div class="card fp-accs">${act.map(x => accRow(s, x)).join('')}</div>`;
+    } else out += `<p class="hint">No accounts signed. Signing reserves serving PF for the contract and pays its fee each week from the third week.</p>`;
+    const M = K.mood;
+    out += `<p class="hint">Mood falls ${M.incident} on an incident at the lab, ${M.rival} on a rival’s and ${M.unserved} for each week its PF goes unserved; it rises ${M.up} a week toward ${M.top} while every gap stays within ${tryr(() => FR.sim.K.safeMargin, 5)} and the PF is served. Below ${M.churn} the account leaves the next week, for good, and public trust falls ${K.churnTrust}. At term end an account at ${M.renew} or more renews one tier up.</p>`;
+    const lost = (a.lost || []).filter(l => l && l.turn >= s.turn - 26).slice(-3).reverse();
+    if (lost.length) out += lost.map(l => row(l.why === 'churn' ? 'alert' : 'clock', esc(l.name), `${l.why === 'churn' ? 'Ended the contract' : l.why === 'expired' ? 'Contract ran out' : 'Dropped'} · ${esc(when(l.turn))}`, l.why === 'churn' ? badge('Churned', 'bad') : '')).join('');
+    out += sec('tag', 'Offer board', offers.length ? `${offers.length} open` : '', 'accoffers');
+    if (!offers.length) return out + empty('clock', 'No offers on the board', `New buyers arrive ${esc(when(a.refreshAt || s.turn + 1))}.`, '');
+    if (room <= 0) out += why(`The book is full: ${mx} accounts at most${(s.money.roundsDone || []).indexOf('b') < 0 ? `. The Series B raises it to ${AK().maxActiveB}` : ''}. An account frees its place when its term ends.`, 'info');
+    return out + offers.map(o => accOffer(s, o, room)).join('');
   }
   const KIND = { training: ['Training', 'training'], safety: ['Safety', 'safety'], research: ['Research', 'research'], product: ['Product', 'serving'], business: ['Business', 'coin'], compute: ['Compute', 'compute'] };
   const kindOf = (k) => KIND[k] || [String(k || 'Project').charAt(0).toUpperCase() + String(k || 'project').slice(1), 'project'];
@@ -420,10 +528,18 @@
     out += sliders('serving', s, f);
     out += sec('coin', 'Revenue');
     out += `<div class="stats">${stat('Last week', kmoney(s.money.revenue))}${stat('Next week', kmoney(f ? f.revenue : 0), 'forecast')}${stat('Per PF-week', kmoney(eff), 'served')}</div>`;
-    out += `<div class="pl-mrow-l"><span>Demand${tip(TIPS.demand, 'demand')}</span><span class="num">serving <b>${n1(sv.pf)}</b> of <b>${n1(dem)}</b> PF</span></div>${meter(dem > 0 ? sv.pf / dem * 100 : 0, sv.pf > dem + 0.05 ? 'warn' : 'gold')}`;
+    const sp = revSplit(s, sv.pf), nAct = (accOf(s).active || []).length;
+    if (sp.contracts > 0 || nAct) out += `<div class="pl-money fp-split">
+      <div><span>Open market · <span class="num">${n1(sp.open != null ? sp.open : sv.pf)} PF</span></span><b class="num">${kmoney(sp.market)}</b></div>
+      <div><span>Contracts · ${nAct} ${nAct === 1 ? 'account' : 'accounts'}</span><b class="num">${kmoney(sp.contracts)}</b></div>
+      <div class="pl-money-t"><span>Next week</span><b class="num">${kmoney(sp.total)}</b></div></div>`;
+    // open-market demand is met from what the contracts leave (their PF comes first)
+    const rsv = reservedPF(s), opf = Math.max(0, sv.pf - rsv);
+    out += `<div class="pl-mrow-l"><span>Demand${tip(TIPS.demand, 'demand')}</span><span class="num">${rsv > 0 ? 'open market' : 'serving'} <b>${n1(opf)}</b> of <b>${n1(dem)}</b> PF</span></div>${meter(dem > 0 ? opf / dem * 100 : 0, opf > dem + 0.05 ? 'warn' : 'gold')}`;
     if (sv.pf <= 0) out += why('Nothing is served at a 0% share. Revenue is zero until Serving has compute.');
-    else if (sv.pf > dem + 0.05) out += why(`Serving ${n1(sv.pf - dem)} PF above demand. That capacity earns nothing; move share to Training, Safety or Research.`);
-    else if (dem - sv.pf > 0.05) out += note('trend', `Unmet demand <b class="num">${n1(dem - sv.pf)} PF</b>: about <b class="num">${kmoney(eff * (dem - sv.pf))}</b> a week more at full service.`);
+    else if (rsv > sv.pf + 0.05) out += why(`The contracts reserve ${n1(rsv)} PF and serving has ${n1(sv.pf)}. Each account left short loses ${AK().mood.unserved} mood a week, and the open market gets nothing.`);
+    else if (opf > dem + 0.05) out += why(`Serving ${n1(opf - dem)} PF above demand. That capacity earns nothing; move share to Training, Safety or Research.`);
+    else if (dem - opf > 0.05) out += note('trend', `Unmet demand <b class="num">${n1(dem - opf)} PF</b>: about <b class="num">${kmoney(eff * (dem - opf))}</b> a week more at full service.`);
     out += `<div class="pl-money">
       <div><span>Price at average capability ${n1(avgCap(s))}</span><b class="num">${kmoney(base)}</b></div>
       <div><span>Public trust ${Math.round(s.market.trust)}</span><b class="num">×${tm.toFixed(2)}</b></div>
@@ -432,6 +548,7 @@
       ${share > 0 ? `<div><span>Revenue share to deals${tip(TIPS.revshare, 'the revenue share')}</span><b class="num neg">−${pct(share)}</b></div>` : ''}
       ${zeta < 0.999 ? `<div><span>Zeta open weights ahead of you</span><b class="num neg">×${zeta.toFixed(2)}</b></div>` : ''}
       <div class="pl-money-t"><span>Per PF-week served</span><b class="num">${kmoney(eff)}</b></div></div>`;
+    out += accountsBlock(s);
     out += sec('compute', 'Rented compute', s.compute.scarcity > 0 ? 'shortage' : '');
     out += rentBox(s);
     return out;
@@ -578,10 +695,21 @@
     const m = s.money, bp = tryr(() => FR.money.burnParts(s), { payroll: 0, ops: 0, compute: 0, projects: 0 }), rw = f ? f.runway : Infinity;
     const rcls = rw === Infinity ? 'pos' : rw < 6 ? 'neg' : rw < 13 ? 'tone-warn' : '';
     let out = `<div class="stats">${stat('Cash', kmoney(m.cash))}${stat('Runway', rw === Infinity ? 'Positive' : Math.max(0, rw) + ' wks', rw === Infinity ? 'revenue covers burn' : 'forecast', { tip: tip(TIPS.runway, 'runway'), cls: rcls })}${stat('Valuation', kmoney(m.valuation), 'stake ' + pctS(m.founderPct), { tip: tip(TIPS.stake, 'your stake') })}</div>`;
+    // contracted revenue and the backlog (V0.3): the cap table view carries the customer book beside the investors
+    const act = accOf(s).active || [];
+    if (act.length) {
+      const fees = act.reduce((t, x) => t + (x.starts != null && x.starts > s.turn ? 0 : +x.feePerWeek || 0), 0), yr = fees * 52;
+      out += `<div class="pl-money fp-contract" data-focus="contracts">
+        <div><span>Contracted revenue · ${act.length} ${act.length === 1 ? 'account' : 'accounts'}</span><b class="num">${kmoney(fees)}<small> a week</small></b></div>
+        <div><span>Backlog · fees still to be paid</span><b class="num">${kmoney(backlog(s))}</b></div>
+        <div><span>Contracted a year at today’s book</span><b class="num">${kmoney(yr)}</b></div></div>`;
+    }
+    const sp = f ? revSplit(s, (f.alloc && f.alloc.serving || {}).pf) : { contracts: 0 };
     if (f) {
       out += sec('coin', 'Next week', 'forecast');
       out += `<div class="pl-money">
-        <div><span>Revenue</span><b class="num pos">+${kmoney(f.revenue)}</b></div>
+        ${sp.contracts > 0 ? `<div><span>Revenue · open market</span><b class="num pos">+${kmoney(sp.market)}</b></div><div><span>Revenue · contracts</span><b class="num pos">+${kmoney(sp.contracts)}</b></div>`
+          : `<div><span>Revenue</span><b class="num pos">+${kmoney(f.revenue)}</b></div>`}
         <div><span>Payroll · ${s.staff.headcount} staff</span><b class="num">−${kmoney(bp.payroll)}</b></div>
         <div><span>Operations</span><b class="num">−${kmoney(bp.ops)}</b></div>
         <div><span>Compute</span><b class="num">−${kmoney(bp.compute)}</b></div>
@@ -721,7 +849,7 @@
     const [fid, thing] = String(id || '').split('.');
     switch (fid) {
       case 'lobby': return { floor: fid, tab: { news: 'news', trust: 'trust', record: 'record' }[thing] || 'news' };
-      case 'serving': return { floor: fid };
+      case 'serving': return { floor: fid, focus: thing === 'accounts' ? 'accounts' : null };
       case 'training': return { floor: fid, focus: thing === 'board' ? 'target' : null };
       case 'safety': return { floor: fid, focus: thing === 'log' ? 'log' : thing === 'evals' || thing === 'redteam' ? 'skills' : null };
       case 'research': return { floor: fid, focus: thing === 'offers' ? 'offers' : null };
@@ -774,13 +902,14 @@
   }
 
   // ---------- the weekly memo ----------
-  const FLAGGY = /incident|warning|\brecord\b|round|series a|milestone|final/i;
+  const FLAGGY = /incident|warning|\brecord\b|round|series [ab]|milestone|final|churn|ends its contract|leaves the book/i;
   function lineIcon(l) {
     const t = l.text;
     if (/\bgap \d/i.test(t) && !/incident at gap/i.test(t)) return 'alert';
     if (/incident/i.test(t)) return 'incident';
     if (/\brecord\b/i.test(t)) return 'record';
-    if (/round|series a|milestone|investor/i.test(t)) return 'coin';
+    if (/round|series [ab]|milestone|investor/i.test(t)) return 'coin';
+    if (/\baccounts?\b|contract|signed|churn|renew|buyers?\b/i.test(t)) return 'building';
     if (/cluster|compute|PF/.test(t)) return 'compute';
     if (/\bhir(e|es|ing)\b|headcount|laid off/i.test(t)) return 'hire';
     if (/project|complete|greenlit|started|cancelled|overran|failed/i.test(t)) return 'project';
@@ -806,6 +935,12 @@
       out.push({ w: m.milestone.due - T, icon: 'record', re: /milestone due/i, text: `${esc(m.milestone.text)}${pr ? ` Now ${cur}${pr.met ? ', met' : ''}.` : ''}`
         + (pc ? ` At this pace ${n1(pc.projected)}${pc.short > 0 ? `, short by ${n1(pc.short)}` : ''}.` : '') });
     }
+    // accounts: a fee that starts soon, a term that ends within 8 weeks (renews at mood 60 or more, else leaves)
+    (accOf(s).active || []).forEach(a => {
+      if (a.starts != null && a.starts > T) out.push({ w: a.starts - T, icon: 'building', re: /fee starts/i, text: `${esc(a.name)}: fee of ${kmoney(a.feePerWeek)} a week and ${trim1(a.pfPerWeek)} PF reserved from ${esc(when(a.starts))}.` });
+      const left = a.ends - T + 1, K = AK();
+      if (left <= 8) out.push({ w: left, icon: 'building', re: /renewal due|contract ends/i, text: `${esc(a.name)} contract ends ${esc(when(a.ends))}. Mood ${Math.round(a.mood)}: ${a.mood >= K.renewMood ? `renews at tier ${Math.min(3, a.tier + 1)} fees` : `leaves unless mood reaches ${K.renewMood}`}.` });
+    });
     (s.projects.active || []).forEach((p, i) => out.push({ w: p.turnsLeft, icon: 'project', text: `${esc(p.name)} finishes in ${wks(p.turnsLeft)} (${esc(META('proj' + (i + 1)).name)}).` }));
     (s.compute.deals || []).forEach(d => out.push({ w: d.ends - T, icon: 'rival', re: /compute share ends/i, text: `${esc(rival(s, d.rivalId).name)} compute share ends ${esc(when(d.ends))}: ${d.pf} PF withdrawn.` }));
     const o = s.market.dealOffer;
@@ -825,8 +960,18 @@
     if (s.money.offer) return { label: `Boardroom: the ${roundName(s.money.offer.round)} offer`, icon: 'coin', go: 'boardroom.table' };
     if (s.market.dealOffer) return { label: `Boardroom: the ${rival(s, s.market.dealOffer.rivalId).name} offer`, icon: 'rival', go: 'boardroom.compute' };
     const f = fc(s); if (f && f.runway !== Infinity && f.runway < 13) return { label: `Boardroom: runway ${wks(Math.max(0, f.runway))}`, icon: 'coin', go: 'boardroom.table' };
+    const ac = accOf(s), room = maxActive(s) - (ac.active || []).length;
+    const can = room > 0 ? (ac.offers || []).filter(o => reqList(s, o).ok && s.money.cash >= signCost(o)).length : 0;
+    if (can) return { label: `Serving: ${can} account ${can === 1 ? 'offer' : 'offers'} the lab qualifies for`, icon: 'building', go: 'serving.accounts' };
     const pj = s.projects; if (pj.active.length < pj.slots && pj.offers.some(o => o.tier <= s.research.tier)) return { label: 'Research: greenlight a project', icon: 'research', go: 'research.offers' };
     return null;
+  }
+  // the memo's account rows: contract fees within the week's revenue, and the book (count, average mood)
+  function accRows(s) {
+    const act = accOf(s).active || []; if (!act.length) return '';
+    const sp = revSplitLast(s), mood = act.reduce((t, a) => t + (+a.mood || 0), 0) / act.length, hue = moodHue(mood);
+    return `<tr><td>Of which contracts</td><td><b>${kmoney(sp.contracts)}</b></td><td></td></tr>
+      <tr><td>Accounts · mood</td><td><b>${act.length} · <span class="tone-${hue === 'cap' ? 'cap' : hue}">${Math.round(mood)}</span></b></td><td></td></tr>`;
   }
   function memoHtml(s) {
     const m = s.memo || { turn: 0, lines: [] }; refTurn = m.turn || null;
@@ -854,6 +999,7 @@
     out += `<div class="fp-box"><table class="fp-dt"><tbody>
       <tr><td>Cash</td><td><b>${kmoney(cash)}</b></td><td>${dv(prevCash != null ? cash - prevCash : d ? d.cash : null, kf, true, 1)}</td></tr>
       <tr><td>Revenue a week</td><td><b>${kmoney(rev)}</b></td><td>${dv(prev ? rev - prev.revenue : null, kf, true, 1)}</td></tr>
+      ${accRows(s)}
       <tr><td>Burn a week${T > 0 ? '' : ' (forecast)'}</td><td><b>${kmoney(burn)}</b></td><td>${dv(prev ? burn - prev.burn : null, kf, false, 1)}</td></tr>
       <tr><td>Public trust</td><td><b>${n1(trust)}</b></td><td>${dv(d ? d.trust : prev ? trust - prev.trust : null, pf, true)}</td></tr>
       </tbody></table></div>`;
@@ -920,6 +1066,21 @@
       case 'endDeal': sfx('tap'); P.confirm = 'end:' + v; render(true); return;
       case 'endDealOk': said(run({ type: 'endDeal', rivalId: v })); return;
       case 'buy': sfx('tap'); P.confirm = 'buy:' + v; render(true); return;
+      case 'sign': {
+        const o = (accOf(s).offers || []).find(x => x.id === v);
+        busy = true; let r; try { r = FR.cmd && FR.cmd.signAccount ? FR.cmd.signAccount(v) : { ok: false }; } finally { busy = false; }
+        r = r || { ok: false }; if (r.ok) { P.confirm = null; sfx('good'); } render(true);
+        if (r.ok && o) U.toast(`Signed: ${o.name}, tier ${o.tier}. ${kmoney(o.feePerWeek)} a week from ${FR.dateLabel(s.turn + AK().startDelay)}; ${trim1(o.pfPerWeek)} PF reserved from then.`, 3800, 'good');
+        return;
+      }
+      case 'accNo': sfx('tap'); P.confirm = 'accNo:' + v; render(true); return;
+      case 'accNoOk': {
+        const o = (accOf(s).offers || []).find(x => x.id === v);
+        busy = true; let r; try { r = FR.cmd && FR.cmd.declineAccount ? FR.cmd.declineAccount(v) : { ok: false }; } finally { busy = false; }
+        r = r || { ok: false }; if (r.ok) P.confirm = null; render(true);
+        if (r.ok && o) U.toast(`Declined: ${o.name}.`, 2200);
+        return;
+      }
       case 'buyOk': said(run({ type: 'buy', offerId: v })); return;
       case 'gl': {
         const o = s.projects.offers.find(x => x.id === v), floor = 'proj' + (s.projects.active.length + 1);
@@ -1069,7 +1230,27 @@
       '.fp-memo .wk-lines li .fp-w{flex:none;margin-left:auto;padding-top:5px;font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--ink-2);white-space:nowrap}',
       '.fp-memo .wk-lines li.due>.ico{background:var(--warn-tint);color:var(--warn)}',
       '.fp-memo .fp-none{margin:0 0 var(--sp-2);font-size:var(--text-sm);color:var(--ink-3)}',
-      '.fp-memo .fp-news li{background:transparent;border:1px solid var(--line)}'
+      '.fp-memo .fp-news li{background:transparent;border:1px solid var(--line)}',
+      /* enterprise accounts (V0.3): the serving readout, the book, requirement lists on offer cards */
+      '.fp-sl-r{margin:4px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3)}.fp-sl-r b{color:var(--ink)}.fp-sl-r .neg{color:var(--bad)}',
+      '.fp-split,.fp-contract{margin-top:var(--sp-2)}.fp-contract small{font-family:var(--font-ui);font-size:var(--text-xs);color:var(--ink-3)}',
+      '.fp-accs{padding-top:2px;padding-bottom:2px}',
+      '.fp-acc{padding:10px 0}.fp-acc+.fp-acc{border-top:1px solid var(--line)}',
+      '.fp-acc-h{display:flex;align-items:center;gap:6px;min-width:0}',
+      '.fp-acc-h>b{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-md)}',
+      '.fp-acc-h .badge{flex:none}',
+      '.fp-acc-fee{flex:none;margin-left:auto;font-size:var(--text-md);font-weight:var(--w-medium);color:var(--gold)}.fp-acc-fee small{font-size:var(--text-xs);color:var(--ink-3)}',
+      '.fp-acc-s{margin:2px 0 6px;font-size:var(--text-sm);color:var(--ink-3)}',
+      '.fp-acc-m{display:grid;grid-template-columns:44px minmax(0,1fr) 30px;align-items:center;gap:8px;font-size:var(--text-xs);color:var(--ink-3)}',
+      '.fp-acc-m .meter{height:6px;margin:0}.fp-acc-m>b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);text-align:right}',
+      '.fp-acc-w{display:flex;align-items:flex-start;gap:6px;margin:6px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--warn)}.fp-acc-w .ico{flex:none;width:16px;height:16px;margin-top:1px}',
+      '.fp-req{display:flex;flex-direction:column;gap:4px;margin:10px 0 6px;padding:0;list-style:none}',
+      '.fp-req li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:start;gap:8px;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}',
+      '.fp-req li .ico{width:16px;height:16px;margin-top:2px}.fp-req li.ok .ico{color:var(--good)}.fp-req li.no .ico{color:var(--bad)}.fp-req li.no>span{color:var(--ink)}',
+      '.fp-req li em{font-style:normal;font-size:var(--text-xs);color:var(--ink-3);text-align:right;padding-top:2px}.fp-req li.no em{color:var(--warn)}',
+      '.fp-aoff .card-actions .btn{min-height:48px}',
+      '.fp-aoff .fp-cardk .pl-kind{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}',
+      '.fp-alock .meter{margin-bottom:6px}'
     ].join('\n');
     document.head.appendChild(st);
   })();

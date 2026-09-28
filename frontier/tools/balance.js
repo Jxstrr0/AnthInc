@@ -1,10 +1,11 @@
-// Bot probe: plays seeds through the real sim with four strategies (race, safe, balanced, revenue-first) and prints one
-// table per bot plus a summary line. Usage: node tools/balance.js [--seeds N] [--turns N] [--bot name]
+// Bot probe: plays seeds through the real sim with five strategies (race, safe, balanced, revenue-first, customer-first)
+// and prints one table per bot plus a summary line. Usage: node tools/balance.js [--seeds N] [--turns N] [--bot name]
+// [--noB] (adds 'balanced-noB': balanced, but it declines the Series B every time it is offered)
 // [--set module.key=value,...]   e.g. --set model.trainBase=0.08,money.rounds.seed.amount=12e6 (tries a tuning without editing K)
 const FR = require('../test/_load')();
 const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 && argv[i + 1] != null ? argv[i + 1] : d; };
-const SEEDS = +arg('seeds', 10), TURNS = +arg('turns', 312), ONLY = arg('bot', null), DEALS = arg('deals', '1') !== '0';
+const SEEDS = +arg('seeds', 10), TURNS = +arg('turns', 312), ONLY = arg('bot', null), DEALS = arg('deals', '1') !== '0', NOB = argv.includes('--noB');
 argv.forEach((a, i) => {
   if (a !== '--set') return;
   String(argv[i + 1] || '').split(',').filter(Boolean).forEach(kv => {
@@ -90,16 +91,19 @@ function smart(s, o) {
 
 // ---- sliders. quick(s, t) is used while scanning rent (t has the candidate capacity); full(s, t) sets the week ----
 const fixed = (training, serving, safety, research) => { const f = () => ({ training, serving, safety, research }); return { quick: f, full: f }; };
-// balanced: serve the demand, research while tiers remain, and the least safety that keeps every gap at 3 or under
-const serveShare = (s, t) => FR.clamp(round5(FR.money.demandPF(t) / free(t) * 100), 5, 45);
+// balanced: serve the demand and the accounts' reserved PF, research while tiers remain, and the least safety that keeps
+// every gap at 3 or under. customer-first serves heavier (a margin over the book and the demand, at least 30%).
+const reserved = (t) => FR.accounts.reservedPF(t) + FR.accounts.pending(t);
+const serveShare = (s, t) => FR.clamp(round5((FR.money.demandPF(t) + reserved(t)) / free(t) * 100), 5, 45);
+const serveHeavy = (s, t) => FR.clamp(round5((FR.money.demandPF(t) + reserved(t)) * 1.15 / free(t) * 100), 30, 70);
 const researchShare = (s) => s.research.tier < 3 ? 10 : 5;
 function quickBalanced(s, t) {
-  const serving = serveShare(s, t), research = researchShare(s), rest = 100 - serving - research, sl = s.sliders;
+  const serving = (this && this.serve || serveShare)(s, t), research = researchShare(s), rest = 100 - serving - research, sl = s.sliders;
   const safety = FR.clamp(Math.round(rest * sl.safety / Math.max(1, sl.training + sl.safety)), 0, rest);
   return { training: rest - safety, serving, safety, research };
 }
 function fullBalanced(s, t) {
-  const serving = serveShare(s, t), research = researchShare(s), rest = 100 - serving - research, goal = chasing(s) ? 8 : 3;
+  const serving = (this && this.serve || serveShare)(s, t), research = researchShare(s), rest = 100 - serving - research, goal = chasing(s) ? 8 : 3;
   for (let sf = 5; sf <= rest - 5; sf += 5) {
     const sl = { training: rest - sf, serving, safety: sf, research }, v = view(t, { sliders: sl });
     const g = FR.model.gains(v, FR.sim.allocate(v));
@@ -111,14 +115,33 @@ function fullBalanced(s, t) {
 const BOTS = {
   race: Object.assign(fixed(70, 15, 5, 10), { score: byKind({ training: 3, business: 1 }) }),
   safe: Object.assign(fixed(25, 20, 45, 10), { score: byKind({ safety: 3, research: 2 }) }),
-  balanced: { quick: quickBalanced, full: fullBalanced, score: smart },
-  'revenue-first': Object.assign(fixed(25, 50, 15, 10), { score: byKind({ product: 3, business: 2, compute: 1 }) })
+  balanced: { quick: quickBalanced, full: fullBalanced, score: smart, accounts: 'sensible' },
+  'revenue-first': Object.assign(fixed(25, 50, 15, 10), { score: byKind({ product: 3, business: 2, compute: 1 }) }),
+  // heavy serving, signs every account offer it qualifies for, never raises past the A
+  'customer-first': { quick: quickBalanced, full: fullBalanced, serve: serveHeavy, score: smart, accounts: 'all', lastRound: 'a' }
 };
+BOTS.race.accounts = 'all';   // the racer signs what it can and loses it to incidents
+if (NOB) BOTS['balanced-noB'] = Object.assign({}, BOTS.balanced, { lastRound: 'a' });
+// account offers: 'all' signs every offer it qualifies for; 'sensible' signs when the book can be served, the lab holds
+// safety in step (so mood rises) and the onboarding fee is small against cash
+function accounts(bot, s, cash, cmds) {
+  const st = s.accounts; if (!bot.accounts || !st || !st.offers.length) return;
+  let room = FR.accounts.maxActive(s) - st.active.length, left = cash;
+  st.offers.slice().sort((a, b) => b.feePerWeek / b.pfPerWeek - a.feePerWeek / a.pfPerWeek).forEach(o => {
+    const cost = FR.accounts.K.signCost * o.tier;
+    if (room <= 0 || !FR.accounts.qualifies(s, o).ok || left < cost) return;
+    if (bot.accounts === 'sensible' && (left < 12 * cost || !FR.sim.inStep(s) || FR.money.underReview(s))) return;
+    cmds.push({ type: 'signAccount', id: o.id }); room--; left -= cost;
+  });
+}
 // a capability milestone on one skill is open and not yet met
 function chasing(s) { const ms = s.money.milestone, p = ms && FR.money.progress(s, ms); return !!(p && ms.kind === 'cap' && !p.met && !s.money.offer); }
 function decide(bot, s) {
-  const cmds = [], m = s.money, cash = m.cash + (m.offer ? m.offer.amount : 0);
-  if (m.offer) cmds.push({ type: 'acceptRound' });
+  const cmds = []; let m = s.money, cash = m.cash + (m.offer ? m.offer.amount : 0);
+  // rounds up to bot.lastRound; a later round is declined each time it is offered (the B is optional)
+  const past = bot.lastRound && m.offer && FR.money.K.order.indexOf(m.offer.round) > FR.money.K.order.indexOf(bot.lastRound);
+  if (m.offer) cmds.push({ type: past ? 'declineRound' : 'acceptRound' });
+  if (past) cash = m.cash;
   // a card-reading player takes the DeepField compute share when its revenue cut costs less than half of renting the PF
   const d = s.market.dealOffer;
   if (DEALS && d && s.turn <= d.expires && m.revenue * d.revShare < 0.5 * d.pf * s.compute.rentPrice) cmds.push({ type: 'acceptDeal' });
@@ -128,16 +151,23 @@ function decide(bot, s) {
   const t = manage(bot, s, cash, cmds);
   cmds.unshift(Object.assign({ type: 'sliders' }, bot.full(s, t)));
   greenlight(s, bot.score, cash, t.budget, cmds);
+  accounts(bot, s, cash, cmds);
   return cmds;
 }
 
 function play(bot, seed) {
-  let s = FR.sim.newGame({ seed });
-  while (s.status === 'playing' && s.turn <= TURNS) s = FR.sim.endTurn(s, decide(bot, s));
+  let s = FR.sim.newGame({ seed }), front = null, signed = 0, churned = 0, expired = 0, bAt = null;
+  while (s.status === 'playing' && s.turn <= TURNS) {
+    s = FR.sim.endTurn(s, decide(bot, s));
+    if (front == null && FR.sim.atFrontier(s)) front = s.lastReport.turn;   // first week level with or ahead of the best rival
+    s.lastReport.events.forEach(e => { if (e.type === 'account:signed') signed++; if (e.type === 'account:churned') { if (e.why === 'churn') churned++; else expired++; }
+      if (e.type === 'money:round' && e.round === 'b') bAt = s.lastReport.turn; });
+  }
   const live = s.status === 'playing';
   return { seed, outcome: live ? 'alive' : s.status === 'dead' ? 'dead:' + s.end.cause + (s.end.skill ? '/' + s.end.skill : '') : s.status,
     turn: live ? s.turn - 1 : s.turn, peak: s.model.peakCap, inc: s.stats.incidents, fw: s.stats.firstsWon, fl: s.stats.firstsLost,
-    hold: s.win.best, cash: s.money.cash, dead: s.status === 'dead' ? s.end.cause : null };
+    hold: s.win.best, cash: s.money.cash, dead: s.status === 'dead' ? s.end.cause : null, front, signed, churned, expired, bAt,
+    stake: s.money.founderPct, rounds: s.money.roundsDone.join('') };
 }
 
 if (require.main === module) {
@@ -145,16 +175,20 @@ if (require.main === module) {
   const median = (a) => { if (!a.length) return '-'; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : Math.round((b[m - 1] + b[m]) / 2); };
   const t0 = Date.now(), lines = [];
   Object.keys(BOTS).filter(n => !ONLY || n === ONLY).forEach(name => {
-    console.log('\n' + name + ' (' + SEEDS + ' seeds, ' + TURNS + ' turns)\nseed outcome              turn  peak  inc  firsts  hold  cash');
+    console.log('\n' + name + ' (' + SEEDS + ' seeds, ' + TURNS + ' turns)\nseed outcome              turn  peak  inc  firsts  hold  front  B at  stake  acct s/c/e  cash');
     const rows = [];
     for (let seed = 1; seed <= SEEDS; seed++) {
       const r = play(BOTS[name], seed); rows.push(r);
-      console.log(pad(r.seed, 5) + pad(r.outcome, 21) + lpad(r.turn, 4) + lpad(r.peak.toFixed(1), 6) + lpad(r.inc, 5) + lpad(r.fw + '/' + r.fl, 8) + lpad(r.hold, 6) + '  ' + FR.fmtMoney(r.cash));
+      console.log(pad(r.seed, 5) + pad(r.outcome, 21) + lpad(r.turn, 4) + lpad(r.peak.toFixed(1), 6) + lpad(r.inc, 5) + lpad(r.fw + '/' + r.fl, 8) + lpad(r.hold, 6) +
+        lpad(r.front == null ? '-' : r.front, 7) + lpad(r.bAt == null ? '-' : r.bAt, 6) + lpad(r.stake.toFixed(1), 7) + lpad(r.signed + '/' + r.churned + '/' + r.expired, 12) + '  ' + FR.fmtMoney(r.cash));
     }
     const won = rows.filter(r => r.outcome === 'won').length, dead = rows.filter(r => r.dead), causes = {};
     dead.forEach(r => { causes[r.dead] = (causes[r.dead] || 0) + 1; });
+    const past4 = rows.filter(r => r.turn > 208).length, fronts = rows.filter(r => r.front != null).map(r => r.front), sum = (f) => rows.reduce((t, r) => t + f(r), 0);
     const line = name + ': win ' + Math.round(won * 100 / rows.length) + '% | alive ' + rows.filter(r => r.outcome === 'alive').length + ' | deaths ' +
-      (dead.length ? Object.keys(causes).map(c => c + ' ' + causes[c]).join(', ') : 'none') + ' | median death turn ' + median(dead.map(r => r.turn));
+      (dead.length ? Object.keys(causes).map(c => c + ' ' + causes[c]).join(', ') : 'none') + ' | median death turn ' + median(dead.map(r => r.turn)) +
+      ' | past year 4 ' + past4 + ' | first frontier median ' + median(fronts) + ' (' + fronts.length + ' seeds) | B taken ' + rows.filter(r => r.bAt != null).length +
+      ' | accounts signed ' + sum(r => r.signed) + ', churned ' + sum(r => r.churned) + ', ended ' + sum(r => r.expired);
     console.log(line); lines.push(line);
   });
   console.log('\nSUMMARY (' + ((Date.now() - t0) / 1000).toFixed(1) + 's)\n' + lines.join('\n'));

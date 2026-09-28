@@ -5,6 +5,7 @@
 //   FR.cmd.endTurn()                     resolve the week: emit report.events, 'turn:ended'; autosave; open the memo;
 //                                        on won/dead/exited → the end-of-run screen
 //   FR.cmd.goFloor(floorId)              elevator ride
+//   FR.cmd.signAccount(id)  FR.cmd.declineAccount(id)   an enterprise account offer (V0.3), through FR.cmd.do
 //   FR.enterWorld(floorId)  FR.inWorld()  FR.debug()
 // The HQ floor the player last rode to is kept in the save as state.hq = { floor } (written on 'elevator:arrived', read on
 // load; an older save without it opens in the lobby). The sim carries the field through clone untouched.
@@ -76,6 +77,9 @@
       else { U.sfx('error'); U.toast('Not done: ' + String(res.why || 'unknown reason').replace(/\.$/, '') + '.', 3200, 'bad'); }
       return res;
     },
+    // enterprise accounts (V0.3): sign or decline an offer on the Serving floor's board; both wrap FR.cmd.do
+    signAccount(id) { return FR.cmd.do({ type: 'signAccount', id }); },
+    declineAccount(id) { return FR.cmd.do({ type: 'declineAccount', id }); },
     // why End Turn cannot run now, or null
     blocked() { return U.endWhy ? U.endWhy() : (!FR.state ? 'no game' : null); },
     endTurn() {

@@ -40,8 +40,12 @@
         }
         case 'serving': {
           const rev = s.money.revenue > 0 ? money(s.money.revenue) + ' a week' : 'No revenue yet', dark = E.darkWeeks(s);
-          if (dark > 0) return { text: pct + ' · ' + rev + ' · Incident review, ' + wks(dark) + ' left', tone: 'bad' };
-          return { text: pct + ' · ' + rev, tone: '' };
+          // enterprise accounts (V0.3): the book, or the offers waiting on the board
+          const ac = s.accounts || {}, n = (ac.active || []).length, no = (ac.offers || []).length;
+          const acc = n ? ' · ' + n + (n === 1 ? ' account' : ' accounts') : no ? ' · ' + no + (no === 1 ? ' account offer' : ' account offers') : '';
+          const risk = (ac.active || []).filter(a => (+a.mood || 0) < ((FR.accounts && FR.accounts.K && FR.accounts.K.mood && FR.accounts.K.mood.watch) || 45)).length;   // under the watch line
+          if (dark > 0) return { text: pct + ' · ' + rev + acc + ' · Incident review, ' + wks(dark) + ' left', tone: 'bad' };
+          return { text: pct + ' · ' + rev + acc + (risk ? ', ' + risk + ' at risk' : ''), tone: risk ? 'warn' : '' };
         }
         case 'training': {
           const sk = s.target, cap = s.model.skills[sk] ? Math.round(s.model.skills[sk].cap) : 0;

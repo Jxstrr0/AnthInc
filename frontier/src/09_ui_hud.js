@@ -7,6 +7,7 @@
 //   FR.ui.openMemo()       FR.ui.memo() (09_ui_panels.js) or, without it, a plain memo sheet
 //   FR.ui.gameMenu()       behind the top-right button: how to play, sound, reduce motion, save and quit
 //   FR.ui.goFloor(id, fn)  ride there, then run fn once the doors open (at once when already there)
+//   FR.ui.split(on?)       the revenue split card under the Cash chip (open market / contracts), once the lab has accounts
 //   FR.ui.bind()           called once by 99_main.js at boot
 // Router: 'hq:hotspot' {hotspotId} → 'elevator' opens FR.elevator.openPanel(), anything else FR.ui.panel(hotspotId).
 (function (FR) {
@@ -38,6 +39,7 @@
     $('hudTrust').textContent = String(tr); tc.classList.toggle('warn', tr < 35 && tr >= 20); tc.classList.toggle('bad', tr < 20);
     tc.setAttribute('aria-label', `Public trust ${tr} of 100`);
     U.strip(s); U.memoDot(); U.updateEnd();
+    if (U.splitOpen()) { if (hasBook(s)) $('hudSplit').innerHTML = splitHtml(s); else U.split(false); }
   };
   // the frontier strip: your average capability vs the best rival's, and the safe-hold count n / 52 once it runs
   U.strip = function (s) {
@@ -61,6 +63,34 @@
   };
 
   const gapOf = (s, k) => Math.max(0, s.model.skills[k].cap - s.model.skills[k].safe);
+
+  // ---------- revenue split (V0.3): once the lab has contract revenue, a tap on the Cash chip drops a small card under the
+  // chips with last week's revenue split into open market and contracts, next week's forecast split, and a button on to
+  // the Boardroom Money tab. Before any account is signed the chip goes straight to the Money tab as before. ----------
+  const hasBook = (s) => !!(s && s.accounts && (s.accounts.active || []).length);
+  function splitHtml(s) {
+    const L = U.revSplitLast ? U.revSplitLast(s) : { market: s.money.revenue, contracts: 0, total: s.money.revenue };
+    const N = U.revSplit ? U.revSplit(s) : null, n = (s.accounts.active || []).length, km = U.kmoney;
+    return `<div class="hs-h"><span>Revenue last week</span><b>${km(L.total)}</b></div>
+      <div class="hs-r"><i class="k m"></i><span>Open market</span><b>${km(L.market)}</b></div>
+      <div class="hs-r"><i class="k c"></i><span>Contracts · ${n} ${n === 1 ? 'account' : 'accounts'}</span><b>${km(L.contracts)}</b></div>
+      <div class="hs-bar" role="img" aria-label="Open market ${km(L.market)}, contracts ${km(L.contracts)}"><i class="m" style="width:${L.total > 0 ? L.market / L.total * 100 : 0}%"></i><i class="c" style="width:${L.total > 0 ? L.contracts / L.total * 100 : 0}%"></i></div>
+      ${N ? `<p class="hs-n">Next week <b>${km(N.total)}</b>: open market ${km(N.market)}, contracts ${km(N.contracts)}.</p>` : ''}
+      <button class="btn small" id="hsMoney">${ico('boardroom')}<span>Boardroom money</span></button>`;
+  }
+  U.splitOpen = () => !!($('hudSplit') && $('hudSplit').classList.contains('on'));
+  U.split = function (on) {
+    let el = $('hudSplit'); const s = FR.state;
+    if (on === undefined) on = !U.splitOpen();
+    if (!on || !s || !hasBook(s)) { if (el) el.classList.remove('on'); const c = $('hudCashChip'); if (c) c.setAttribute('aria-expanded', 'false'); return false; }
+    if (!el) {
+      el = document.createElement('div'); el.id = 'hudSplit'; el.className = 'hud-split'; el.setAttribute('role', 'group'); el.setAttribute('aria-label', 'Revenue split');
+      $('hud').appendChild(el);
+      el.addEventListener('click', e => { e.stopPropagation(); if (e.target.closest('#hsMoney')) { sfx('tap'); U.split(false); route('boardroom.money'); } });
+    }
+    el.innerHTML = splitHtml(s); el.classList.add('on'); $('hudCashChip').setAttribute('aria-expanded', 'true');
+    return true;
+  };
 
   // ---------- memo dot ----------
   let memoSeen = -1; // the memo.turn last opened this session (a new or loaded career starts unread)
@@ -173,7 +203,11 @@
     const chip = (id, label, fn) => { const el = $(id); if (!el) return; el.setAttribute('role', 'button'); el.tabIndex = 0; el.dataset.opens = label;
       const go = (e) => { if (!FR.state || U.sheetId || (FR.elevator && FR.elevator.riding)) return; e.stopPropagation(); sfx('tap'); fn(); };
       el.addEventListener('click', go); el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } }); };
-    chip('hudCashChip', 'money', () => route('boardroom.money'));
+    chip('hudCashChip', 'money', () => { if (hasBook(FR.state)) U.split(); else route('boardroom.money'); });
+    // the split card closes on any tap elsewhere, a sheet, a ride, End Turn or Escape
+    document.addEventListener('pointerdown', e => { if (U.splitOpen() && !e.target.closest('#hudSplit,#hudCashChip')) U.split(false); }, true);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && U.splitOpen()) U.split(false); });
+    ['ui:sheet', 'elevator:ride', 'turn:ended', 'game:new', 'game:loaded'].forEach(ev => FR.on(ev, () => { if (U.splitOpen()) U.split(false); }));
     chip('hudTrustChip', 'trust', () => route('lobby.trust'));
     chip('hudWeekChip', 'memo', () => U.openMemo());
     chip('hudStrip', 'rivals', () => route('boardroom.rivals'));
@@ -197,5 +231,5 @@
   const baseDebug = U.debug;
   U.debug = () => Object.assign(baseDebug ? baseDebug() : {}, { endTurn: U.endWhy() || 'ready', memoUnread: U.memoUnread(),
     chips: { week: ($('hudWeek') || {}).textContent, cash: ($('hudCash') || {}).textContent, runway: ($('hudRunway') || {}).textContent, trust: ($('hudTrust') || {}).textContent },
-    strip: ($('hudStrip') || {}).textContent || '', panels: typeof U.panel === 'function' });
+    strip: ($('hudStrip') || {}).textContent || '', panels: typeof U.panel === 'function', split: U.splitOpen() ? ($('hudSplit').innerText || '').replace(/\s+/g, ' ').trim() : null });
 })(typeof window !== 'undefined' ? window.FR : globalThis.FR);
