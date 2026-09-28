@@ -1555,7 +1555,8 @@ window.FR_VERSION="0.1.0.0";
 
   // the Safety floor gauge: weighted pressure against K.pressureBands, never calmer than the worst skill's own outlook
   const LEVELS = ['ok', 'watch', 'warning', 'critical'], LEVEL_TEXT = { ok: 'in hand', watch: 'watch', warning: 'warning', critical: 'critical' };
-  const fmtP = (v) => K.pressureBands.some(t => (v > t) !== (Math.round(v) > t)) ? v.toFixed(1) : String(Math.round(v));
+  // whole numbers, with a decimal under 1 or when rounding would cross a band
+  const fmtP = (v, th) => v > 0 && v < 1 ? v.toFixed(1) : th.some(t => (v > t) !== (Math.round(v) > t)) ? v.toFixed(1) : String(Math.round(v));
   M.pressureLevel = function (state) {
     const value = FR.round(M.pressure(state), 1);
     let i = K.pressureBands.filter(b => value > b).length;
@@ -1563,8 +1564,8 @@ window.FR_VERSION="0.1.0.0";
     const level = LEVELS[i];
     const top = FR.SKILLS.reduce((b, k) => M.weight(k) * M.gap(state, k) > M.weight(b) * M.gap(state, b) ? k : b, FR.SKILLS[0]);
     const g = M.gap(state, top);
-    const text = 'Pressure ' + fmtP(value) + ', ' + LEVEL_TEXT[level] + '. ' + (g > 0.05 ?
-      NAME(top) + ' carries the most: gap ' + fmtGap(g) + ' at weight ' + M.weight(top) + '.' : 'Safety is at or above capability on every skill.');
+    const text = 'Pressure ' + fmtP(value, K.pressureBands) + ', ' + LEVEL_TEXT[level] + '. ' + (g > 0 ?
+      NAME(top) + ' carries the most: gap ' + fmtP(FR.round(g, 1), TH()) + ' at weight ' + M.weight(top) + '.' : 'Safety is at or above capability on every skill.');
     return { value, level, text };
   };
 
@@ -2339,7 +2340,7 @@ window.FR_VERSION="0.1.0.0";
     const hit = rng.int(K.incTrust[0], K.incTrust[1]), shield = FR.sim && FR.sim.inStep ? FR.sim.inStep(s) : false;
     const lost = -M.nudgeTrust(s, -(shield ? hit * K.incShield : hit), r.name + ' incident', report), t = Math.round(s.market.trust);
     const what = r.name + ' ' + FR.SKILL_NAME[k].toLowerCase() + ' incident';
-    report.events.push({ type: 'market:rivalIncident', rivalId: r.id, trust: r2(lost), shielded: shield });
+    report.events.push({ type: 'market:rivalIncident', rivalId: r.id, trust: FR.round(lost, 1), shielded: shield });
     if (shield) {
       report.news.push({ kind: 'incident', text: sub(rng.pick(INC[k]), { R: r.name }) + ' Public trust in AI labs down ' + hit + '.' });
       report.memo.push({ kind: 'change', text: 'Public trust ' + t + ' after the ' + what + ', which cost AI labs ' + hit + ' points. Our evaluations are current; trust impact limited to ' + FR.round(lost, 1) + '.' });

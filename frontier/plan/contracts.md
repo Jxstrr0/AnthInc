@@ -176,28 +176,53 @@ Ladder rules (from the handoff, binding):
   05_money's step, so 02_sim checks for bankruptcy again after the ladder.
 - gap > 30 sustained 4 turns (critStreak ≥ 4) **or** a third incident on the same skill within 52 turns → **Final**:
   `status='dead'`, `end={turn, cause:'final', skill, text}`, event `model:final`.
-- The player always sees it coming: memo flags when critStreak ≥ 1 ("final incident in N weeks unless the gap closes")
-  and when a skill has 2 incidents inside a year.
+- The player always sees it coming: memo flags when critStreak ≥ 1 ("Final incident in 3 weeks unless the gap falls to 30
+  or below.") and when a skill has 2 incidents inside a year ("2 incidents in the past 52 weeks. One more by Year 3,
+  Week 5 ends the lab.").
 
-### 04_compute.js — rent / buy / share, ageing
+### 04_compute.js — rent / buy / share, ageing, the compute ceiling
 - `init(state, rng)`; `capacity(state) → { total, owned, rented, deals }` (owned = sum of cluster pf × age factor);
-- `cost(state) → $/week` (rent × price + cluster power cost + nothing for deals);
-- `step(state, rng, report)` — price drift and scarcity events, installs arrive, clusters retire at 4 years, deals expire,
-  offers refresh every 13 turns;
-- commands: `setRent(state, pf)`, `buy(state, offerId)` (cash upfront → `installing`), `acceptDeal(state)` (from
-  `state.market.dealOffer`), `endDeal(state, rivalId)` → `{ok, why}`;
-- `revShare(state)` → total fraction of revenue owed to deals; `debug(state)`.
+- `cost(state) → $/week` (rent × price × (1 − project rent discount) + cluster power cost + nothing for deals). During End
+  Turn, once `step` has run, it returns `compute.bill.cash` (the week just worked); otherwise next week's projection.
+  `rentCost(state)`, `powerCost(state)` are the parts.
+- **The compute ceiling** (the late-game cash sink): `ceiling(turn)` = `min(K.ceilMax, K.ceilGrowth^(year − 1))` =
+  1, 1.35, 1.82, 2.46, 3.32, then 4 from year 6. `maxRent(state)` = `K.maxRent × ceiling(state.turn)`, rounded to 10 PF:
+  1000, 1350, 1820, 2460, 3320, 4000. `setRent` validates against `maxRent(state)`, never `K.maxRent` (that is the year-1
+  base) — UI steppers read `FR.compute.maxRent(FR.state)`. Cluster offers dealt for a turn have `pf` = tier range ×
+  `ceiling(turn)`, and cost follows PF (`K.buyPerPF` × tier mult × jitter × spot/base), so late clusters are bigger and
+  dearer at the same payback. On the week a new year starts the memo names the new ceiling.
+- `step(state, rng, report)` — writes `compute.bill` for the week, then price drift and scarcity events, installs arrive
+  (online from `ready`; `bought` = that turn), clusters retire at 4 years, deals expire, offers refresh every 13 turns;
+- commands: `setRent(state, pf)` (whole PF, 0..`maxRent(state)`), `buy(state, offerId)` (cash upfront → `installing`),
+  `acceptDeal(state)` (from `state.market.dealOffer`), `endDeal(state, rivalId)` → `{ok, why}`. Lead's call: the DeepField
+  share **stays free to end** — `endDeal` costs no cash and no trust; the PF and the revenue share stop at once.
+- `revShare(state)` → total fraction of revenue owed to deals (during End Turn, `compute.bill.revShare`: a deal ending this
+  week still takes its cut for the week its PF was used);
+- `clusterInfo(state, cluster) → { pf, factor, power, age, retiresIn }`; `payback(state, offer) → weeks | null` (weeks until
+  buying has saved its price against renting at today's spot price, install time included); `debug(state)`.
 - Ageing: capacity −8%/year of age, power cost rises with age, retire at 208 turns.
 
 ### 05_money.js — cash, burn, rounds, dilution, milestones, revenue, hiring
 - `init(state, rng)` — cash, founderPct 100, headcount, first round offer ('seed');
-- `revenue(state, servingPF) → $/week` = `min(servingPF, demandPF) × price(avgCap) × trustMult(trust)`, minus deal revShare;
-  `demandPF(state)` grows with avg cap and trust;
+- `revenue(state, servingPF) → $/week` = `min(servingPF, demandPF) × pricePerPF(avgCap) × project priceMult × trustMult ×
+  (1 − deal revShare) × zetaFactor`; `demandPF(state)` grows with avg cap, trust and the project demandMult;
 - `payroll(state)`; `step(state, alloc, rng, report)` — revenue in, payroll + compute cost + project cash costs +
   ops out, hires arrive, milestone checks, round offers/expiry; writes `money.revenue/burn/net`; if cash ≤ 0 after the
   turn: `status='dead'`, `end={cause:'cash'}`, event `money:bankrupt`;
 - `burnEstimate(state)` → expected $/week out next turn (payroll + compute cost + project cash + ops), no randomness;
-- `valuation(state)`; commands: `acceptRound(state)`, `declineRound(state)`, `hire(state, n)`, `layoff(state, n)`;
+  `burnParts(state) → { payroll, ops, compute, projects }`; `runway(state)` → weeks (Infinity when net ≥ 0);
+- `valuation(state)` = `(K.valBase + K.valCap × avgCap^K.valCapExp + K.revMultiple × 52 × weekly revenue) × trustMult`
+  (`10e6 + 1.25e6 × avgCap² + 20 × annual revenue`): $90M at the start, so the seed prices at 20%, and about $300-370M
+  where a lab meets the Series A milestone (one skill at 20, average near 14, ~$50k a week of revenue), so the Series A
+  ($75M) prices near 20-25% (lead's call), not at the 35% cap;
+- `progress(state, milestone?) → { current, value, met, weeksLeft }`; `nextRound(state)`; `pricePerPF(avgCap)`,
+  `demandPF(state)`, `trustMult(state)`, `zetaFactor(state)`, `payroll(state)`, `ops(state)`;
+- commands: `acceptRound(state)` (result carries the `money:round` event), `declineRound(state)`, `hire(state, n)`,
+  `layoff(state, n)`;
+- hiring: at most `K.maxHire` (20) recruits ordered per week. `hiredThisWeek(state)` = recruits already ordered this week
+  (they all join on turn + `K.hireTurns`); `hireRoom(state)` = `K.maxHire − hiredThisWeek`. `hire` accepts a whole n in
+  1..`hireRoom(state)` (and within `K.maxHead`, with the fee `n × K.hireFee` in cash); the UI's hire stepper tops out at
+  `hireRoom`;
 - rounds v1: `seed` then `a`. Closing a round adds cash, dilutes `founderPct` by `pct`, sets the milestone that unlocks
   the next round. Missing a milestone locks rounds for 52 turns (`lockedUntil`), then a fresh milestone is set.
   After `a`, `milestone=null` and no further rounds (B/C are back-burner);
@@ -207,10 +232,16 @@ Ladder rules (from the handoff, binding):
 - `init(state, rng)`; `step(state, rng, report)` — rivals advance on their curves plus events; rival incidents move trust
   for everyone; trust drifts to 50; news lines; frontier record (`firsts`) at marks 30, 45, 60, 75, 90;
   `dealOffer` refresh;
-- `best(state) → { rivalId, avgCap }` — the rival with the highest average cap;
+- rival incidents: every lab loses `K.incTrust` (2..4) points — except that a lab **in step** (`FR.sim.inStep`: every safe
+  ≥ cap − 5 when the market resolves) takes `K.incShield` (half) of it. The memo then says so: "Public trust 48 after the
+  Opal AI agents incident, which cost AI labs 3 points. Our evaluations are current; trust impact limited to 1.5." The
+  event carries `{ rivalId, trust (points this lab lost), shielded }`;
+- `best(state) → { rivalId, avgCap }` — the rival with the highest average cap; `avgCap(rival)`;
 - `frontierCap(state, skill)` — highest cap in the market on that skill (player included);
-- `trustMult(state)`, `nudgeTrust(state, delta, why, report)`;
-- `debug(state)`.
+- `trustMult(state)`, `nudgeTrust(state, delta, why, report)` → the applied delta; `priceDrag(state)` (Zeta's price cut);
+- `ORDER`, `DEALS`, `NEWS` (wire templates); `debug(state)`.
+- Rival pace: weekly gain per skill = `K.gainBase × speed × (1 + ramp × years) × weight × (1 − cap/100)`; `K.gainBase` 0.43
+  (nudged from 0.42 on 2026-09-28 so the race stays tight once the compute ceiling grows).
 - Rivals (binding names, fictional rhymes):
 
 | id | name | style | nod | deal (v1) |
@@ -225,10 +256,19 @@ Ladder rules (from the handoff, binding):
 - `pfDemand(state)` — PF reserved this turn by active projects;
 - `step(state, alloc, rng, report)` — research points from the research allocation → tier; active projects progress
   (research speeds them), risk rolls (overrun: +50% turns; fail: no payoff), completion pays off via `FR.model.boost`,
-  `FR.market.nudgeTrust`, money or compute effects; offers refresh every 8 turns or when empty;
-- commands: `greenlight(state, offerId)` (needs a free slot and research tier; `cost` is the total cash, charged evenly
-  each turn the project runs via `cashDemand(state)`, which 05_money subtracts), `cancel(state, uid)` (no refund);
-- `cashDemand(state)` — $ this turn for active projects (05_money calls it in `step`);
+  `FR.market.nudgeTrust`, money or compute effects; the board refreshes every 8 turns, when nothing on it can be
+  greenlit, or when a research tier opens;
+- commands: `greenlight(state, offerId)` (needs a free slot and research tier; `cost` is the total cash, charged per week of
+  work done via `cashDemand(state)`, which 05_money subtracts), `cancel(state, uid)` (before any work: the card returns to
+  the board at no cost; after: no refund);
+- `cashDemand(state)` — $ this turn for active projects (05_money calls it in `step`; once `step` has run it returns
+  `projects.spend.cash` for the week just worked);
+- reads for the UI: `describe(offer, state?)` → the payoff as one board-memo sentence, e.g. "Coding capability +5, safety
+  -1.5."; with the state, a safety payoff that today's ceiling (cap + `FR.model.K.safeLead`) would cut says what it adds
+  now: "Coding safety +5 (+2 at today's levels: safety stops at capability + 3)."; `safeToday(state, offer) → { full, now,
+  each } | null` (null when the card has no safety payoff); `fx(state) → { demandMult, priceMult, rentDiscount, until }`;
+  `tierFor(points)`, `nextTier(state) → { tier, at, points, left } | null`, `speed(state)`, `researchRate(state)`,
+  `pfDemand(state)`;
 - ~20 templates across 3 tiers (training run per skill, safety eval suite, interpretability push, product launch, data
   deal, chip pre-order, red-team, alignment research paper, enterprise contract, efficiency work, ...);
 - `debug(state)`.
@@ -236,9 +276,10 @@ Ladder rules (from the handoff, binding):
 ## 3. The turn (`FR.sim.endTurn`) — binding order
 
 ```
-s = clone(state); rng = FR.rng(s.rngState); report = {turn: s.turn, ...}
-0. if s.status !== 'playing' → return s unchanged
-1. applyCommands(s, commands)
+0. if state.status !== 'playing' → return state unchanged (the same object; no turn passes after the end)
+   s = clone(state); rng = FR.rng(s.rngState); report = {turn: s.turn, ...}
+1. apply commands (as applyCommands); report.memo = s.pendingMemo, report.events = s.pendingEvents (commands applied
+   before End Turn, e.g. by FR.cmd.do, then this End Turn's own), both emptied; a failed command adds a 'Not done: ...' flag
 2. alloc = allocate(s)
       cap = FR.compute.capacity(s).total
       projPF = min(cap, FR.projects.pfDemand(s)); free = cap - projPF
@@ -250,23 +291,30 @@ s = clone(state); rng = FR.rng(s.rngState); report = {turn: s.turn, ...}
 5. FR.compute.step(s, rng, report)
 6. FR.money.step(s, alloc, rng, report)          // may set dead:'cash'
 7. FR.market.step(s, rng, report)
-8. FR.model.ladder(s, rng, report)               // may set dead:'final'
-9. win check: at frontier = avgCap(s) >= best rival avgCap; safely = at frontier && every safe >= cap - 5
-      streak++ or 0; best = max; streak >= 52 → status 'won', end {cause:'win'}
-10. s.memo = {turn, lines: report.memo}; s.news += report.news (tagged with turn); history row; s.turn++
+8. if playing: FR.model.ladder(s, rng, report)   // may set dead:'final'
+   if playing and cash <= 0: FR.money.bankrupt(s, report)   // an incident bill can empty the bank after step 6
+9. win check (if playing): safely = FR.sim.safelyAtFrontier(s) (avg cap >= best rival's and every safe >= cap - 5)
+      streak++ or 0; best = max; streak >= 52 → status 'won', end {cause:'win'}, event 'run:won'
+   dead → event 'run:dead' {cause}
+10. s.memo = {turn, lines: report.memo}; s.news += report.news (tagged with turn); report.deltas; history row;
+    s.turn++ ONLY while status is 'playing' (a run that ends this week keeps the turn it ended on; end.turn === s.turn)
 11. s.rngState = rng.state(); s.lastReport = report; return s
 ```
 
-Output of each allocation (Cobb-Douglas, *first pass*): `out = K.base × pf^0.6 × (staff+1)^0.4`.
+Output of each allocation (`FR.sim.output`, Cobb-Douglas with falling returns to scale):
+`out = base × pf^allocExp × (staff+1)^staffExp`, with `FR.sim.K.allocExp = 0.36` and `FR.sim.K.staffExp = 0.24`; 0 when
+pf <= 0. Bases: training `FR.model.K.trainBase` 0.11, safety `FR.model.K.safeBase` 0.36, research
+`FR.projects.K.researchBase` 1 (points a week); serving is not a curve: revenue = min(serving PF, demand) × price.
 
 ## 4. Commands (`commands` array items; also what `FR.cmd.*` queues)
 
 ```
 { type: 'sliders', training, serving, safety, research }     // integers, must sum 100 (sim normalises otherwise)
 { type: 'target', skill }
-{ type: 'rent', pf }
+{ type: 'rent', pf }           // whole PF, 0..FR.compute.maxRent(state) (grows each year)
 { type: 'buy', offerId }
-{ type: 'hire', n }            { type: 'layoff', n }
+{ type: 'hire', n }            // whole n, 1..FR.money.hireRoom(state)
+{ type: 'layoff', n }          // whole n, 1..headcount − K.minHead
 { type: 'greenlight', offerId }  { type: 'cancel', uid }
 { type: 'acceptRound' }        { type: 'declineRound' }
 { type: 'acceptDeal' }         { type: 'declineDeal' }        { type: 'endDeal', rivalId }
@@ -274,15 +322,20 @@ Output of each allocation (Cobb-Douglas, *first pass*): `out = K.base × pf^0.6 
 
 ## 5. Bus events (emitted by 99_main after endTurn, from `report.events`, plus UI/HQ events)
 
+Every sim event reaches the bus only through `report.events` at End Turn. Events from commands (`money:round` from
+`acceptRound`, and any other command `event`) ride in `state.pendingEvents` and are emitted with the **next** End Turn,
+first in `report.events`; `FR.cmd.do` emits only `state:changed` (never a command's own event).
+
 ```
 'game:new' {state}   'game:loaded' {state}   'game:saved' {slot}   'game:save:failed' {slot, reason}
 'turn:ended' {turn, report}                 // after every End Turn, once FR.state is the new state
 'state:changed' {}                          // after any command applied with applyCommands (UI refresh)
-'model:warning' {skill, gap}   'model:incident' {skill, gap, cost, trust}   'model:final' {skill}
+'model:warning' {skill, gap}   'model:incident' {skill, gap, cost, trust}   'model:final' {skill}   // trust: points lost
+                                                                                                    //   (K.incidentTrust × weight)
 'money:round' {round, amount, pct}   'money:milestone' {round, hit}   'money:bankrupt' {}
 'compute:installed' {id, pf}   'compute:retired' {id}   'compute:scarcity' {turns}
 'project:done' {uid, name, ok}   'project:overrun' {uid}   'research:tier' {tier}
-'market:first' {mark, by}   'market:rivalIncident' {rivalId}
+'market:first' {mark, by}   'market:rivalIncident' {rivalId, trust, shielded}   // trust: points this lab lost
 'run:won' {}   'run:dead' {cause}
 'hq:floor' {floorId}   'hq:hotspot' {hotspotId}   'hq:view' {mode, targetId, floorId}
 'elevator:ride' {from, to}   'elevator:arrived' {floorId}
@@ -298,6 +351,12 @@ Incidents show on the building: the affected floor goes dark, press gathers in t
 
 ## 7. Text
 
-Straight board-memo voice everywhere. No jokes. Numbers first. Example memo lines:
+Straight board-memo voice everywhere. No jokes. No exclamation marks. Numbers first. Dates as `FR.dateLabel` ("Year 1,
+Week 37"). Example memo lines (current text, as the sim writes them):
 "Agents: capability 46, safety 31. Gap 15, second week above 10. Safety review requested."
-"Seed round closed: $18.0M for 20%. Series A opens if any skill reaches capability 40 by Week 30."
+"Seed round closed: $18.0M for 20%. Series A opens if any skill reaches capability 20 by Year 1, Week 37."
+"Series A milestone met: Coding capability 20 against 20. Series A offer: $75.0M for 23% at a $326M valuation. Open until Year 1, Week 24."
+"Agents incident at gap 22. Cost $1.1M and 9 points of public trust."
+"Public trust 48 after the Opal AI agents incident, which cost AI labs 3 points. Our evaluations are current; trust impact limited to 1.5."
+"Compute ceiling for Year 2: the spot market rents up to 1350 PF, up from 1000. Cluster offers grow in step."
+Gauge text (`FR.model.pressureLevel`): "Pressure 19, watch. Agents carries the most: gap 10 at weight 1.5."
