@@ -381,3 +381,41 @@ Week 37"). Example memo lines (current text, as the sim writes them):
 "Public trust 48 after the Opal AI agents incident, which cost AI labs 3 points. Our evaluations are current; trust impact limited to 1.5."
 "Compute ceiling for Year 2: the spot market rents up to 1350 PF, up from 1000. Cluster offers grow in step."
 Gauge text (`FR.model.pressureLevel`): "Pressure 19, watch. Agents carries the most: gap 10 at weight 1.5."
+
+
+## V0.3 — Series B and enterprise accounts (binding for the V0.3 build; design: docs/frontier-handoff-v0.3.html)
+
+Owner calls: Series B unlocks on a **weekly revenue** milestone and is optional; accounts are **fully fictional** sector
+names (~30, e.g. Halden Mutual, Coastline Freight, Province Health Authority); a churned account is **gone for the run**.
+
+State (05_money owns the block, 05b_accounts owns the logic):
+```
+accounts: { active: [ { id, name, sector, tier, pfPerWeek, feePerWeek, ends, signed, starts, mood, served } ],
+            offers: [ { id, name, sector, tier, pfPerWeek, feePerWeek, turns, minCap, minSafe, minTrust, expires } ],
+            refreshAt, unlocked, lost: [ { name, turn, why } ], used: [name...] }   // why: 'churn'|'expired'|'dropped'
+money.roundsDone may contain 'b'; money.milestone.kind is always 'revenue' for round 'b'.
+```
+`starts` = first turn the fee is paid (signed + 2). `served` = PF actually served to it last turn. `used` = names already
+offered/signed/lost this run (never re-offered).
+
+APIs (05b_accounts.js, `FR.accounts`):
+- `init(s, rng)`, `step(s, alloc, rng, report)` (called by `FR.money.step` after revenue resolves: mood, churn, expiry /
+  renewal, offer board, unlock), `K`, `debug(s) → { active, contracted, avgMood, unservedPF, lost }`.
+- `reservedPF(s) → PF` — contract PF of accounts whose fee has started (taken from serving before open market).
+- `feeRevenue(s, servedPF?) → $/week` — contract fees after the incident factor and the DeepField share (not Zeta drag).
+- `sign(s, id) → {ok, why, memo?, event?}`, `decline(s, id) → {ok, why, memo?}`.
+- `qualifies(s, offer) → { ok, why }` — the offer's minCap / minSafe / minTrust against the lab now.
+- `maxActive(s)` — 4, or 6 once 'b' is in roundsDone.
+- `backlog(s) → $` — remaining contracted fees (fee × weeks left, summed).
+
+APIs (05_money.js additions):
+- `revenueSplit(s, servingPF) → { market, contracts, total, reserved, open }` — contract PF first, open market on the rest.
+  `M.revenue(s, pf)` keeps returning the total (market + contracts) so existing callers and the forecast stay right.
+
+Commands: `{ type: 'signAccount', id }`, `{ type: 'declineAccount', id }` (02_sim apply1 → FR.accounts).
+`FR.cmd.signAccount(id)` / `FR.cmd.declineAccount(id)` in 99_main wrap `FR.cmd.do`.
+Events: `account:signed {id, name, tier}`, `account:churned {id, name, why}`, `account:offers {n}`;
+`money:milestone` also fires for round 'b'.
+HQ: Serving floor hotspot `serving.accounts` (client wall with one plaque per active account). Floor 1 panel gains an
+Accounts section (rows + offer board, Sign / Decline). Serving slider readout: "Serving 38 PF · 14 reserved for accounts
+· 24 open market". HUD revenue splits into open market / contracts on tap.

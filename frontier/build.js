@@ -1,7 +1,7 @@
 // Concatenates src/ in ORDER into dist/game.html (standalone), dist/game.artifact.html (no doctype/html/head/body)
 // and "Frontier - V<ver>.html". Usage: node build.js
 const fs = require('fs'), path = require('path');
-const ORDER = ['01_core.js', '02_sim.js', '03_model.js', '04_compute.js', '05_money.js', '06_market.js', '07_projects.js',
+const ORDER = ['01_core.js', '02_sim.js', '03_model.js', '04_compute.js', '05_money.js', '05b_accounts.js', '06_market.js', '07_projects.js',
   '08_hq_world.js', '08_hq_floors.js', '08_hq_elevator.js', '08_hq_title.js', '09_ui_chrome.js', '09_ui_hud.js', '09_ui_panels.js', '09_ui_menu.js',
   '10_audio.js', '99_main.js'];
 const dir = __dirname, ver = fs.readFileSync(path.join(dir, 'VERSION'), 'utf8').trim();
