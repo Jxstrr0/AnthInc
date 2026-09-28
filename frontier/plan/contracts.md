@@ -242,9 +242,9 @@ Ladder rules (from the handoff, binding):
   (they all join on turn + `K.hireTurns`); `hireRoom(state)` = `K.maxHire − hiredThisWeek`. `hire` accepts a whole n in
   1..`hireRoom(state)` (and within `K.maxHead`, with the fee `n × K.hireFee` in cash); the UI's hire stepper tops out at
   `hireRoom`; the memo line (keyed 'hire:<arrival turn>') carries the week's running total;
-- rounds v1: `seed` then `a`. Closing a round adds cash, dilutes `founderPct` by `pct`, sets the milestone that unlocks
-  the next round. Missing a milestone locks rounds for 52 turns (`lockedUntil`), then a fresh milestone is set.
-  After `a`, `milestone=null` and no further rounds (B/C are back-burner);
+- rounds: `seed`, `a`, then `b` (V0.3, below). Closing a round adds cash, dilutes `founderPct` by `pct`, sets the milestone
+  that unlocks the next round. Missing a milestone locks rounds for 52 turns (`lockedUntil`), then a fresh milestone is set.
+  After `b`, `milestone=null` and no further rounds (C and IPO are back-burner);
 - `debug(state)`.
 
 ### 06_market.js — rivals, trust, news, the frontier record, deal offers
@@ -261,7 +261,8 @@ Ladder rules (from the handoff, binding):
 - `ORDER`, `DEALS`, `NEWS` (wire templates); `debug(state)`.
 - Rival pace: weekly gain per skill = `K.gainBase × speed × (1 + ramp × years) × weight × (1 − cap/100)`; `K.gainBase` 0.44
   (0.42 → 0.43 on 2026-09-28 so the race stays tight once the compute ceiling grows; → 0.44 the same day once the
-  balance bots accept the DeepField share when its revenue cut costs under half of renting the PF, as a reading player does).
+  balance bots accept the DeepField share when its revenue cut costs under half of renting the PF, as a reading player does);
+  0.48 for V0.3 (enterprise accounts lift every lab's revenue), with the sector raise after the lab's Series B (V0.3 below).
 - Wire templates may carry a third field: `calm` lines ("Spot GPU rental rates steady") never run while `compute.scarcity > 0`.
 - Rivals (binding names, fictional rhymes):
 
@@ -314,6 +315,7 @@ Ladder rules (from the handoff, binding):
 7. FR.market.step(s, rng, report)
 8. if playing: FR.model.ladder(s, rng, report)   // may set dead:'final'
    if playing and cash <= 0: FR.money.bankrupt(s, report)   // an incident bill can empty the bank after step 6
+   if playing: FR.accounts.shock(s, report)       // V0.3: this week's lab and rival incidents move account mood
 9. win check (if playing): safely = FR.sim.safelyAtFrontier(s) (avg cap >= best rival's and every safe >= cap - 5)
       streak++ or 0; best = max; streak >= 52 → status 'won', end {cause:'win'}, event 'run:won'
    dead → event 'run:dead' {cause}
@@ -392,30 +394,94 @@ State (05_money owns the block, 05b_accounts owns the logic):
 ```
 accounts: { active: [ { id, name, sector, tier, pfPerWeek, feePerWeek, ends, signed, starts, mood, served } ],
             offers: [ { id, name, sector, tier, pfPerWeek, feePerWeek, turns, minCap, minSafe, minTrust, expires } ],
-            refreshAt, unlocked, lost: [ { name, turn, why } ], used: [name...] }   // why: 'churn'|'expired'|'dropped'
+            refreshAt, unlocked, lost: [ { name, turn, why } ], used: [name...],   // why: 'churn'|'expired'|'dropped'
+            boost, readyUntil }
+money: { ..., revMarket, revContracts }   // last resolved turn's revenue split, $/week (revenue = revMarket + revContracts)
+market: { ..., raised }                   // turn the rivals raised in step with the lab's Series B, 0 = not yet
 money.roundsDone may contain 'b'; money.milestone.kind is always 'revenue' for round 'b'.
 ```
-`starts` = first turn the fee is paid (signed + 2). `served` = PF actually served to it last turn. `used` = names already
-offered/signed/lost this run (never re-offered).
+- `starts` = first turn the fee is paid and the PF is reserved (signed + `K.signWeeks`). `ends` = last turn under contract.
+  `served` = PF actually served to it last turn. `mood` 0..100.
+- `used` = names signed or declined this run: never dealt again. A churned or expired account is in `used` too (gone for
+  the run). An offer that lapses unanswered can come back on a later board.
+- `boost` = offers still to arrive one tier higher (Reference customer program). `readyUntil` = last turn the Enterprise
+  readiness work halves the unserved-PF mood penalty.
+- `lost` keeps the last `K.lostKeep` (10). 'dropped' is reserved (not produced in V0.3).
 
 APIs (05b_accounts.js, `FR.accounts`):
-- `init(s, rng)`, `step(s, alloc, rng, report)` (called by `FR.money.step` after revenue resolves: mood, churn, expiry /
-  renewal, offer board, unlock), `K`, `debug(s) → { active, contracted, avgMood, unservedPF, lost }`.
-- `reservedPF(s) → PF` — contract PF of accounts whose fee has started (taken from serving before open market).
-- `feeRevenue(s, servedPF?) → $/week` — contract fees after the incident factor and the DeepField share (not Zeta drag).
+- `init(s, rng)`; `step(s, alloc, rng, report)` — called by `FR.money.step` after revenue resolves: unlock, churn (accounts
+  below the line last week leave), service and mood, expiry / renewal, the offer board; its memo lines follow the money
+  lines. `shock(s, report)` — called by 02_sim after the ladder: this week's `model:incident` (−25 each) and
+  `market:rivalIncident` (−10 each) events move every account's mood. `K`.
+- `debug(s) → { active, contracted, avgMood, unservedPF, lost, offers, unlocked, reservedPF, backlog, maxActive }`.
+- `reservedPF(s) → PF` — contract PF of live accounts (fee started), taken from serving before the open market.
+  `pending(s) → PF` — PF of accounts signed but still onboarding. `live(s) → [account]` — accounts whose fee has started.
+- `serve(s, servingPF) → [ { id, pf, served } ]` — serving PF split over live accounts, oldest contract first.
+- `feeRevenue(s, servedPF?) → $/week` — each live account pays its fee × the share of its PF served (omitted = all served),
+  × `FR.money.incidentFactor` × (1 − DeepField revenue share). Never the Zeta drag (contracts are locked).
+- `fee(tier, turn) → $/week` = tier × `K.feeBase` × (1 + `K.feeYear` × year), rounded to $1k.
+- `contracted(s) → $/week` — the live book's fees in full. `backlog(s) → $` — remaining contracted fees (fee × weeks left).
 - `sign(s, id) → {ok, why, memo?, event?}`, `decline(s, id) → {ok, why, memo?}`.
-- `qualifies(s, offer) → { ok, why }` — the offer's minCap / minSafe / minTrust against the lab now.
-- `maxActive(s)` — 4, or 6 once 'b' is in roundsDone.
-- `backlog(s) → $` — remaining contracted fees (fee × weeks left, summed).
+- `qualifies(s, offer) → { ok, why }` — minCap (average capability), minSafe (every skill's safety within N of its cap),
+  minTrust against the lab now. why e.g. "Needs average capability 30; the lab is at 29".
+- `maxActive(s)` — `K.maxActive` 4, or `K.maxActiveB` 6 once 'b' is in roundsDone.
+- `ready(s)` — readiness work running. `lift(s, mood, weeks)` / `refer(s, n)` — project payoffs (07_projects).
+
+Rules and K (first pass, `FR.accounts.K`):
+- Unlock when average cap ≥ `unlockCap` 20 and trust ≥ `unlockTrust` 45: one memo line "Enterprise buyers are asking for
+  meetings. First account offers on the Serving floor." and the first board.
+- Board: `board` [1, 3] offers every `refreshTurns` 8 weeks (expires = the week before the next refresh). A tier is dealt once
+  average cap is within `reach` 5 of its minCap; mostly the highest tier in reach. PF a week by tier `pf` [[8,14],[16,26],
+  [28,42]]; contract `turns` [52, 104, 156]; requirements `minCap` [20, 30, 40], `minSafe` [10, 7, 5], `minTrust` [45, 50, 55].
+- Fee: `feeBase` 60000, `feeYear` 0.1. Signing: `signCost` 150000 × tier cash at once, fee and reservation from
+  `signWeeks` 2 weeks later, trust `signTrust` [1, 1, 2] by tier. Declining costs nothing.
+- Mood (`K.mood`): start 70; +1 toward `top` 80 each week the account is served in full and the lab is in step
+  (`FR.sim.inStep`); −3 (`unserved`) each week its PF is short (× `readyShare` 0.5 while readiness work runs); −25 per lab
+  incident, −10 per rival incident. Below `churn` 30 → the account leaves at the next turn: memo, news "X ends its contract
+  with <lab> citing reliability concerns.", trust −`churnTrust` 2, event `account:churned {why:'churn'}`; gone for the run.
+- Expiry: on `ends`, mood ≥ `renew` 60 → renews one tier up (tier 3 stays 3) at `fee(tier, next week)` for that tier's
+  length; otherwise leaves quietly (why 'expired'). Memo 'due' line `dueWarn` 8 weeks before the end.
+- Memo: at most `memoMax` 2 account lines a week (churn / mood flags first, then renewals and expiries, then new contracts,
+  due lines and the board line), after the money lines.
 
 APIs (05_money.js additions):
 - `revenueSplit(s, servingPF) → { market, contracts, total, reserved, open }` — contract PF first, open market on the rest.
   `M.revenue(s, pf)` keeps returning the total (market + contracts) so existing callers and the forecast stay right.
+  `marketRevenue(s, pf)` — the open-market part alone. `backlog(s)` = `FR.accounts.backlog(s)`.
+- `valuation(s)` = (valBase + valCap × avgCap² + revMultiple × 52 × weekly revenue (fees included) + `backlogMultiple` 4 ×
+  backlog) × trustMult.
+- Series B: `K.rounds.b = { name: 'Series B', amount: 180e6, pctMin: 0.10, pctMax: 0.20 }`, `K.order = ['seed','a','b']`.
+  When the A closes the B milestone is set: weekly revenue `sig2(max(K.ms.bRevMin 400000, revenue × K.ms.bRevMult 3))`, 36
+  weeks, the A's warn cadence. `K.msKindsFor.b = [['revenue', 1]]`: a fresh B milestone after a miss is revenue too (no rng
+  draw). Declining or a lapse: re-offer after `reofferTurns` 13 on the same met milestone, nothing else changes. The B amount
+  (180e6) keeps the raise inside 10-20% at the valuations where the bots meet the milestone (about $1.3-1.5B, week ~34), so
+  the founder stake after seed + A + B lands near 53%.
+- `FR.sim.forecast(s)` also returns `market` and `contracts` (the revenue split for next week).
+
+Sector raise (06_market.js, lead's balance call 2026-09-28): once the lab's Series B has closed, every rival trains
+`FR.market.K.raiseLift` (0.48) faster from `K.raiseLag` (13) weeks later for the rest of the run; `market.raised` = the turn
+the B closed (set by the market step of that End Turn). That week: news "Opal AI, Entropic, DeepField and Zeta close new funding
+rounds within weeks of <lab>'s Series B." and a memo flag "Rivals have raised in step with our Series B. Their training pace
+rises 48% from Year 1, Week 49 for the rest of the run." Declining the B leaves the rivals as they were. Why: the B roughly
+doubles a lab's compute for two years; without a response the balanced bot won 95% and the no-B path could not be tuned to
+stay viable (the owner's call: a lab that never raises again is a valid path). Rival base pace `K.gainBase` 0.48 (0.44 in V0.2).
 
 Commands: `{ type: 'signAccount', id }`, `{ type: 'declineAccount', id }` (02_sim apply1 → FR.accounts).
 `FR.cmd.signAccount(id)` / `FR.cmd.declineAccount(id)` in 99_main wrap `FR.cmd.do`.
-Events: `account:signed {id, name, tier}`, `account:churned {id, name, why}`, `account:offers {n}`;
-`money:milestone` also fires for round 'b'.
+Events: `account:signed {id, name, tier}` (from the sign command, with the next End Turn), `account:churned {id, name, why}`
+(why 'churn' or 'expired'), `account:offers {n}` (each time a board is dealt); `money:milestone` also fires for round 'b'.
+Turn order: 02_sim step 2 puts `alloc.serving.reserved` (contract PF, capped at serving) and `alloc.serving.open`; step 6
+(money) resolves open-market revenue and fees, then `FR.accounts.step`, then rounds and milestones; after the ladder
+`FR.accounts.shock`. `FR.sim.migrate` fills `accounts` and `money.revMarket/revContracts` on 0.2 saves.
+Projects (07_projects.js): two tier-2 templates dealt only once accounts have unlocked (`needs: 'accounts'`): "Enterprise
+readiness work" (4-6 turns; payoff `accounts: {mood: 10, turns: 26}`: +10 mood on every account, unserved-PF penalty halved
+for 26 weeks) and "Reference customer program" (3-5 turns; payoff `refs: 2`: the next 2 offers one tier higher).
 HQ: Serving floor hotspot `serving.accounts` (client wall with one plaque per active account). Floor 1 panel gains an
 Accounts section (rows + offer board, Sign / Decline). Serving slider readout: "Serving 38 PF · 14 reserved for accounts
 · 24 open market". HUD revenue splits into open market / contracts on tap.
+
+Balance probe (tools/balance.js): bots race, safe, balanced (signs offers when in step, not under review and the onboarding
+fee is under 1/12 of cash; takes the B), revenue-first, customer-first (serves demand + book × 1.15, at least 30%; signs
+every offer it qualifies for; declines the B); `--noB` adds balanced-noB (balanced that declines the B). The summary line
+prints wins, deaths, runs past year 4, the median first-frontier week, the B (week, amount, pct), the founder stake and the
+account counts.

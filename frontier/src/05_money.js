@@ -26,7 +26,7 @@
     rounds: {
       seed: { name: 'Seed round', amount: 18e6, pctMin: 0.1, pctMax: 0.3 },
       a: { name: 'Series A', amount: 75e6, pctMin: 0.1, pctMax: 0.35 },
-      b: { name: 'Series B', amount: 120e6, pctMin: 0.10, pctMax: 0.20 }
+      b: { name: 'Series B', amount: 180e6, pctMin: 0.10, pctMax: 0.20 }   // 180M: B-era valuations ~$1.3-1.5B keep it inside 10-20%
     },
     order: ['seed', 'a', 'b'],               // after the last, no further rounds (C and IPO are back-burner)
     offerTurns: 8, offerWarn: [3, 1],        // an offer stays open 8 turns; memo when 3 and 1 remain
