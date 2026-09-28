@@ -88,7 +88,7 @@ const turn = (s, rng) => { const r = rep(); M.ladder(s, rng, r); if (s.status ==
   const s = fresh(); set(s, 'agents', 40, 19.5); s.model.skills.agents.warned = true; trustLog = [];
   const r = turn(s, YES), t = K.incidentTrust * W.agents;
   assert.deepStrictEqual(trustLog, [-t]); assert.strictEqual(r.events.find(e => e.type === 'model:incident').trust, t);
-  assert.ok(r.memo.some(m => m.text.endsWith(' and ' + t + ' points of public trust.')));
+  assert.ok(r.memo.some(m => m.text.includes(' and ' + t + ' points of public trust.')));
   assert.ok(M.outlook(s, 'agents').text.includes('incident risk ' + Math.round(M.incidentChance(20.5, 'agents') * 100) + '% a week')); }
 // the pressure gauge: bands on the weighted sum, never calmer than the worst skill's outlook
 { const s = fresh(), P = () => M.pressureLevel(s), B = K.pressureBands;
@@ -141,6 +141,17 @@ const turn = (s, rng) => { const r = rep(); M.ladder(s, rng, r); if (s.status ==
   assert.ok(x.s.stats.incidents > 0 || x.s.status === 'dead', 'the race line reaches the ladder');
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', '03_model.js'), 'utf8').split('\n').slice(2).join('\n');
   assert.ok(!/document|localStorage|Date\.now|Math\.random|performance|FR\.emit|window\./.test(src.replace(/typeof window[^\n]*$/m, ''))); }
+
+// the incident line names the rule that ends the lab: the first names the third-incident rule, the second the gap that stops the rolls
+{ const s = fresh(40); set(s, 'agents', 40, 18); s.model.skills.agents.warned = true;
+  let r = turn(s, YES); const l1 = r.memo.find(m => /incident at gap/.test(m.text)).text;
+  assert.ok(l1.endsWith(' A third Agents incident within 52 weeks ends the lab.'), l1);
+  if (s.status === 'playing') { r = turn(s, YES); const l2 = r.memo.find(m => /incident at gap/.test(m.text)).text;
+    assert.ok(l2.endsWith(' Incident odds fall to zero once the gap is 20 or below.'), l2); } }
+// the training line shows capability to one decimal, like the Due line beside it
+{ const s = fresh(); set(s, 'coding', 19.2, 19.2); const r = rep(); M.train(s, alloc(200, 0, 20), YES, r);
+  const line = r.memo.find(m => /^Training on Coding/.test(m.text)).text, c = FR.round(s.model.skills.coding.cap, 1);
+  assert.ok(line.startsWith('Training on Coding: capability ' + c + ','), line); }
 
 // debug returns plain numbers
 { const d = M.debug(fresh()); assert.strictEqual(d.coding.cap, 8); assert.strictEqual(d.agents.level, 'ok'); }

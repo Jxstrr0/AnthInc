@@ -152,4 +152,12 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'src', '06_market.js'), '
 const d = M.debug(run(1, 60));
 assert.ok(typeof d.trust === 'number' && typeof d.best === 'string' && typeof d.opal.avg === 'number');
 
+// the 'rates steady' wire line never runs during a chip shortage
+{ const g = game(3); g.compute = { scarcity: 5 }; const rng = FR.rng(99); let n = 0;
+  for (let i = 0; i < 300; i++) { const r = week(g, rng); g.compute.scarcity = 5; if (r.news.some(x => /rental rates steady/.test(x.text))) n++; }
+  assert.strictEqual(n, 0);
+  const h = game(3); h.compute = { scarcity: 0 }; const rng2 = FR.rng(99); let m = 0;
+  for (let i = 0; i < 300; i++) { const r = week(h, rng2); if (r.news.some(x => /rental rates steady/.test(x.text))) m++; }
+  assert.ok(m > 0, 'the line still runs in calm weeks'); }
+
 console.log('market ok: best rival ' + mean(best130).toFixed(0) + ' at week 130, ' + mean(best300).toFixed(0) + ' at week 300; incidents ' + JSON.stringify(inc));

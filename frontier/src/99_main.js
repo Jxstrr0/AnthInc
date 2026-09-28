@@ -102,10 +102,12 @@
   };
 
   FR.enterWorld = function (floor) {
+    if (FR.elevator && FR.elevator.cancel) FR.elevator.cancel();   // a ride from the last lab never lands in this one
+    if (U.sheetId) U.sheet(null);                                   // nor does a sheet it left open
     if (FR.title) FR.title.stop(); // frees the title scene before the floor builds
     U.show(null); U.hud(true); U.refresh(); if (U.updateEnd) U.updateEnd();
     try { FR.r.loadFloor(floor || 'lobby'); } catch (e) { console.error('floor load failed', floor, e); }
-    FR.r.paused = false;
+    FR.r.paused = !!U.sheetId;
     if (FR.audio) { if (FR.audio.bedStart) FR.audio.bedStart(); if (FR.audio.bedTint) FR.audio.bedTint(floor || 'lobby'); }
   };
   // autosave only while playing: after Save and quit the menu may import into or delete the slot FR.state came from
@@ -132,7 +134,12 @@
 
   function boot() {
     document.querySelectorAll('.ver').forEach(v => { v.textContent = 'V' + FR.VERSION; });
-    try { FR.r.init(document.getElementById('game')); } catch (e) { console.error('HQ view failed to start (WebGL?)', e); }
+    try { FR.r.init(document.getElementById('game')); } catch (e) {
+      // no WebGL: the same stub as a build without three.js (the elevator arrives at once and opens the floor's panel)
+      console.error('HQ view failed to start (WebGL?)', e);
+      if (FR.rStub) FR.rStub(FR.r);
+      if (FR.title) FR.title.start = FR.title.stop = FR.title.restart = function () {};
+    }
     U.bind(); FR.menu.bind();
     // the title tower plays behind the boot and menu screens (FR.menu.open restarts it after Save and quit)
     FR.r.paused = true; if (FR.title) FR.title.start();

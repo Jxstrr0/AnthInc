@@ -201,7 +201,7 @@ button.chip::after{content:"";position:absolute;inset:-4px 0}
 .badge.gold{background:var(--gold-tint);color:var(--gold)}
 .badge.good{background:var(--good-tint);color:var(--good)}
 .badge.warn{background:var(--warn-tint);color:var(--warn)}
-.badge.bad{background:var(--bad-tint);color:var(--bad)}
+.badge.bad{background:var(--bad-tint);color:color-mix(in srgb,var(--bad) 82%,white)}   /* 4.5:1 or better on the tint at 12px */
 .badge.info{background:var(--info-tint);color:var(--info)}
 
 /* Cards */
@@ -401,8 +401,10 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 
 /* careers: continue any slot, save codes out and in, delete with an inline confirm */
 .car-list{display:flex;flex-direction:column;gap:var(--sp-2);margin:var(--sp-4) 0 0}
-@media (max-width:399px){.car-slot{flex-wrap:wrap;padding:8px}.car-slot .set-save-t{flex:1 1 100%;padding:0 6px 2px}.car-slot .btn{flex:1}}
-.car-slot.empty{opacity:.7;background:transparent;border-style:dashed}
+/* the column never exceeds 360px, so the rows wrap at every viewport width: the lab name gets its own line */
+.car-slot{flex-wrap:wrap;padding:8px}.car-slot .set-save-t{flex:1 1 100%;padding:0 6px 2px}.car-slot .btn{flex:1}
+.car-slot .set-save-t small{white-space:normal}
+.car-slot.empty{background:transparent;border-style:dashed}.car-slot.empty .set-save-t b,.car-slot.empty .set-save-t small{color:var(--ink-3)}
 .car-slot .set-save-t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .car-slot .set-save-t small.warn{color:var(--warn)}
 .car-slot .set-save-t small.bad{color:var(--bad)}
@@ -438,7 +440,7 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 .end-record .wk{font-family:var(--font-num);font-size:var(--text-sm);color:var(--ink-3)}
 .end-record li.you{box-shadow:inset 3px 0 0 var(--good)}
 .end-record li.you .mk{background:var(--good-tint);color:var(--good)}
-.end-record li.rival .mk{background:var(--bad-tint);color:var(--bad)}
+.end-record li.rival .mk{background:var(--bad-tint);color:color-mix(in srgb,var(--bad) 82%,white)}
 .end-record li.open{background:transparent;border:1px dashed var(--line)}
 .end-record li.open .by{color:var(--ink-3)}
 .end-memo{margin-top:var(--sp-3)}
@@ -470,7 +472,7 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #hud .top .hud-menu .ico{width:var(--icon-lg);height:var(--icon-lg)}
 #hud .top .hud-menu:active{background:var(--raised);color:var(--ink)}
 /* the frontier strip: your average capability against the best rival's, and the safe-hold count once it runs */
-#hud .strip{position:absolute;top:calc(var(--sp-2) + var(--safe-t) + var(--chip-h) + 6px);left:var(--sp-3);right:var(--sp-3);display:flex;align-items:center;gap:10px;max-width:560px;height:var(--strip-h);margin:0 auto;padding:0 12px;border:1px solid var(--glass-line);border-radius:var(--r-pill);background:var(--glass);box-shadow:var(--sh-1);color:var(--ink-2);font-size:var(--text-xs);line-height:1;white-space:nowrap;overflow:hidden;pointer-events:none}
+#hud .strip{position:absolute;top:calc(var(--sp-2) + var(--safe-t) + var(--chip-h) + 6px);left:var(--sp-3);right:var(--sp-3);display:flex;align-items:center;gap:10px;max-width:560px;height:var(--strip-h);margin:0 auto;padding:0 12px;border:1px solid var(--glass-line);border-radius:var(--r-pill);background:var(--glass);box-shadow:var(--sh-1);color:var(--ink-2);font-size:var(--text-xs);line-height:1;white-space:nowrap;overflow:hidden;pointer-events:auto;cursor:pointer}
 #hud .strip .st-k{flex:none;font-weight:var(--w-bold);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-3)}
 #hud .strip .st-v{display:flex;align-items:center;gap:5px;flex:none}
 #hud .strip .st-riv{flex:0 1 auto;min-width:0;overflow:hidden}
@@ -483,6 +485,7 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #hud .strip .st-hold{flex:none;margin-left:auto;display:flex;align-items:center;gap:5px;color:var(--good)}
 #hud .strip .st-hold b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--good)}
 #hud .strip .st-hold i{display:none;width:40px;height:4px;border-radius:2px;background:var(--sunken);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+#hud .strip .st-block{color:var(--warn)}#hud .strip .st-block b{color:var(--warn)}
 #hud .strip .st-hold i::before{content:"";display:block;height:100%;width:calc(var(--v,0) * 1%);background:var(--good)}
 /* the hold count takes the label's room; the hold bar shows only where it fits */
 #hud .strip.holding .st-k{display:none}
@@ -654,7 +657,7 @@ body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + 
 .pl .btn{margin:0 0 var(--sp-3)}
 .pl .card-actions .btn,.pl .confirm .actions .btn,.pl .seg .btn{margin:0}
 .pl .card{margin:0 0 var(--sp-3)}
-.pl .card-title{white-space:normal;overflow-wrap:anywhere;line-height:var(--lh-snug)}
+.pl .card-title{white-space:normal;overflow-wrap:break-word;hyphens:auto;line-height:var(--lh-snug)}
 .pl .card-head .badge{flex:none}
 .pl .stats{margin-top:10px}
 .pl .stat{position:relative;display:flex;flex-direction:column;justify-content:flex-end}
@@ -744,6 +747,7 @@ body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + 
 .pl-rk{font-family:var(--font-num);font-size:var(--text-lg);font-weight:var(--w-medium);text-align:center;color:var(--ink-3)}
 .pl-cr:nth-child(-n+3) .pl-rk{color:var(--ink)}
 .pl-cr.you .pl-rk{color:var(--brand-text)}
+.pl-cr.you .tone-cap{color:var(--brand-text)}   /* capability on the brand tint: brand-bright falls under 4.5:1 */
 .pl-ct{min-width:0}
 .pl-ct b,.pl-ct small{display:block;overflow-wrap:anywhere}
 .pl-ct b{font-size:var(--text-md);line-height:var(--lh-snug)}
@@ -958,7 +962,7 @@ body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + 
     <span class="kicker">New career</span>
     <h2 class="screen-title" id="ncTitle">Found your lab</h2>
     <p class="screen-lead">You start with a small team, rented compute and a seed round on the table. Nothing carries over from an earlier lab.</p>
-    <div class="field"><label for="labName">Lab name</label><input id="labName" maxlength="28" value="Prairie Blue Labs" placeholder="Prairie Blue Labs" autocomplete="off" spellcheck="false"></div>
+    <div class="field"><label for="labName">Lab name</label><input id="labName" maxlength="28" value="" placeholder="Prairie Blue Labs" autocomplete="off" spellcheck="false"></div>
     <div class="field"><label>Save slot</label></div>
     <div id="slots" class="slots"></div>
     <p class="hint warn" id="slotWarn" hidden></p>
@@ -1022,6 +1026,7 @@ body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + 
     <p class="screen-lead">One turn is one week. Nothing moves until you tap End Turn. Tap a labelled object on any floor to open its panel; the elevator moves you between floors.</p>
     <section class="help-sec"><h3>Each week</h3>
       <ol class="howto">
+        <li><b>Rent compute and hire.</b> Training output grows with compute and staff. Rent PF on the Serving floor or in the Boardroom (Compute tab), buy clusters when cash allows, and hire in the Boardroom (Team tab). The default 20 PF and 10 staff will not reach the first milestone.</li>
         <li><b>Set the sliders.</b> Four sliders split compute and staff across Training, Serving, Safety and Research. They always total 100%. Training raises capability on the skill the run targets. Serving earns revenue. Safety raises safety. Research speeds projects and unlocks higher tiers.</li>
         <li><b>Greenlight projects.</b> Research lists the offers. Each has a cash cost spread over its weeks, a duration, a risk of overrun or failure and a payoff. One runs per project floor, three at a time.</li>
         <li><b>Fund the lab.</b> Investors carry the early years: a round adds cash and dilutes your stake, and missing its milestone takes rounds off the table for a year. Revenue grows with capability and public trust.</li>
@@ -1140,7 +1145,7 @@ window.FR_VERSION="0.1.0.0";
   FR.clone = (o) => JSON.parse(JSON.stringify(o));
   // $1,234 / $12.3k / $4.5M / $1.20B. Board-memo money: never more than 3 significant figures past the unit.
   FR.fmtMoney = function (n) {
-    const s = n < 0 ? '-$' : '$', a = Math.abs(n);
+    const s = n < 0 ? '\u2212$' : '$', a = Math.abs(n);   // a true minus sign, as the UI writes it
     if (a >= 1e9) return s + (a / 1e9).toFixed(2) + 'B';
     if (a >= 1e6) return s + (a / 1e6).toFixed(a >= 1e8 ? 0 : 1) + 'M';
     if (a >= 1e4) return s + (a / 1e3).toFixed(0) + 'k';
@@ -1246,7 +1251,8 @@ window.FR_VERSION="0.1.0.0";
     const rng = FR.rng(s.rngState);
     mods().forEach(m => m && m.init && m.init(s, rng));
     s.rngState = rng.state();
-    s.memo = { turn: 0, lines: [{ kind: 'change', text: s.lab.name + ' is incorporated. Seed funding is on the table in the boardroom.' }] };
+    s.memo = { turn: 0, lines: [{ kind: 'change', text: s.lab.name + ' is incorporated. Seed funding is on the table in the boardroom.' },
+      { kind: 'change', text: 'Training output grows with compute and staff. Rent PF on Serving or in the Boardroom; hire in Boardroom > Team.' }] };
     return s;
   };
 
@@ -1275,7 +1281,10 @@ window.FR_VERSION="0.1.0.0";
   // from a command applied at once (FR.cmd.do) still reaches the bus with End Turn.
   function apply1(s, c) {
     const r = run1(s, c);
-    if (r && r.ok && r.memo) (s.pendingMemo || (s.pendingMemo = [])).push(r.memo);
+    if (r && r.ok && r.memo) {
+      const pm = s.pendingMemo || (s.pendingMemo = []), i = r.memo.key ? pm.findIndex(l => l.key === r.memo.key) : -1;
+      if (i >= 0) pm[i] = r.memo; else pm.push(r.memo);   // a keyed line (the week's hires) replaces its earlier version
+    }
     if (r && r.ok && r.event && r.event.type) (s.pendingEvents || (s.pendingEvents = [])).push(r.event);
     return r;
   }
@@ -1349,7 +1358,11 @@ window.FR_VERSION="0.1.0.0";
     // win check
     if (s.status === 'playing') {
       if (S.safelyAtFrontier(s)) { s.win.streak++; if (s.win.streak === 1) report.memo.push({ kind: 'good', text: 'The lab is at the frontier with safety in step. Hold it for ' + S.K.winTurns + ' weeks.' }); }
-      else { if (s.win.streak >= 1) report.memo.push({ kind: 'flag', text: holdLost(s) }); s.win.streak = 0; }
+      else {
+        if (s.win.streak >= 1) report.memo.push({ kind: 'flag', text: holdLost(s) });
+        else if (S.atFrontier(s)) report.memo.push({ kind: 'flag', text: S.holdBlocked(s) });   // ahead, but safety out of step
+        s.win.streak = 0;
+      }
       s.win.best = Math.max(s.win.best, s.win.streak);
       if (s.win.streak >= S.K.winTurns) {
         s.status = 'won'; s.end = { turn: s.turn, cause: 'win', text: s.lab.name + ' held the frontier safely for a full year.' };
@@ -1388,6 +1401,14 @@ window.FR_VERSION="0.1.0.0";
     return out.join('; ') + '. Safety more than ' + S.K.safeMargin + ' below capability.' + tail;
   }
 
+  // at the frontier with a skill out of step: what keeps the hold from starting (memo, HUD). null when nothing blocks it.
+  S.holdBlocked = function (s) {
+    const out = FR.SKILLS.filter(k => s.model.skills[k].safe < s.model.skills[k].cap - S.K.safeMargin);
+    if (!out.length) return null;
+    const bits = out.map(k => FR.SKILL_NAME[k] + ' safety is ' + FR.round(s.model.skills[k].cap - s.model.skills[k].safe, 1) + ' below capability');
+    return 'At the frontier, but ' + bits.join('; ') + '. The ' + S.K.winTurns + '-week hold starts when every gap is ' + S.K.safeMargin + ' or less.';
+  };
+
   // next-turn projection with no randomness (UI previews). Never mutates.
   S.forecast = function (state) {
     const s = FR.clone(state), alloc = S.allocate(s);
@@ -1400,7 +1421,9 @@ window.FR_VERSION="0.1.0.0";
 
   // end-of-run sheet. Plain, explainable parts.
   S.score = function (s) {
-    const Q = S.K.score, stake = (s.money.valuation || 0) * (s.money.founderPct || 0) / 100;
+    // a lab wound up for want of cash leaves its founder nothing: the stake scores 0 on cause 'cash'
+    const Q = S.K.score, broke = s.status === 'dead' && s.end && s.end.cause === 'cash';
+    const stake = broke ? 0 : (s.money.valuation || 0) * (s.money.founderPct || 0) / 100;
     const parts = [
       { label: 'Weeks operated', value: Math.min(s.turn, Q.horizon) },
       { label: 'Peak average capability', value: Math.round((s.model.peakCap || 0) * Q.capPer) },
@@ -1515,7 +1538,7 @@ window.FR_VERSION="0.1.0.0";
     const d = run(state.model.skills, state.target, alloc, noise);
     report.flows.model = { cap: d.cap, safe: d.safe, drift: d.drift, noise };
     const t = state.target, up = d.cap[t], added = FR.SKILLS.reduce((a, k) => a + d.safe[k], 0) + d.drift, bits = [];
-    if (up > 0.05) bits.push('Training on ' + NAME(t) + ': capability ' + Math.round(state.model.skills[t].cap) + ', up ' + r1(up) + '.');
+    if (up > 0.05) bits.push('Training on ' + NAME(t) + ': capability ' + r1(state.model.skills[t].cap) + ', up ' + r1(up) + '.');
     if (added > 0.05 || d.drift > 0.05) bits.push('Safety work added ' + r1(added) + ' across skills; drift took ' + r1(d.drift) + '.');
     if (bits.length) report.memo.push({ kind: 'change', text: bits.join(' ') });
   };
@@ -1581,7 +1604,11 @@ window.FR_VERSION="0.1.0.0";
     report.flows.incidentCost = (report.flows.incidentCost || 0) + cost;
     report.events.push({ type: 'model:incident', skill: k, gap: r1(g), cost, trust });
     report.news.push({ kind: 'incident', text: state.lab.name + ' discloses an incident in its ' + NAME(k).toLowerCase() + ' model. Review under way.' });
-    report.memo.push({ kind: 'flag', text: NAME(k) + ' incident at gap ' + fmtGap(g) + '. Cost ' + FR.fmtMoney(cost) + ' and ' + trust + ' points of public trust.' });
+    // the rule that ends the lab, named with the first incident; with the second, the gap that stops the rolls
+    const n = recent(sk, state.turn).length, rule = n < K.finalIncidents - 1
+      ? ' A ' + ordinal(K.finalIncidents) + ' ' + NAME(k) + ' incident within ' + K.incidentWindow + ' weeks ends the lab.'
+      : ' Incident odds fall to zero once the gap is ' + K.incidentGap + ' or below.';
+    report.memo.push({ kind: 'flag', text: NAME(k) + ' incident at gap ' + fmtGap(g) + '. Cost ' + FR.fmtMoney(cost) + ' and ' + trust + ' points of public trust.' + rule });
   }
 
   function final(state, k, g, why, report) {
@@ -1873,9 +1900,11 @@ window.FR_VERSION="0.1.0.0";
     reofferTurns: 13,                        // a lapsed or declined offer returns 13 turns later on the same milestone
     lockTurns: 52,                           // a missed milestone closes rounds for 52 turns, then a fresh milestone
     msTurns: 36, msWarn: [8, 4, 1],          // milestone window; memo when 8, 4 and 1 weeks remain
+    msPaceAt: [30, 24, 18, 12],              // weeks left at which the memo flags a capability milestone the current pace misses
     ms: { capFrac: 0.12, avgFrac: 0.18, revMin: 50000, revMult: 2.5, trustAdd: 10, trustMax: 80 },
     msKinds: [['cap', 4], ['avgCap', 3], ['revenue', 2], ['trust', 1]],   // weights for a fresh milestone after a miss
-    runwayWarn: [26, 13, 6]                  // memo flag on crossing each; every week below the last
+    runwayWarn: [26, 13, 6],                 // memo flag on crossing each; every week below the last
+    unservedFlag: 0.1                        // memo flag when revenue falls and serving leaves more than this share of demand
   };
 
   const money = FR.fmtMoney, no = (why) => ({ ok: false, why });
@@ -1956,6 +1985,18 @@ window.FR_VERSION="0.1.0.0";
     const cur = m.kind === 'cap' ? s.model.skills[m.skill || best(s)].cap : m.kind === 'avgCap' ? avg(s) : m.kind === 'revenue' ? s.money.revenue : trust(s);
     return { current: cur, value: m.value, met: cur >= m.value, weeksLeft: m.due - s.turn };
   };
+  // capability milestones: where today's settings leave the measure by the due week (FR.sim.forecast gains held flat, so
+  // slightly generous as gains shrink with capability). null for revenue and trust milestones, or without the full sim.
+  M.pace = function (s, m) {
+    m = m || s.money.milestone;
+    if (!m || (m.kind !== 'cap' && m.kind !== 'avgCap') || !(FR.sim && FR.sim.forecast && s.compute && s.projects)) return null;
+    const g = FR.sim.forecast(s).capGain, left = Math.max(0, m.due - s.turn), at = (k) => Math.min(100, s.model.skills[k].cap + (g[k] || 0) * left);
+    const ks = m.skill ? [m.skill] : FR.SKILLS, k = ks.reduce((b, x) => at(x) > at(b) ? x : b, ks[0]);
+    const projected = m.kind === 'cap' ? at(k) : FR.SKILLS.reduce((t, x) => t + at(x), 0) / FR.SKILLS.length;
+    return { projected: FR.round(projected, 1), short: FR.round(Math.max(0, m.value - projected), 1), skill: m.kind === 'cap' ? k : null, weeksLeft: left };
+  };
+  const paceText = (s, m, p, advise) => 'At this pace: ' + (p.skill ? FR.SKILL_NAME[p.skill] + ' ' : 'average ') + p.projected + ' by ' + FR.dateLabel(m.due) +
+    (p.short > 0 ? ', short by ' + p.short + '.' + (advise ? ' Training output grows with compute and staff: rent PF on Serving or in the Boardroom, hire in Boardroom > Team.' : '') : '.');
   function nowText(s, m) {
     if (m.kind === 'cap') { const k = m.skill || best(s); return FR.SKILL_NAME[k] + ' capability ' + Math.floor(s.model.skills[k].cap); }
     if (m.kind === 'avgCap') return 'average capability ' + Math.floor(avg(s) * 10) / 10;
@@ -1991,9 +2032,11 @@ window.FR_VERSION="0.1.0.0";
         cap1(nowText(s, ms)) + '. No round can be raised until ' + FR.dateLabel(m.lockedUntil) + '.' });
       return;
     }
-    const left = ms.due - T;
+    const left = ms.due - T, p = M.pace(s, ms);
     if (K.msWarn.indexOf(left) >= 0) report.memo.push({ kind: 'due', text: RN(ms.round) + ' milestone due ' + (left === 1 ? 'next week' : 'in ' + left + ' weeks') +
-      ': ' + REACH[ms.kind](ms) + '. Now ' + nowText(s, ms) + '.' });
+      ': ' + REACH[ms.kind](ms) + '. Now ' + nowText(s, ms) + '.' + (p ? ' ' + paceText(s, ms, p) : '') });
+    else if (K.msPaceAt.indexOf(left) >= 0 && p && p.short > 0) report.memo.push({ kind: 'flag', text: RN(ms.round) + ' milestone off pace: ' +
+      REACH[ms.kind](ms) + ' by ' + FR.dateLabel(ms.due) + '. Now ' + nowText(s, ms) + '. ' + paceText(s, ms, p, true) });
   }
 
   function rounds(s, rng, report) {
@@ -2051,7 +2094,9 @@ window.FR_VERSION="0.1.0.0";
     s.money.cash -= fee;
     const at = s.turn + K.hireTurns, h = s.staff.hiring.find(x => x.arrives === at);
     if (h) h.n += n; else s.staff.hiring.push({ n, arrives: at });
-    return done(null, 'Hiring ' + n + ': recruiting fees ' + money(fee) + ', joining ' + FR.dateLabel(at) + '.');
+    // one memo line per week's hires: `key` lets 02_sim replace the earlier line with the week's running total
+    const all = M.hiredThisWeek(s), r = done(null, 'Hiring ' + all + ': recruiting fees ' + money(all * K.hireFee) + ', joining ' + FR.dateLabel(at) + '.');
+    r.memo.key = 'hire:' + at; return r;
   };
   M.layoff = function (s, n) {
     n = int(n); const room = Math.max(0, s.staff.headcount - K.minHead);
@@ -2112,13 +2157,18 @@ window.FR_VERSION="0.1.0.0";
   M.bankrupt = function (s, report) { if (s.status === 'playing' && s.money.cash <= 0) bankrupt(s, report); return s.status === 'dead'; };
 
   M.step = function (s, alloc, rng, report) {
-    const m = s.money, next = s.turn + 1, cash0 = m.cash;
+    const m = s.money, next = s.turn + 1, cash0 = m.cash, rev0 = m.revenue;
     const served = alloc && alloc.serving ? Math.max(0, alloc.serving.pf) : 0, demand = M.demandPF(s);
     const p = M.burnParts(s), burn = Math.round(p.payroll + p.ops + p.compute + p.projects), revenue = Math.round(M.revenue(s, served));
     m.revenue = revenue; m.burn = burn; m.net = revenue - burn; m.cash += m.net;
     const was = weeksOf(cash0, m.net);                  // runway coming into the week, on the week's own bills
     report.flows.money = { revenue, burn, net: m.net, payroll: p.payroll, ops: p.ops, compute: Math.round(p.compute), projects: Math.round(p.projects),
       servedPF: FR.round(Math.min(served, demand), 1), demandPF: FR.round(demand, 1), price: Math.round(M.pricePerPF(avg(s))), cash: m.cash };
+    // revenue fell with demand left unserved: name the cause (the Serving share), not just the drop
+    if (revenue < rev0 && served < demand * (1 - K.unservedFlag)) {
+      report.memo.push({ kind: 'flag', text: 'Serving covers ' + FR.round(served, 1) + ' of ' + FR.round(demand, 1) + ' PF of demand: about ' +
+        money(M.revenue(s, demand) - revenue) + ' a week unserved. Revenue ' + money(revenue) + ', down from ' + money(rev0) + '.' });
+    }
     arrivals(s, next, report);
     m.valuation = M.valuation(s);
     if (m.cash <= 0) { if (s.status === 'playing') bankrupt(s, report); return; }
@@ -2145,8 +2195,9 @@ window.FR_VERSION="0.1.0.0";
     trustStart: 50, trustMid: 50, trustRevert: 0.05,   // trust closes 5% of its distance to trustMid each week
     trustMultBase: 0.5, trustMultPer: 0.01,             // trustMult = 0.5 + trust / 100  (0.5 .. 1.5)
     // rival weekly gain per skill = gainBase × speed × (1 + ramp × years) × weight × (1 − cap/100)^dimExp;
+    // 0.44 since 2026-09-28: the balance bots accept the DeepField share when it is cheap, as a reading player does
     // a `steady` share arrives every week, the rest in releases (chance `ship` a week) so the expected pace is the same
-    gainBase: 0.43, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
+    gainBase: 0.44, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
     startJitter: 1.5, safeJitter: 2, speedJitter: 0.12,  // start cap ± points, start safe ± points, base speed ± fraction
     speedMin: 0.85, speedMax: 1.15,                     // speed bounds, multiples of the rival's base speed
     fundLift: 0.02, incSlow: 0.015,                     // a funding line speeds a rival up 2%; its own incident slows it 1.5%
@@ -2213,7 +2264,7 @@ window.FR_VERSION="0.1.0.0";
     'm|High-bandwidth memory prices rise {P}% on data-center demand.',
     'm|A new foundry line for AI accelerators slips to next year.',
     'm|Chipmaker raises full-year data-center guidance by {P}%.',
-    'm|Spot GPU rental rates steady this week, brokers report.',
+    'm|Spot GPU rental rates steady this week, brokers report.|calm',   // calm: never during a chip shortage
     'm|State utility board in {ST} approves a {G}-gigawatt line for data-center load.',
     'm|Enterprise AI spending up {P}% year on year, analyst survey finds.',
     'm|Venture funding for AI labs reaches {B} this quarter.',
@@ -2412,7 +2463,7 @@ window.FR_VERSION="0.1.0.0";
     s.news.slice(-K.newsRecent).concat(report.news).forEach(x => seen.add(sig(s, x.text)));
     for (let tries = 0; report.news.length < n && tries < 8; tries++) {
       const line = fill(s, rng.pick(M.NEWS), rng), g = sig(s, line.text);
-      if (seen.has(g)) continue;
+      if (seen.has(g) || (line.fx === 'calm' && s.compute && s.compute.scarcity > 0)) continue;
       seen.add(g);
       report.news.push({ kind: line.kind, text: line.text });
       if (line.fx === 'fund' && line.rival) bump(line.rival, K.fundLift);
@@ -2808,13 +2859,19 @@ window.FR_VERSION="0.1.0.0";
 
   // three.js missing (the CDN script failed): a do-nothing FR.r so the rest of the one-script build (menu, sim, main) still
   // runs; floors register into it harmlessly and nothing renders. The look and title modules skip themselves.
-  if (typeof THREE === 'undefined') {
-    console.error('three.js did not load: the HQ view is off');
-    const no = () => false;
-    FR.r = { floors: {}, stub: true, current: null, mode: 'room', focusId: null, paused: true, cinematic: null, t: 0, LED: {},
+  // FR.rStub(into): turns `into` (or a new object) into that stub in place, so a module that captured FR.r at load sees it.
+  // 99_main uses it too when R.init throws (no WebGL): the elevator then arrives at once and opens the floor's panel.
+  FR.rStub = function (into) {
+    const no = () => false, r = into || {};
+    if (r.renderer && r.renderer.dispose) { try { r.renderer.dispose(); } catch (e) { /* half-built */ } }
+    return Object.assign(r, { floors: r.floors || {}, stub: true, renderer: null, current: null, mode: 'room', focusId: null, paused: true, cinematic: null, t: 0, LED: {},
       init() {}, loadFloor(id) { FR.emit('hq:floor', { floorId: id }); }, home() {}, back() { if (FR.ui && FR.ui.sheetId) FR.ui.sheet(null); },
       focus: no, tapAt: no, glideTo: no, snap() {}, setMode() {}, target: () => null, poseOf: () => null, screenOf: () => null, pick: () => null,
-      live: no, targets: () => [], relabel() {}, setText() {}, staffOn: () => 0, disposeGroup() {}, debug: () => ({ stub: true }) };
+      live: no, targets: () => [], relabel() {}, setText() {}, staffOn: () => 0, disposeGroup() {}, debug: () => ({ stub: true }) });
+  };
+  if (typeof THREE === 'undefined') {
+    console.error('three.js did not load: the HQ view is off');
+    FR.r = FR.rStub({});
     return;
   }
   const R = FR.r = { floors: {}, current: null, t: 0, mode: 'room', focusId: null, view: null, paused: true, cinematic: null, settled: null, dirty: false };
@@ -2978,8 +3035,30 @@ window.FR_VERSION="0.1.0.0";
   // box and the top corners of the walls the cutaway keeps), clipped to what the portrait framing shows, is fitted into
   // the HUD-safe rect instead: the fov narrows until the content fills the rect, and a lens shift centres it. Bare floor
   // in front of the nearest target may crop. It never zooms out past the portrait framing.
+  // Portrait phones keep the hand-framed view, unless a live target's box (or a floor's fitExtra() points) falls off a side
+  // edge: then a horizontal lens shift, and if that is not enough a wider fov, brings every box inside with a small margin.
+  function fitPortrait(p) {
+    const pts = extraPts();
+    targets.forEach(t => { if (!live(t, 'room')) return; const b = t.box; for (let i = 0; i < 8; i++) pts.push([i & 1 ? b[3] : b[0], i & 2 ? b[4] : b[1], i & 4 ? b[5] : b[2]]); });
+    if (!fitCam) fitCam = new THREE.PerspectiveCamera();
+    fitCam.position.set(p.pos[0], p.pos[1], p.pos[2]); fitCam.lookAt(p.look[0], p.look[1], p.look[2]); fitCam.updateMatrixWorld(true);
+    let u0 = Infinity, u1 = -Infinity;
+    pts.forEach(q => { _v.set(q[0], q[1], q[2]).applyMatrix4(fitCam.matrixWorldInverse); if (_v.z > -0.1) return; const u = _v.x / -_v.z; if (u < u0) u0 = u; if (u > u1) u1 = u; });
+    if (!(u1 > u0)) return p;
+    const A = Math.max(W() / H(), R.DESIGN_ASPECT), Tu = Math.tan(p.fov * Math.PI / 360) * A, sx = p.shiftX || 0, m = 0.1 * Tu;   // margin: room for the tag pill
+    if (u0 - m >= (-1 + 2 * sx) * Tu && u1 + m <= (1 + 2 * sx) * Tu) return p;
+    const half = (u1 - u0) / 2 + m;
+    if (half <= Tu) {   // fits at this fov: the smallest shift that brings both sides in
+      const lo = ((u1 + m) / Tu - 1) / 2, hi = ((u0 - m) / Tu + 1) / 2;
+      return Object.assign({}, p, { shiftX: Math.min(hi, Math.max(lo, sx)) });
+    }
+    return Object.assign({}, p, { fov: 2 * Math.atan(half / A) * 180 / Math.PI, shiftX: (u0 + u1) / 2 / (2 * half) });
+  }
+  // a floor's extra fit points (e.g. the lobby's press pack outside the glass, while it is there)
+  function extraPts() { const f = R.current; try { return (f && typeof f.fitExtra === 'function' && f.fitExtra()) || []; } catch (e) { return []; } }
   function fitView(p) {
-    if (!p || W() / H() <= R.FIT_ASPECT) return p; // near-portrait phones (360x740) keep the hand-framed portrait view
+    if (!p) return p;
+    if (W() / H() <= R.FIT_ASPECT) return fitPortrait(p); // near-portrait phones keep the hand-framed view (see fitPortrait)
     const rm = R.roomDims || { w: 16, d: 14, h: 4 }, w2 = rm.w / 2, d2 = rm.d / 2, cx = p.pos[0], cz = p.pos[2], pts = [];
     const wall = (x0, z0, x1, z1) => pts.push([x0, rm.h, z0], [x1, rm.h, z1]);
     if (!(cz > d2)) wall(-w2, d2, w2, d2);
@@ -2987,6 +3066,7 @@ window.FR_VERSION="0.1.0.0";
     if (!(cx < -w2)) wall(-w2, -d2, -w2, d2);
     if (!(cx > w2)) wall(w2, -d2, w2, d2);
     targets.forEach(t => { if (!live(t, 'room')) return; const b = t.box; for (let i = 0; i < 8; i++) pts.push([i & 1 ? b[3] : b[0], i & 2 ? b[4] : b[1], i & 4 ? b[5] : b[2]]); });
+    extraPts().forEach(q => pts.push(q));
     if (!fitCam) fitCam = new THREE.PerspectiveCamera();
     fitCam.position.set(p.pos[0], p.pos[1], p.pos[2]); fitCam.lookAt(p.look[0], p.look[1], p.look[2]); fitCam.updateMatrixWorld(true);
     let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
@@ -3006,6 +3086,7 @@ window.FR_VERSION="0.1.0.0";
       shift: (H() / 2 - (v0 + v1) / 2 * s - ys) / H(), shiftX: (u0 + u1) / 2 * s / W() };
   }
   // re-fit the room view after a resize; a camera resting in (or gliding to) the room view jumps to the new one
+  R.refit = () => refit();   // a floor whose fit points changed (fitExtra) asks for a new room view
   function refit() {
     if (!R.base) return; R.view = fitView(R.base);
     if (R.mode === 'room' && R.view) { glide = null; setRig(R.view); settle(); }
@@ -3402,6 +3483,8 @@ window.FR_VERSION="0.1.0.0";
   const shared = m => m.userData.keep || cachedMats.has(m);
   R.disposeGroup = function (g) {
     g.traverse(o => {
+      // r128 frees an InstancedMesh's instanceMatrix / instanceColor buffers only on the mesh's own 'dispose' event
+      if (o.isInstancedMesh && o.dispose) o.dispose();
       if (o.geometry) o.geometry.dispose();
       (Array.isArray(o.material) ? o.material : o.material ? [o.material] : []).forEach(m => { if (shared(m)) return; if (m.map && !(m.map.userData && m.map.userData.keep)) m.map.dispose(); m.dispose(); });
     });
@@ -3732,7 +3815,7 @@ window.FR_VERSION="0.1.0.0";
 // turns: the serving floor goes dark under a slow red strobe and a press pack gathers outside the lobby glass.
 // No per-frame allocation: update() only writes preallocated objects.
 (function (FR) {
-  const R = FR.r; if (!R) return;
+  const R = FR.r; if (!R || R.stub || typeof THREE === 'undefined') return;   // no three.js: the stub FR.r, nothing to build
   const W = 16, D = 14, H = 4, HD = D / 2, PI = Math.PI;
   const K = R.FLOOR_K = {
     maxPeople: 24,        // figures per floor at most (instanced), whatever the headcount
@@ -4087,6 +4170,8 @@ window.FR_VERSION="0.1.0.0";
     let nPress = 0, flashT = 0.5, flashLife = 0;
     const f = { group: g, elevator: ev, targets, hint: 'Tap the news wall for the wire. The elevator goes up to the lab floors.',
       view: { pos: [0, 20.3, 13.65], look: [0, 0.8, 0], fov: 62, shift: 0.036 }, // front, over the street: the press pack sits under the room
+      // while the press is outside, a fitted (landscape) room view keeps the pack on screen above the dock
+      fitExtra: () => nPress ? [[-3.2, 0, 7.2], [3.2, 0, 7.2], [-3.2, 1.9, 8.6], [3.2, 1.9, 8.6]] : null,
       light: { hemi: 0.8, sun: 0.5, bg: 0x0b1016 },
       refresh(s) {
         s = s || S();
@@ -4097,7 +4182,9 @@ window.FR_VERSION="0.1.0.0";
         paint(record, { rows: marks.map(mk => { const q = firsts.find(r => r.mark === mk); return q ? [mk, q.by, q.turn, whoName(s, q.by)] : [mk, null, null, null]; }) }, drawRecord);
         paint(name, { n: labName(s) }, (x, w, h, d) => { rect(x, 0, 0, w, h, '#1b232c'); T(x, d.n.toUpperCase(), w / 2, h / 2 + 4, 92, HX.ink, 'center', 700, DISP, w - 64); });
         const inc = recentIncidents(s), ago = inc.length ? s.turn - inc[0].turn : 99;
+        const had = nPress > 0;
         nPress = inc.length ? clamp(K.pressMax + 2 - 2 * ago, K.pressMin, K.pressMax) : 0;
+        if (had !== nPress > 0 && R.refit && R.current === f) R.refit();
         press.set(nPress); gear.count = nPress; pressG.visible = nPress > 0; if (!nPress) flash.visible = false;
       },
       update(dt, t) {
@@ -4144,10 +4231,11 @@ window.FR_VERSION="0.1.0.0";
     rect(x, 0, 0, w, h, HX.sunken);
     if (d.dark) {
       rect(x, 0, 0, w, 250, '#2a0d0c');
-      T(x, 'MODEL PULLED', w / 2, 86, 92, HX.bad, 'center', 800, DISP, w - 80);
-      T(x, d.skill + ' incident · ' + d.when + ' · serving suspended pending review', w / 2, 164, 32, HX.ink2, 'center', 500, SANS, w - 80);
-      T(x, 'Status reverts ' + d.until, w / 2, 210, 26, HX.ink3, 'center', 500, SANS, w - 80);
-      rect(x, 0, 250, w, h - 250, '#140606'); T(x, 'REQUESTS · HALTED', 24, 272, 20, HX.bad, 'left', 600, MONO); return;
+      // the sim does not pull the model: serving and revenue continue while the incident is under review
+      T(x, 'INCIDENT REVIEW', w / 2, 86, 84, HX.bad, 'center', 800, DISP, w - 80);
+      T(x, d.skill + ' incident · ' + d.when + ' · serving continues under review', w / 2, 164, 32, HX.ink2, 'center', 500, SANS, w - 80);
+      T(x, 'Review closes ' + d.until, w / 2, 210, 26, HX.ink3, 'center', 500, SANS, w - 80);
+      rect(x, 0, 250, w, h - 250, '#140606'); T(x, 'REQUESTS · UNDER REVIEW', 24, 272, 20, HX.bad, 'left', 600, MONO); return;
     }
     T(x, 'SERVING', 28, 40, 44, HX.ink, 'left', 700, DISP);
     rrect(x, w - 300, 16, 272, 48, 24, d.pf > 0 ? 'rgba(95,207,154,.18)' : 'rgba(240,162,74,.18)');
@@ -4205,7 +4293,7 @@ window.FR_VERSION="0.1.0.0";
       { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: aim([2.6, 0.8, -2.0], 0, 45, 11) }
     ];
     let act = 0, dark = false, nWalk = 0, split0 = { walk: 0, sit: 0, stand: 0 }, scroll = 0;
-    const f = { group: g, elevator: ev, targets, get hint() { return dark ? 'The model is pulled after an incident. Tap the status wall for serving.' : 'Tap the status wall for the serving share, demand and rented compute.'; },
+    const f = { group: g, elevator: ev, targets, get hint() { return dark ? 'An incident is under review. Serving continues. Tap the status wall for serving.' : 'Tap the status wall for the serving share, demand and rented compute.'; },
       view: { pos: [3.1, 26.61, 14.57], look: [0, 0.8, 0], fov: 60, shift: -0.029, shiftX: 0.012 },
       light: { hemi: 0.62, sun: 0.5, bg: 0x070b10 },
       refresh(s) {
@@ -4316,7 +4404,7 @@ window.FR_VERSION="0.1.0.0";
     rect(x, 24 + (w - 48) * clamp(d.safe / 100, 0, 1), 110, 3, 104, 'rgba(238,242,246,.5)');
     T(x, 'GAP', 24, 262, 22, HX.ink3, 'left', 600); T(x, cap1(d.gap), 90, 264, 56, gapCol(d.gap), 'left', 500, MONO);
     T(x, d.inc ? d.inc + (d.inc === 1 ? ' incident' : ' incidents') + ' in 52 wks' : 'No incidents', w - 24, 256, 20, d.inc ? HX.bad : HX.ink3, 'right', 600, SANS, 250);
-    T(x, d.final ? 'Final incident in ' + d.final + (d.final === 1 ? ' week' : ' weeks') : d.gap > 10 ? 'Above 10: warnings' : 'Within tolerance', w - 24, 282, 20, d.final ? HX.bad : d.gap > 10 ? HX.warn : HX.ink3, 'right', 600, SANS, 250);
+    T(x, d.final ? 'Final incident in ' + d.final + (d.final === 1 ? ' week' : ' weeks') : d.gap > 10 ? 'Above 10: warnings' : d.gap > 5 ? 'Above 5: blocks the hold' : 'Within the hold margin', w - 24, 282, 20, d.final ? HX.bad : d.gap > 10 ? HX.warn : HX.ink3, 'right', 600, SANS, 250);
     rect(x, 0, h - 26, w, 26, HX.surface); T(x, d.run ? 'EVAL SUITE RUNNING' : 'EVALS PAUSED · NO SAFETY COMPUTE', w / 2, h - 13, 16, d.run ? HX.good : HX.warn, 'center', 600, MONO);
   }
   // the incident log (768 × 452): title and date, one row per skill, the pressure gauge (FR.ui.pressure, the safety panel's
@@ -4785,7 +4873,8 @@ window.FR_VERSION="0.1.0.0";
     const laps = inst(g, boxes([[0.34, 0.02, 0.24, 0, 0.81, 0.02], [0.34, 0.22, 0.02, 0, 0.92, 0.12, 0, 0.25]]), R.mat(0x9aa4ae), CH.length);
     CH.forEach((c, i) => place(laps, i, c[0] + Math.sin(c[2]) * 0.55, 0, c[1] + Math.cos(c[2]) * 0.55, c[2]));
     // pendants over the table (cables above the cutaway line vanish with the ceiling)
-    [-3.6, -1.6, 0.4].forEach(z => { R.box(g, 0.02, 0.9, 0.02, GRAPH, 0.2, 3.45, z); R.cyl(g, 0.26, 0.34, 0.22, 0xffe2b8, 0.2, 2.95, z, 16).material = R.mat(0xffe2b8, { emissive: 0xffc890, emissiveIntensity: 0.9 }); });
+    // (none over the head of the table: from the board-table close-up a lamp there sat in front of the valuation screen)
+    [-1.6, 0.4].forEach(z => { R.box(g, 0.02, 0.9, 0.02, GRAPH, 0.2, 3.45, z); R.cyl(g, 0.26, 0.34, 0.22, 0xffe2b8, 0.2, 2.95, z, 16).material = R.mat(0xffe2b8, { emissive: 0xffc890, emissiveIntensity: 0.9 }); });
     plant(g, -7.2, 5.6); plant(g, 7.2, 5.6); plant(g, -2.9, -6.4, 0.9);
     R.box(g, 1.2, 0.9, 0.5, WOOD, 5.8, 0.45, 5.6); R.cyl(g, 0.05, 0.05, 0.28, 0xd8e0e8, 5.6, 1.04, 5.6, 8); R.cyl(g, 0.05, 0.05, 0.22, 0xd8e0e8, 5.9, 1.01, 5.5, 8);
     panels(g, [[-5, -4], [5, -4], [-5, 2], [5, 2]], 0.5);
@@ -4804,7 +4893,9 @@ window.FR_VERSION="0.1.0.0";
       light: { hemi: 0.6, sun: 0.55, bg: 0x08101c },
       refresh(s) {
         s = s || S(); const m = (s && s.money) || { cash: 0, founderPct: 100, valuation: 0, roundsDone: [], revenue: 0, burn: 0, net: 0 };
-        const burn = tryf(() => FR.money.burnEstimate(s), m.burn || 0), net = (m.revenue || 0) - burn, runway = net >= 0 ? null : Math.max(0, Math.floor(m.cash / -net));
+        // next week's forecast, as the panel below and the HUD show it
+        const fc = tryf(() => FR.sim.forecast(s), null), net = fc ? fc.net : (m.revenue || 0) - (m.burn || 0);
+        const runway = fc ? (fc.runway === Infinity ? null : Math.max(0, fc.runway)) : net >= 0 ? null : Math.max(0, Math.floor(m.cash / -net));
         const o = m.offer, ms = m.milestone;
         paint(val, { val: Math.round(m.valuation || tryf(() => FR.money.valuation(s), 0)), cash: Math.round(m.cash), net: Math.round(net), runway, stake: FR.round(m.founderPct, 1),
           offer: o ? (o.round === 'a' ? 'Series A' : o.round === 'seed' ? 'Seed round' : String(o.round)) + ' on the table: ' + money(o.amount) + ' for ' + FR.round(o.pct * (o.pct <= 1 ? 100 : 1), 1) + '%' : null,
@@ -4836,7 +4927,7 @@ window.FR_VERSION="0.1.0.0";
 // open → camera pulls back to the room view). Reader: reads FR.state only. Emits 'elevator:ride' {from, to} and
 // 'elevator:arrived' {floorId}; FR.cmd.goFloor(id) calls FR.elevator.ride(id).
 (function (FR) {
-  const R = FR.r; const E = FR.elevator = { riding: false, rides: 0, floor: null };
+  const R = FR.r; const E = FR.elevator = { riding: false, rides: 0, floor: null, gen: 0 };   // gen: bumped by cancel()
   const order = FR.HQ_FLOORS, META = FR.HQ_FLOOR_META;
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const sfx = (n) => { try { if (FR.audio && FR.audio.play) FR.audio.play(n); } catch (e) { /* never blocks a ride */ } };
@@ -4919,8 +5010,9 @@ window.FR_VERSION="0.1.0.0";
       '.floors .floor.idle{background:transparent;border-style:dashed;box-shadow:none}.floors .floor.idle .n{background:transparent;color:var(--ink-3,#97a5b4)}';
     document.head.appendChild(st);
   }
+  const noView = () => R.stub || !R.renderer;   // no 3D view: a tap on a row opens that floor's panel at once
   function rowsHtml() {
-    const here = R.current && R.current.id;
+    const here = (R.current && R.current.id) || E.floor;
     return order.slice().reverse().map(id => {
       const m = META[id], l = E.line(id), cls = 'floor' + (id === here ? ' here' : '') + (l.idle ? ' idle' : '') + (l.tone ? ' tone-' + l.tone : '');
       const sub = (id === here ? 'You are here · ' : '') + (l.tone ? `<span class="tn-${l.tone}">${esc(l.text)}</span>` : esc(l.text));
@@ -4928,9 +5020,9 @@ window.FR_VERSION="0.1.0.0";
     }).join('');
   }
   function bindRows(root) {
-    const here = R.current && R.current.id;
+    const here = (R.current && R.current.id) || E.floor;
     root.querySelectorAll('[data-f]').forEach(el => {
-      const go = () => { const f = el.dataset.f; if (f !== here) E.ride(f); else FR.ui.sheet(null); };
+      const go = () => { const f = el.dataset.f; if (f !== here || noView()) E.ride(f); else FR.ui.sheet(null); };
       el.addEventListener('click', go);
       el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     });
@@ -4956,11 +5048,24 @@ window.FR_VERSION="0.1.0.0";
   function fadeEl() { return document.getElementById('fade'); }
   function setDoors(ev, open) { if (!ev || !ev.doors) return; ev.doors[0].position.x = ev.x - 0.5 - open * 0.9; ev.doors[1].position.x = ev.x + 0.5 + open * 0.9; }
 
+  // stop a ride under way (quit to the menu, the end screen, a new lab): it never loads, unpauses or emits
+  E.cancel = function () {
+    E.gen++; if (!E.riding) return;
+    E.riding = false; const f = fadeEl(); if (f) f.style.opacity = '0';
+    const l = document.getElementById('ledOverlay'); if (l) l.style.display = 'none';
+    if (FR.ui && FR.ui.updateEnd) FR.ui.updateEnd();
+  };
   E.ride = function (to) {
-    if (E.riding || !META[to] || !R.renderer) return false;
+    if (E.riding || !META[to]) return false;
+    if (noView()) {   // no renderer: arrive at once and open the floor's panel (the elevator sheet becomes the floor menu)
+      const from = E.floor; try { R.loadFloor(to); } catch (e) { /* stub */ } E.floor = to;
+      FR.emit('elevator:ride', { from, to }); FR.emit('elevator:arrived', { floorId: to });
+      if (FR.ui && FR.ui.panel) FR.ui.panel(to);
+      return true;
+    }
     if (!R.current) { R.loadFloor(to); E.floor = to; R.paused = false; FR.emit('elevator:arrived', { floorId: to }); return true; }
     const from = R.current.id; if (from === to) { if (FR.ui && FR.ui.sheetId) FR.ui.sheet(null); return false; }
-    E.riding = true; E.rides++;
+    E.riding = true; E.rides++; const gen = ++E.gen, gone = () => gen !== E.gen;
     if (FR.ui && FR.ui.sheet) FR.ui.sheet(null);
     R.paused = true; FR.emit('elevator:ride', { from, to });
     const ev = R.current.elevator, fade = fadeEl();
@@ -4970,6 +5075,7 @@ window.FR_VERSION="0.1.0.0";
     const fi = order.indexOf(from), ti = order.indexOf(to); const steps = Math.abs(ti - fi); const dir = ti > fi ? 1 : -1;
     let stepI = 0, lit = false; const rideMs = Math.max(700, Math.min(1600, 300 + steps * 250));
     function anim() {
+      if (gone()) return;
       const t = performance.now() - t0;
       if (t < 500) { requestAnimationFrame(anim); return; }
       if (t < 600) { if (fade) fade.style.opacity = '1'; if (!lit) { lit = true; led(META[from].n); } requestAnimationFrame(anim); return; }
@@ -4984,9 +5090,10 @@ window.FR_VERSION="0.1.0.0";
       R.snap(R.poseOf('elevator') || R.view); setDoors(ev2, 0);
       led(META[to].n, true); sfx('chime'); if (fade) fade.style.opacity = '0';
       const t1 = performance.now();
-      (function open() { const k = Math.min(1, (performance.now() - t1) / 500); setDoors(ev2, k);
-        // doors open: pull back from the doors to the floor's room view, then hand control back
-        if (k < 1) requestAnimationFrame(open); else { R.home(700); E.riding = false; R.paused = false; E.floor = to; FR.emit('elevator:arrived', { floorId: to }); } })();
+      (function open() { if (gone()) return; const k = Math.min(1, (performance.now() - t1) / 500); setDoors(ev2, k);
+        // doors open: pull back from the doors to the floor's room view, then hand control back (paused while a sheet is up
+        // or the world is not on screen)
+        if (k < 1) requestAnimationFrame(open); else { R.home(700); E.riding = false; R.paused = !!(FR.ui && FR.ui.sheetId) || !(FR.inWorld ? FR.inWorld() : true); E.floor = to; FR.emit('elevator:arrived', { floorId: to }); } })();
     }
     // the from-floor doors were open; animate them closing to the centre
     (function close() { const k = Math.min(1, (performance.now() - t0) / 450); setDoors(ev, 1 - k); if (k < 1) requestAnimationFrame(close); })();
@@ -5116,12 +5223,13 @@ window.FR_VERSION="0.1.0.0";
     }
     T.towerWins = W.length;
     // city blocks
-    const bm = R.mat(0x0b0e13); let blocks = 0;
+    // near blocks a shade lighter than the sky, so their lit windows read as windows in a building, not floating squares
+    const bm = R.mat(0x0b0e13), bmNear = R.mat(0x1b222c); let blocks = 0;
     for (let i = 0; i < 34 && blocks < 30; i++) {
       const ang = rng() * Math.PI * 2, rad = 26 + rng() * 70, x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
       if (x > 6 && z > 6 && rad < 60) continue; // keep the camera corridor clear
       const w = 8 + rng() * 10, d = 8 + rng() * 10, h = 8 + rng() * (rad < 45 ? 28 : 44);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bm); b.position.set(x, h / 2, z); S.add(b); blocks++;
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), rad < 50 ? bmNear : bm); b.position.set(x, h / 2, z); S.add(b); blocks++;
       const rows = Math.floor(h / 3.2), cz = Math.floor(w / 2.6), cx = Math.floor(d / 2.6), dens = 0.14 + rng() * 0.22, tint = rng.chance(0.55) ? cool : warm;
       for (let r = 0; r < rows; r++) { const y = 1.6 + r * 3.2;
         for (let c = 0; c < cz; c++) if (rng.chance(dens)) win(x + (c - (cz - 1) / 2) * 2.6, y, z + d / 2 + 0.03, 0, rng.pick(tint), 1.15, 1.9);
@@ -5308,12 +5416,22 @@ window.FR_VERSION="0.1.0.0";
     const sh = $('sheet'), dim = $('dim'); if (!sh || !dim) return;
     if (!dim.classList.contains('on')) dimDown = false;
     const was = sh.classList.contains('on');
+    const hud = $('hud');
     if (!html) {
-      sh.classList.remove('on', 'scrolled'); dim.classList.remove('on'); U.sheetId = null;
+      sh.classList.remove('on', 'scrolled'); dim.classList.remove('on'); U.sheetId = null; if (hud) hud.inert = false;
+      // focus goes back where it was before the sheet opened (never left inside a closed sheet)
+      if (was && sh.contains(document.activeElement)) { const b = U._sheetFrom; U._sheetFrom = null; try { if (b && b.isConnected) b.focus({ preventScroll: true }); else document.activeElement.blur(); } catch (e) { /* old engines */ } }
       if (FR.r) FR.r.paused = !inWorld(); if (was) sfx('close'); FR.emit('ui:sheet', { id: null }); return;
     }
     if (!was) sfx('open');
     $('sheetBody').innerHTML = html; sh.classList.add('on'); dim.classList.add('on'); U.sheetId = id || 'sheet';
+    // a modal sheet: keyboard focus moves into it and the HUD behind it is inert (a Space or Enter on a focused End Turn
+    // under the memo would otherwise resolve another week)
+    if (hud) hud.inert = true;
+    if (!was || !sh.contains(document.activeElement)) {
+      if (!was) U._sheetFrom = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+      const c = $('sheetClose'); try { if (c) c.focus({ preventScroll: true }); } catch (e) { /* old engines */ }
+    }
     if (FR.r) FR.r.paused = true; FR.emit('ui:sheet', { id: U.sheetId });
   };
   // toast(text, ms, tone): tone 'bad' | 'good' tints the edge. Long lines stay up longer unless ms is given.
@@ -5372,7 +5490,7 @@ window.FR_VERSION="0.1.0.0";
   }
   function bindScroll() {
     const sh = $('sheet'), body = $('sheetBody'); if (!sh || !body) return;
-    const check = () => sh.classList.toggle('scrolled', body.scrollTop > 24);
+    const check = () => sh.classList.toggle('scrolled', body.scrollTop > 0);   // any scroll: the heading band covers content passing under the grab handle
     body.addEventListener('scroll', check, { passive: true });
     // a different sheet starts at the top; the same id re-rendered in place keeps its scroll (panels refresh after
     // state:changed). New content can arrive at the same scrollTop (no scroll event), so re-check after every change.
@@ -5435,14 +5553,21 @@ window.FR_VERSION="0.1.0.0";
     try {
       const you = FR.sim.avgCap(s), b = FR.market.best(s), rv = (s.market.rivals || []).find(r => r.id === b.rivalId), d = you - b.avgCap;
       const hold = (s.win && s.win.streak) || 0, rname = rv ? rv.name : 'Best rival';
+      // ahead but not holding: the widest gap past the safe margin is what blocks the 52-week hold
+      const M = (FR.sim.K && FR.sim.K.safeMargin) || 5, worst = FR.SKILLS.reduce((b, k) => gapOf(s, k) > gapOf(s, b) ? k : b, FR.SKILLS[0]);
+      const blocked = hold === 0 && d >= 0 && s.status === 'playing' && gapOf(s, worst) > M ? worst : null;
       html = `<span class="st-k">Frontier</span><span class="st-v st-you">You <b>${you.toFixed(1)}</b></span>`
         + `<span class="st-v st-riv"><span class="nm">${esc(rname)}</span> <b>${(+b.avgCap).toFixed(1)}</b></span>`
         + `<span class="st-gap ${d >= 0 ? 'good' : 'warn'}">${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}</span>`
-        + (hold > 0 ? `<span class="st-hold">Hold <b>${hold}/${WIN}</b><i style="--v:${Math.min(100, Math.round(hold / WIN * 100))}"></i></span>` : '');
-      label = `Average capability: yours ${you.toFixed(1)}, ${rname} ${(+b.avgCap).toFixed(1)}.` + (hold > 0 ? ` Safe frontier hold ${hold} of ${WIN} weeks.` : '');
+        + (hold > 0 ? `<span class="st-hold">Hold <b>${hold}/${WIN}</b><i style="--v:${Math.min(100, Math.round(hold / WIN * 100))}"></i></span>`
+          : blocked ? `<span class="st-hold st-block">Hold blocked <b>${esc(FR.SKILL_NAME[blocked])} gap ${Math.round(gapOf(s, blocked) * 10) / 10}</b></span>` : '');
+      label = `Average capability: yours ${you.toFixed(1)}, ${rname} ${(+b.avgCap).toFixed(1)}.` + (hold > 0 ? ` Safe frontier hold ${hold} of ${WIN} weeks.`
+        : blocked ? ` The safe hold has not started: ${FR.SKILL_NAME[blocked]} safety is more than ${M} below capability.` : '') + ' Opens the Rivals tab.';
     } catch (e) { html = ''; }
     if (html !== last.strip) { last.strip = html; el.innerHTML = html; el.classList.toggle('holding', /st-hold/.test(html)); if (label) el.setAttribute('aria-label', label); }
   };
+
+  const gapOf = (s, k) => Math.max(0, s.model.skills[k].cap - s.model.skills[k].safe);
 
   // ---------- memo dot ----------
   let memoSeen = -1; // the memo.turn last opened this session (a new or loaded career starts unread)
@@ -5466,7 +5591,7 @@ window.FR_VERSION="0.1.0.0";
     const b = $('memoOk'); if (b) b.addEventListener('click', () => { sfx('tap'); U.sheet(null); });
   }
   U.openMemo = function () {
-    if (!FR.state) return;
+    if (!FR.state || (FR.elevator && FR.elevator.riding)) return;
     if (typeof U.memo === 'function') { try { U.memo(); } catch (e) { console.error('memo sheet failed', e); memoFallback(); } } else memoFallback();
     U.markMemoRead();
   };
@@ -5493,8 +5618,10 @@ window.FR_VERSION="0.1.0.0";
     const cur = FR.r && FR.r.current; if (!cur || !FR.elevator) return;
     if (cur.id === id) { if (fn) fn(); return; }
     if (FR.elevator.riding) return;
-    if (fn) { const h = (d) => { if (!d || d.floorId !== id) return; FR.off('elevator:arrived', h); setTimeout(fn, 0); }; FR.on('elevator:arrived', h); }
-    FR.cmd.goFloor(id);
+    if (!FR.cmd.goFloor(id)) return;
+    // the callback belongs to this ride only: a ride cancelled by quitting (FR.elevator.cancel bumps gen) drops it
+    const gen = FR.elevator.gen;
+    if (fn) { const h = (d) => { if (FR.elevator.gen !== gen) { FR.off('elevator:arrived', h); return; } if (!d || d.floorId !== id) return; FR.off('elevator:arrived', h); if (FR.inWorld && !FR.inWorld()) return; setTimeout(fn, 0); }; FR.on('elevator:arrived', h); }
   };
   // a hotspot with no panel (a build without 09_ui_panels.js, or an id it does not know): the floor's name and status line
   U.noPanel = function (id) {
@@ -5512,7 +5639,8 @@ window.FR_VERSION="0.1.0.0";
 
   // ---------- the in-game menu (#hMenu) ----------
   U.gameMenu = function () {
-    const s = FR.state; if (!s) return; const st = FR.settings || {};
+    // not mid-ride: quitting would strand the ride
+    const s = FR.state; if (!s || (FR.elevator && FR.elevator.riding)) return; const st = FR.settings || {};
     const seg = (id, key, opts) => `<div class="seg" id="${id}" role="group">${opts.map(([v, n]) => `<button class="btn small${!!st[key] === v ? ' sel' : ''}" data-k="${key}" data-v="${v ? 1 : 0}" aria-pressed="${!!st[key] === v}">${n}</button>`).join('')}</div>`;
     const failed = !!U._saveFailed;
     U.sheet(`<div class="wk wk-menu"><span class="kicker">${esc(s.lab.name)} · ${esc(FR.dateLabel(s.turn))}</span><h3>Game menu</h3>
@@ -5545,7 +5673,17 @@ window.FR_VERSION="0.1.0.0";
     });
     $('hBack').addEventListener('click', () => { sfx('tap'); if (FR.r && FR.r.back) FR.r.back(); });
     $('hMemo').addEventListener('click', () => { sfx('tap'); U.openMemo(); });
-    $('hEnd').addEventListener('click', () => { if (U.endWhy()) return; FR.cmd.endTurn(); });
+    // never behind a sheet: a key press on the focused End Turn under the memo must not resolve another week
+    $('hEnd').addEventListener('click', () => { if (U.endWhy() || U.sheetId) return; FR.cmd.endTurn(); });
+    // the chips and the strip open what they summarise: Cash the Money tab, Trust the lobby trust board, Week the memo,
+    // the frontier strip the Rivals tab
+    const chip = (id, label, fn) => { const el = $(id); if (!el) return; el.setAttribute('role', 'button'); el.tabIndex = 0; el.dataset.opens = label;
+      const go = (e) => { if (!FR.state || U.sheetId || (FR.elevator && FR.elevator.riding)) return; e.stopPropagation(); sfx('tap'); fn(); };
+      el.addEventListener('click', go); el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } }); };
+    chip('hudCashChip', 'money', () => route('boardroom.money'));
+    chip('hudTrustChip', 'trust', () => route('lobby.trust'));
+    chip('hudWeekChip', 'memo', () => U.openMemo());
+    chip('hudStrip', 'rivals', () => route('boardroom.rivals'));
     $('hMenu').addEventListener('click', () => { sfx('tap'); U.gameMenu(); });
     FR.on('hq:view', d => { if (d && d.mode !== 'room') U.hideHint(); });
     // tap-target router: R.focus plays the tap and glides first, so this only opens the matching panel
@@ -5609,7 +5747,11 @@ window.FR_VERSION="0.1.0.0";
   const wks = (n) => n + (n === 1 ? ' week' : ' weeks');
   const wkS = (n) => n <= 0 ? 'now' : n + (n === 1 ? ' wk' : ' wks');
   // 'Week 7' this year, 'Year 2, Week 3' otherwise
-  const when = (t) => { const s = S(); return s && FR.year(t) === FR.year(s.turn) ? 'Week ' + FR.weekOfYear(t) : FR.dateLabel(t); };
+  // (relative to the memo's own week while the memo renders, so a Week 52 memo never dates next week as "Week 1");
+  // non-breaking spaces keep a date on one line
+  let refTurn = null;
+  const when = (t) => { const s = S(), ref = refTurn != null ? refTurn : s && s.turn;
+    return (s && FR.year(t) === FR.year(ref) ? 'Week ' + FR.weekOfYear(t) : FR.dateLabel(t)).replace(/ /g, '\u00a0'); };
   const runwayText = (w) => (w == null || w === Infinity) ? 'cash-positive' : wks(Math.max(0, w));
   const META = (id) => (FR.HQ_FLOOR_META || {})[id] || { n: '?', name: String(id) };
   const ORD = ['first', 'second', 'third', 'fourth', 'fifth'];
@@ -5727,7 +5869,7 @@ window.FR_VERSION="0.1.0.0";
       const Q = Object.assign({ stakePer: 100, stakeUnit: 1e6, stakeMax: 500 }, tryr(() => FR.sim.K.score, {}));
       const at = (pts) => { const v = Q.stakeUnit * (Math.pow(10, pts / Q.stakePer) - 1), [d, u] = v >= 999.5e6 ? [1e9, 'B'] : [1e6, 'M'], x = v / d;
         return '$' + x.toFixed(x >= 10 ? 0 : 1).replace(/\.0$/, '') + u; };
-      return `Your ownership of the lab. Each round sells part of it. The score counts the stake once, at the end of the run: its value then (valuation × your share), compressed so each tenfold rise adds ${Q.stakePer} points (${at(Q.stakePer)} scores ${Q.stakePer}, ${at(2 * Q.stakePer)} scores ${2 * Q.stakePer}), capped at ${Q.stakeMax} points (${at(Q.stakeMax)}).`;
+      return `Your ownership of the lab. Each round sells part of it. The score counts the stake once, at the end of the run: its value then (valuation × your share), compressed so each tenfold rise adds ${Q.stakePer} points (${at(Q.stakePer)} scores ${Q.stakePer}, ${at(2 * Q.stakePer)} scores ${2 * Q.stakePer}), capped at ${Q.stakeMax} points (${at(Q.stakeMax)}). A lab wound up for want of cash scores 0 for the stake.`;
     },
     get pressure() {
       const W = pressW(), b = pressBands(), nm = SK().map(k => `${SN(k)} ×${trim1(+W[k] || 1)}`).join(', ');
@@ -5779,7 +5921,8 @@ window.FR_VERSION="0.1.0.0";
     if (k === 'serving' ? Math.abs(d) < 500 : Math.abs(d) < 0.05) return '';
     return `<span class="fp-d ${d > 0 ? 'pos' : 'neg'}">${k === 'serving' ? smoney(d) : sg1(d)}</span>`;
   }
-  const unitText = (a) => `${n1((a && a.pf) || 0)} PF · ${trim1((a && a.staff) || 0)} staff`;
+  const big = (v) => v >= 100 ? String(Math.round(v)) : trim1(v);
+  const unitText = (a) => `${(a && a.pf) >= 100 ? big(a.pf) : n1((a && a.pf) || 0)} PF · ${big((a && a.staff) || 0)} staff`;
   function footText(f, f0) {
     if (!f) return '';
     const pr = (f.alloc && f.alloc.projects) || { pf: 0, need: 0 }, dn = f0 && f !== f0 ? f.net - f0.net : 0;
@@ -5860,13 +6003,16 @@ window.FR_VERSION="0.1.0.0";
     const mkt = c.scarcity > 0 ? ` Chip shortage: the spot price stays high for about ${wks(c.scarcity)}.`
       : ` Spot price ${c.rentPrice > K.basePrice * 1.05 ? 'above' : c.rentPrice < K.basePrice * 0.95 ? 'below' : 'near'} its usual ${kmoney(K.basePrice)}.`;
     const ceil = `The spot market rents at most <b class="num">${top} PF</b> in Year ${FR.year(s.turn)}${nextTop > top ? `, <b class="num">${nextTop} PF</b> from Year ${ny}` : ''}.`;
-    return `<div class="pl-steps fp-rent"><div class="pl-step"><span><b>Rented</b><small class="num">${kmoney(per)} per PF-week${disc ? ` · ${pct0(disc)} off` : ''}</small></span>
+    // bigger jumps beside the ±5 stepper: ±50 and ±250, each clamped to 0..the ceiling (hidden when they would not move)
+    const jumps = [-250, -50, 50, 250].map(d => ({ d, v: clamp(c.rentPF + d, 0, top) })).filter(j => j.v !== c.rentPF);
+    const jumpRow = jumps.length && !dead ? `<div class="fp-hire fp-jump">${jumps.map(j => btn('rent', j.v, (j.d < 0 ? '−' : '+') + Math.abs(j.d) + ' PF', 'quiet')).join('')}</div>` : '';
+    return `<div class="pl-steps fp-rent"><div class="pl-step"><span><b>Rented</b><small><span class="num">${kmoney(per)}</span> per PF-week${disc ? ` · ${pct0(disc)} off` : ''}</small></span>
       <button class="pl-sb" data-fp="rent" data-v="${lo}"${c.rentPF <= 0 || dead ? ' disabled' : ''} aria-label="Rent ${step} PF less">${ico('minus')}</button>
       <b class="num">${c.rentPF} PF</b>
       <button class="pl-sb" data-fp="rent" data-v="${hi}"${c.rentPF >= top || dead ? ' disabled' : ''} aria-label="Rent ${step} PF more, up to ${top} PF">${ico('plus')}</button></div></div>
-      <div class="pl-tot"><span>Rent a week</span><b class="num">${kmoney(cost)}</b></div>
+      ${jumpRow}<div class="pl-tot"><span>Rent a week</span><b class="num">${kmoney(cost)}</b></div>
       ${c.rentPF >= top && !dead ? why(`Rent is at the ceiling of ${top} PF. Clusters add capacity beyond it.`, 'info') : ''}
-      <p class="hint">Steps of ${step} PF, <span class="num">${kmoney(step * per)}</span> a week each. Changes apply at once and bill at End Turn. ${ceil}${mkt}</p>`;
+      <p class="hint">Steps of ${step} PF, <span class="num">${kmoney(step * per)}</span> a week each; the buttons below move 50 or 250. Changes apply at once and bill at End Turn. ${ceil}${mkt}</p>`;
   }
   const KIND = { training: ['Training', 'training'], safety: ['Safety', 'safety'], research: ['Research', 'research'], product: ['Product', 'serving'], business: ['Business', 'coin'], compute: ['Compute', 'compute'] };
   const kindOf = (k) => KIND[k] || [String(k || 'Project').charAt(0).toUpperCase() + String(k || 'project').slice(1), 'project'];
@@ -5881,12 +6027,16 @@ window.FR_VERSION="0.1.0.0";
     let effect = '';
     if (pv && pv.ok && pv.f && f0) {
       const pr = pv.f.alloc.projects || { need: 0, pf: 0 }, cap = pv.f.capacity;
-      effect = kv('coin', `Burn <b class="num">${smoney(pv.f.burn - f0.burn)}</b> a week. Runway ${runwayText(f0.runway)} → <b class="num">${runwayText(pv.f.runway)}</b>.`)
+      // the project costs its budget once, spread over its weeks: runway after = (cash − cost) over next week's net without it
+      const without = pv.f.net + tryr(() => FR.money.burnParts(pv.state).projects - FR.money.burnParts(s).projects, 0);
+      const after = without >= 0 ? (s.money.cash >= o.cost ? Infinity : 0) : Math.floor(Math.max(0, s.money.cash - o.cost) / -without);
+      effect = kv('coin', `Adds <b class="num">${kmoney(o.cost / Math.max(1, o.turns))}</b> a week to burn for ${wks(o.turns)}, <b class="num">${kmoney(o.cost)}</b> in all. Runway ${runwayText(f0.runway)} → <b class="num">${runwayText(after)}</b>.`)
         + (pr.need > cap + 0.01 ? why(`Projects would need ${n1(pr.need)} PF of ${n1(cap)} PF capacity. Project work slows to ${pct0(cap / pr.need)}.`)
           : o.pfPerTurn > 0 ? kv('compute', `Holds <b class="num">${o.pfPerTurn} PF</b> a week. The sliders share <b class="num">${n1(Math.max(0, cap - pr.need))} PF</b>.`) : '');
     }
     return `<div class="card fp-offer${locked ? ' ghost' : ''}">
-      <div class="card-head"><span class="pl-kind">${esc(k[0])}</span><b class="card-title">${esc(o.name)}</b>${badge('Tier ' + o.tier, locked ? '' : 'info', locked ? 'lock' : '')}</div>
+      <div class="fp-cardk"><span class="pl-kind">${esc(k[0])}</span>${badge('Tier ' + o.tier, locked ? '' : 'info', locked ? 'lock' : '')}</div>
+      <div class="card-head"><b class="card-title">${esc(o.name)}</b></div>
       <p class="card-meta">${skillOf(o) ? esc(skillOf(o)) + ' · ' : ''}${esc(o.blurb || '')}</p>
       <div class="stats fp-st4">${stat('Weeks', o.turns)}${stat('Cost', kmoney(o.cost))}${stat('Compute', o.pfPerTurn + ' PF')}${stat('Risk', risk + '%', '', { tip: tip(TIPS.risk, 'risk') })}</div>
       ${kv('trend', esc(describe(o)))}${effect}
@@ -5966,7 +6116,7 @@ window.FR_VERSION="0.1.0.0";
     const f = fc(s), al = (f && f.alloc) || {}, sv = al.serving || { pf: 0 }, dem = tryr(() => FR.money.demandPF(s), 0), fx = fxOf(s);
     const tm = tryr(() => FR.money.trustMult(s), 1), share = tryr(() => FR.compute.revShare(s), 0), zeta = tryr(() => FR.money.zetaFactor(s), 1);
     const base = tryr(() => FR.money.pricePerPF(avgCap(s)), 0), eff = base * (fx.priceMult || 1) * tm * Math.max(0, 1 - share) * zeta;
-    let out = head('serving', `Floor ${esc(META('serving').n)} · serving <b class="num">${s.sliders.serving}%</b> · revenue <b class="num">${kmoney(s.money.revenue)}</b> a week`);
+    let out = head('serving', `Floor ${esc(META('serving').n)} · serving <b class="num">${s.sliders.serving}%</b> · revenue next week <b class="num">${kmoney(f ? f.revenue : s.money.revenue)}</b>`);
     out += intro('Serving sells access to the model. Revenue is the PF served, up to customer demand, times the price per PF-week.');
     out += sliders('serving', s, f);
     out += sec('coin', 'Revenue');
@@ -6013,7 +6163,7 @@ window.FR_VERSION="0.1.0.0";
   // Safety: pressure, the slider, per-skill cap / safe / gap with the outlook, the incident history
   VIEWS.safety = function (s) {
     const f = fc(s), K = MK(), worst = SK().reduce((b, k) => gapOf(s, k) > gapOf(s, b) ? k : b, SK()[0]);
-    let out = head('safety', `Floor ${esc(META('safety').n)} · safety <b class="num">${s.sliders.safety}%</b> · widest gap <b>${esc(SN(worst))} <span class="num">${gapTxt(gapOf(s, worst))}</span></b>`);
+    let out = head('safety', `Floor ${esc(META('safety').n)} · safety <b class="num">${s.sliders.safety}%</b> · widest gap <b>${esc(SN(worst))}&nbsp;<span class="num">${gapTxt(gapOf(s, worst))}</span></b>`);
     out += intro(`Safety work lands where the gap is widest. Safety can run at most ${K.safeLead} above capability.`);
     out += pressureCard(s);
     out += sliders('safety', s, f);
@@ -6027,7 +6177,7 @@ window.FR_VERSION="0.1.0.0";
       const rec = l.filter(t => t > s.turn - K.incidentWindow).length, last = rec >= K.finalIncidents - 1;
       return row('incident', `${esc(SN(k))} · ${l.length} incident${l.length === 1 ? '' : 's'}`, `${l.map(t => esc(when(t))).join(', ')} · ${rec} in the past ${K.incidentWindow} weeks${last ? '. One more ends the lab' : ''}`, last ? badge('Last warning', 'bad') : '');
     }).join('');
-    out += rows || empty('safety', 'No incidents on record', `Warnings start when a gap stays above ${K.warnGap} for ${K.warnTurns} weeks. Safety share and safety projects keep every gap at ${K.warnGap} or below.`, btn('go', 'research.offers', 'Safety projects on the board', '', false, 'research'));
+    out += rows || empty('safety', 'No incidents on record', `Warnings start when a gap stays above ${K.warnGap} for ${K.warnTurns} weeks. Safety share and safety projects keep every gap at ${K.warnGap} or below; the ${tryr(() => FR.sim.K.winTurns, 52)}-week frontier hold needs every gap at ${tryr(() => FR.sim.K.safeMargin, 5)} or below.`, btn('go', 'research.offers', 'Safety projects on the board', '', false, 'research'));
     const inc = (s.news || []).filter(n => n.kind === 'incident').slice(-5).reverse();
     if (inc.length) out += sec('news', 'On the wire') + `<ul class="fp-news">${inc.map(newsItem).join('')}</ul>`;
     return out;
@@ -6061,7 +6211,8 @@ window.FR_VERSION="0.1.0.0";
       ? confirmBox(true, `Cancel ${esc(p.name)}?`, `<b class="num">${kmoney(spent)}</b> already spent is not refunded. The remaining ${kmoney(Math.max(0, p.cost - spent))} is not spent, and ${p.pfPerTurn} PF a week returns to the sliders.${above > 0 ? ' Projects on the floors above move down one floor.' : ''}`, 'Keep it', 'cancelOk', p.uid, 'Cancel project')
       : `<div class="card-actions">${btn('cancel', p.uid, 'Cancel project', 'quiet pl-danger-q', !live(s), 'trash')}</div>`;
     return `<div class="card fp-proj">
-      <div class="card-head"><span class="pl-kind">${esc(k[0])}</span><b class="card-title">${esc(p.name)}</b>${p.overrun ? badge('Overrun', 'warn', 'alert') : badge('In progress', 'info', 'clock')}</div>
+      <div class="fp-cardk"><span class="pl-kind">${esc(k[0])}</span>${p.overrun ? badge('Overrun', 'warn', 'alert') : badge('In progress', 'info', 'clock')}</div>
+      <div class="card-head"><b class="card-title">${esc(p.name)}</b></div>
       <p class="card-meta">${skillOf(p) ? esc(skillOf(p)) + ' · ' : ''}started ${esc(when(p.started))}</p>
       <div class="pl-mrow-l"><span>Week ${wk} of ${turns}</span><span class="num"><b>${wks(p.turnsLeft)}</b> left</span></div>${meter(done / turns * 100, 'good')}
       <div class="stats">${stat('Spent', kmoney(spent))}${stat('Budget', kmoney(p.cost))}${stat('PF a week', p.pfPerTurn)}</div>
@@ -6114,7 +6265,15 @@ window.FR_VERSION="0.1.0.0";
     return `<div class="card" data-focus="milestone"><div class="card-head">${ico('record')}<b class="card-title">${esc(roundName(ms.round))} milestone</b>${pr.met ? badge('Met', 'good', 'check') : badge(pr.weeksLeft <= 0 ? 'Due now' : wks(pr.weeksLeft) + ' left', pr.weeksLeft <= 4 ? 'warn' : '', 'clock')}</div>
       <p class="card-meta">${esc(ms.text)}</p>
       <div class="pl-mrow-l"><span>${esc(label)}</span><span class="num"><b>${fmt(pr.current)}</b> of ${fmt(pr.value)}</span></div>${meter(pr.value > 0 ? pr.current / pr.value * 100 : 0, pr.met ? 'good' : 'gold')}
-      ${note(pr.met ? 'check' : 'alert', said)}</div>`;
+      ${pr.met ? '' : paceNote(s, ms)}${note(pr.met ? 'check' : 'alert', said)}</div>`;
+  }
+  // FR.money.pace: where today's settings leave a capability milestone by its due week
+  const paceOf = (s, ms) => has('money', 'pace') ? tryr(() => FR.money.pace(s, ms), null) : null;
+  function paceNote(s, ms) {
+    const p = paceOf(s, ms); if (!p) return '';
+    const t = `At this pace: ${p.skill ? esc(SN(p.skill)) + ' ' : 'average '}<b class="num">${n1(p.projected)}</b> by ${esc(when(ms.due))}`;
+    return p.short > 0 ? why(`${t}, short by <span class="num">${n1(p.short)}</span>. Training output grows with compute and staff: rent PF on Serving or the Compute tab, hire on the Team tab.`)
+      : note('trend', t + '.');
   }
   BV.money = function (s, f) {
     const m = s.money, bp = tryr(() => FR.money.burnParts(s), { payroll: 0, ops: 0, compute: 0, projects: 0 }), rw = f ? f.runway : Infinity;
@@ -6153,17 +6312,23 @@ window.FR_VERSION="0.1.0.0";
           : cashRoom <= 0 ? `Recruiting one costs ${kmoney(K.hireFee)}; cash is ${kmoney(s.money.cash)}.` : '';
     const part = !dis && amounts.some(n => n > can) ? (can < room ? (cashRoom < headRoom ? `Cash covers ${can} ${can === 1 ? 'hire' : 'hires'} at ${kmoney(K.hireFee)} each.` : `Headcount is capped at ${K.maxHead}: room for ${can} more.`) : '') : '';
     return `<div class="fp-hire">${amounts.map(n => btn('hire', n, `Hire ${n}`, '', !!dis || n > can)).join('')}</div>`
-      + `<p class="hint">${kmoney(K.hireFee)} recruiting fee a head now. Each costs ${kmoney(K.wage)} a week from ${esc(when(s.turn + K.hireTurns))}, when they join.</p>`
+      + `<p class="hint">${kmoney(K.hireFee)} recruiting fee a head now. Each costs ${kmoney(K.wage + (K.opsPerHead || 0))} a week (pay ${kmoney(K.wage)}, operations ${kmoney(K.opsPerHead || 0)}) from ${esc(when(s.turn + K.hireTurns))}, when they join.</p>`
       + (dis ? why(dis, room <= 0 && live(s) ? 'info' : 'warn') : part ? why(part, 'info') : '');
   }
-  function layoffBlock(s, n) {
-    const K = MoK(), sev = n * K.wage * K.severanceWeeks, room = s.staff.headcount - K.minHead, tr = clamp(n * K.layoffTrustPer, K.layoffTrust[0], K.layoffTrust[1]);
-    if (P.confirm === 'layoff') {
-      const pv = preview({ type: 'layoff', n }, s), f0 = fc(s);
-      return confirmBox(true, `Lay off ${n}?`, `Severance <b class="num">${kmoney(sev)}</b> now. Payroll falls ${kmoney(n * K.wage)} a week to ${kmoney((s.staff.headcount - n) * K.wage)}. Public trust −${n1(tr)}.${pv.ok && pv.f && f0 ? ` Runway ${runwayText(f0.runway)} → ${runwayText(pv.f.runway)}.` : ''}`, 'Keep them', 'layoffOk', n, `Lay off ${n}`);
-    }
-    const dis = !live(s) ? 'The run is over.' : room < n ? `Headcount cannot fall below ${K.minHead}.` : s.money.cash < sev ? `Severance for ${n} is ${kmoney(sev)}; cash is ${kmoney(s.money.cash)}.` : '';
-    return btn2('layoff', n, `Lay off ${n}`, `${kmoney(sev)} severance · −${kmoney(n * K.wage)} a week`, 'danger', !!dis, 'trash') + (dis ? why(dis) : '');
+  function layoffBlock(s) {
+    const K = MoK(), room = s.staff.headcount - K.minHead, cf = /^layoff:(\d+)$/.exec(P.confirm || '');
+    if (cf) return layoffOne(s, +cf[1]);
+    const dis = !live(s) ? 'The run is over.' : room < 1 ? `Headcount cannot fall below ${K.minHead}.` : '';
+    const amounts = [1, 5, 20].map(n => Math.min(n, Math.max(1, room))).filter((n, i, a) => a.indexOf(n) === i);
+    const sevOf = (n) => n * K.wage * K.severanceWeeks;
+    return `<div class="fp-hire">${amounts.map(n => btn('layoff', n, `Lay off ${n}`, 'danger', !!dis || n > room || s.money.cash < sevOf(n))).join('')}</div>`
+      + `<p class="hint">Severance is ${wks(K.severanceWeeks)} of pay: ${kmoney(sevOf(1))} a head. Each head laid off saves ${kmoney(K.wage + (K.opsPerHead || 0))} a week and costs public trust.</p>`
+      + (dis ? why(dis) : '');
+  }
+  function layoffOne(s, n) {
+    const K = MoK(), sev = n * K.wage * K.severanceWeeks, tr = clamp(n * K.layoffTrustPer, K.layoffTrust[0], K.layoffTrust[1]);
+    const pv = preview({ type: 'layoff', n }, s), f0 = fc(s);
+    return confirmBox(true, `Lay off ${n}?`, `Severance <b class="num">${kmoney(sev)}</b> now. Payroll falls ${kmoney(n * K.wage)} a week to ${kmoney((s.staff.headcount - n) * K.wage)}. Public trust −${n1(tr)}.${pv.ok && pv.f && f0 ? ` Runway ${runwayText(f0.runway)} → ${runwayText(pv.f.runway)}.` : ''}`, 'Keep them', 'layoffOk', n, `Lay off ${n}`);
   }
   BV.team = function (s) {
     const K = MoK(), st = s.staff, pend = st.hiring.reduce((t, x) => t + x.n, 0), pay = tryr(() => FR.money.payroll(s), st.headcount * K.wage);
@@ -6178,7 +6343,7 @@ window.FR_VERSION="0.1.0.0";
     out += sec('hire', 'Hire', `${room} of ${K.maxHire} left this week`, 'hire');
     out += hireBlock(s);
     out += sec('trash', 'Lay off');
-    return out + layoffBlock(s, 5);
+    return out + layoffBlock(s);
   };
   function dealCard(s) {
     const o = s.market.dealOffer, r = rival(s, o.rivalId), cut = (s.money.revenue || 0) * o.revShare, rentEq = o.pf * s.compute.rentPrice, open = o.kind === 'compute';
@@ -6213,7 +6378,7 @@ window.FR_VERSION="0.1.0.0";
   BV.compute = function (s, f) {
     const c = s.compute, K = CK(), cap = tryr(() => FR.compute.capacity(s), { total: 0, owned: 0, rented: c.rentPF, deals: 0 }), pr = (f && f.alloc && f.alloc.projects) || { pf: 0, need: 0 };
     const t = Math.max(0.001, cap.total), nq = Math.ceil(s.turn / K.quarter) * K.quarter + 1;
-    let out = `<div class="stats">${stat('Owned', n1(cap.owned), 'PF', { key: 'o' })}${stat('Rented', n1(cap.rented), 'PF', { key: 'r' })}${stat('Deals', n1(cap.deals), 'PF', { key: 'd' })}</div>`;
+    let out = `<div class="stats">${stat('Owned', n1(cap.owned) + ' PF', '', { key: 'o' })}${stat('Rented', n1(cap.rented) + ' PF', '', { key: 'r' })}${stat('Deals', n1(cap.deals) + ' PF', '', { key: 'd' })}</div>`;
     out += `<div class="fp-stack" role="img" aria-label="Capacity ${n1(cap.total)} PF: owned ${n1(cap.owned)}, rented ${n1(cap.rented)}, deals ${n1(cap.deals)}"><i class="o" style="width:${cap.owned / t * 100}%"></i><i class="r" style="width:${cap.rented / t * 100}%"></i><i class="d" style="width:${cap.deals / t * 100}%"></i></div>`;
     out += note('compute', `Total <b class="num">${n1(cap.total)} PF</b>${pr.need > 0 ? `; projects hold <b class="num">${n1(pr.pf)}</b>, the sliders share <b class="num">${n1(Math.max(0, cap.total - pr.pf))}</b>` : ', all of it shared by the sliders'}. Compute bill <b class="num">${kmoney(tryr(() => FR.compute.cost(s), 0))}</b> a week.`);
     if (pr.need > cap.total + 0.01) out += why(`Projects need ${n1(pr.need)} PF of ${n1(cap.total)} PF. Project work slows and the sliders get nothing until capacity grows.`, 'bad');
@@ -6331,14 +6496,19 @@ window.FR_VERSION="0.1.0.0";
     if (m.offer) out.push({ w: m.offer.expires - T + 1, icon: 'coin', re: /offer \(|lapses/i, text: `${esc(roundName(m.offer.round))} offer: ${kmoney(m.offer.amount)} for ${pct(m.offer.pct)}. Open until ${esc(when(m.offer.expires))}.` });
     if (m.milestone && !(m.offer && m.offer.round === m.milestone.round)) {
       const pr = tryr(() => FR.money.progress(s), null), cur = pr ? (m.milestone.kind === 'revenue' ? kmoney(pr.current) : n1(pr.current)) : '';
-      out.push({ w: m.milestone.due - T, icon: 'record', re: /milestone due/i, text: `${esc(m.milestone.text)}${pr ? ` Now ${cur}${pr.met ? ', met' : ''}.` : ''}` });
+      const pc = pr && !pr.met ? paceOf(s, m.milestone) : null;
+      out.push({ w: m.milestone.due - T, icon: 'record', re: /milestone due/i, text: `${esc(m.milestone.text)}${pr ? ` Now ${cur}${pr.met ? ', met' : ''}.` : ''}`
+        + (pc ? ` At this pace ${n1(pc.projected)}${pc.short > 0 ? `, short by ${n1(pc.short)}` : ''}.` : '') });
     }
     (s.projects.active || []).forEach((p, i) => out.push({ w: p.turnsLeft, icon: 'project', text: `${esc(p.name)} finishes in ${wks(p.turnsLeft)} (${esc(META('proj' + (i + 1)).name)}).` }));
     (s.compute.deals || []).forEach(d => out.push({ w: d.ends - T, icon: 'rival', re: /compute share ends/i, text: `${esc(rival(s, d.rivalId).name)} compute share ends ${esc(when(d.ends))}: ${d.pf} PF withdrawn.` }));
     const o = s.market.dealOffer;
     if (o) out.push({ w: o.expires - T + 1, icon: 'rival', re: /offers \d+ PF/i, text: `${esc(rival(s, o.rivalId).name)} offers ${o.pf} PF for ${o.turns} weeks at ${pct(o.revShare)} of revenue. Open until ${esc(when(o.expires))}.` });
     (s.compute.installing || []).forEach(x => out.push({ w: x.ready - T, icon: 'compute', text: `${esc(x.name)} cluster online ${esc(when(x.ready))}: ${x.pf} PF.` }));
-    (s.staff.hiring || []).forEach(x => out.push({ w: x.arrives - T, icon: 'hire', text: `${x.n} ${x.n === 1 ? 'hire joins' : 'hires join'} ${esc(when(x.arrives))}.` }));
+    // hires: one row for the whole pipeline
+    const hs = (s.staff.hiring || []).slice().sort((a, b) => a.arrives - b.arrives), hn = hs.reduce((t, x) => t + x.n, 0);
+    if (hs.length === 1) out.push({ w: hs[0].arrives - T, icon: 'hire', text: `${hn} ${hn === 1 ? 'hire joins' : 'hires join'} ${esc(when(hs[0].arrives))}.` });
+    else if (hs.length > 1) out.push({ w: hs[0].arrives - T, icon: 'hire', text: `${hn} hires join: ${hs.map(x => `${x.n} ${esc(when(x.arrives))}`).join(', ')}.` });
     return out.sort((a, b) => a.w - b.w);
   }
   // the one thing the memo points at next (a button that rides there), or null
@@ -6353,7 +6523,11 @@ window.FR_VERSION="0.1.0.0";
     return null;
   }
   function memoHtml(s) {
-    const m = s.memo || { turn: 0, lines: [] }, T = m.turn || 0, rep = s.lastReport && s.lastReport.turn === T ? s.lastReport : null, d = rep && rep.deltas;
+    const m = s.memo || { turn: 0, lines: [] }; refTurn = m.turn || null;
+    try { return memoBody(s, m); } finally { refTurn = null; }
+  }
+  function memoBody(s, m) {
+    const T = m.turn || 0, rep = s.lastReport && s.lastReport.turn === T ? s.lastReport : null, d = rep && rep.deltas;
     const hist = s.history || [], cur = hist.length && hist[hist.length - 1].turn === T ? hist[hist.length - 1] : null;
     const prev = cur && hist.length > 1 && hist[hist.length - 2].turn === T - 1 ? hist[hist.length - 2] : null;
     const title = T > 0 ? `Year ${FR.year(T)} · Week ${FR.weekOfYear(T)} memo` : 'Year 1 · Founding memo';
@@ -6368,9 +6542,11 @@ window.FR_VERSION="0.1.0.0";
     const cash = cur ? cur.cash : s.money.cash, rev = cur ? cur.revenue : s.money.revenue, trust = cur ? cur.trust : s.market.trust;
     const burn = T > 0 ? (cur ? cur.burn : s.money.burn) : tryr(() => FR.money.burnEstimate(s), 0);
     const kf = (v) => kmoney(v), pf = (v) => n1(v);
+    // cash against last week's close (or the founding cash), so rounds, clusters, fees and severance decided mid-week count
+    const prevCash = prev ? prev.cash : T === 1 ? tryr(() => FR.money.K.startCash, null) : null;
     out += sec('trend', 'What changed', T > 0 ? 'since last week' : 'at founding');
     out += `<div class="fp-box"><table class="fp-dt"><tbody>
-      <tr><td>Cash</td><td><b>${kmoney(cash)}</b></td><td>${dv(d ? d.cash : prev ? cash - prev.cash : null, kf, true, 1)}</td></tr>
+      <tr><td>Cash</td><td><b>${kmoney(cash)}</b></td><td>${dv(prevCash != null ? cash - prevCash : d ? d.cash : null, kf, true, 1)}</td></tr>
       <tr><td>Revenue a week</td><td><b>${kmoney(rev)}</b></td><td>${dv(prev ? rev - prev.revenue : null, kf, true, 1)}</td></tr>
       <tr><td>Burn a week${T > 0 ? '' : ' (forecast)'}</td><td><b>${kmoney(burn)}</b></td><td>${dv(prev ? burn - prev.burn : null, kf, false, 1)}</td></tr>
       <tr><td>Public trust</td><td><b>${n1(trust)}</b></td><td>${dv(d ? d.trust : prev ? trust - prev.trust : null, pf, true)}</td></tr>
@@ -6424,7 +6600,7 @@ window.FR_VERSION="0.1.0.0";
       case 'target': if (s.target !== v) run({ type: 'target', skill: v }); return;
       case 'rent': run({ type: 'rent', pf: Math.round(+v) }); return;
       case 'hire': said(run({ type: 'hire', n: Math.max(1, Math.min(Math.round(+v) || 1, hireRoom(s))) })); return;
-      case 'layoff': sfx('tap'); P.confirm = 'layoff'; render(true); return;
+      case 'layoff': sfx('tap'); P.confirm = 'layoff:' + Math.max(1, Math.round(+v) || 1); render(true); return;
       case 'layoffOk': said(run({ type: 'layoff', n: Math.round(+v) })); return;
       case 'accept': { const r = run({ type: 'acceptRound' }, true); if (r.ok) sfx('good'); said(r); return; }
       case 'decline': sfx('tap'); P.confirm = 'decline'; render(true); return;
@@ -6484,6 +6660,11 @@ window.FR_VERSION="0.1.0.0";
       '.fp .fp-big{font-size:var(--text-xl)}',
       '.fp .num,.fp-memo .num{white-space:nowrap}',
       '.fp .stat b.tone-warn{color:var(--warn)}',
+      /* card kind and tier/status on a line above the title, so the title gets the full card width */
+      '.fp .fp-cardk{display:flex;align-items:center;gap:8px;margin:0 0 4px}.fp .fp-cardk .badge{flex:none}',
+      '.fp .fp-cardk+.card-head .card-title{overflow-wrap:break-word;hyphens:auto}',
+      '.fp-jump{margin-top:0}.fp-jump .btn{font-family:var(--font-num)}',
+      '.fp-rent .pl-step>span small{white-space:normal}',
       /* hire amounts in one row */
       '.fp-hire{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin:var(--sp-2) 0}',
       '.fp-hire .btn{margin:0;min-height:48px;padding:8px 6px;white-space:nowrap}',
@@ -6501,10 +6682,11 @@ window.FR_VERSION="0.1.0.0";
       '.fp-sl{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}',
       '.fp-cardh+.fp-sl{margin-top:2px;border-top:0}',
       '.fp-sl-h{display:flex;align-items:center;gap:8px;min-width:0}',
-      '.fp-sl-n{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font-size:var(--text-md);color:var(--ink-2)}',
+      '.fp-sl-n{display:flex;align-items:center;gap:6px;flex:none;font-size:var(--text-md);color:var(--ink-2)}',
       '.fp-sl-n .ico{width:18px;height:18px;color:var(--ink-3)}',
       '.fp-sl.own .fp-sl-n{color:var(--ink)}.fp-sl.own .fp-sl-n .ico{color:var(--brand-text)}',
-      '.fp-sl-u{flex:none;font-size:var(--text-xs);color:var(--ink-3)}',
+      /* the PF · staff figures give way (ellipsis) before they ever run under the skill name */
+      '.fp-sl-u{flex:0 1 auto;min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;font-size:var(--text-xs);color:var(--ink-3);text-align:right}',
       '.fp-sl-v{flex:none;min-width:46px;font-size:var(--text-lg);text-align:right}',
       '.fp-sl .pl-range{margin:0}',
       /* four sliders fill half the sheet: only the thumb takes a touch (a 44px disc around the 28px dot), so a vertical swipe
@@ -6847,6 +7029,7 @@ window.FR_VERSION="0.1.0.0";
       for (let k = 0; k < 2; k++) pick.forEach(h => { const i = document.createElement('span'); i.className = 'tk-item'; i.textContent = h; el.appendChild(i); });
     },
     open() {
+      if (FR.elevator && FR.elevator.cancel) FR.elevator.cancel();   // a ride under way never lands behind the menu
       if (U.sheetId) U.sheet(null); U.hud(false); U.hideHint(); if (FR.r) FR.r.paused = true;
       if (FR.title) { if (FR.title.active && titleStale && FR.title.restart) FR.title.restart(); else ensureTitle(); } titleStale = false;
       // back at the menu the floor bed ends and the menu theme returns (both only when sound is on)
@@ -6864,7 +7047,9 @@ window.FR_VERSION="0.1.0.0";
     // the end-of-run screen for FR.state (won, dead or exited): outcome, cause, score parts, the frontier record
     end() {
       const s = FR.state; if (!s || s.status === 'playing') { FR.menu.open(); return; }
+      if (FR.elevator && FR.elevator.cancel) FR.elevator.cancel();
       if (U.sheetId) U.sheet(null); U.hud(false); U.hideHint(); if (FR.r) FR.r.paused = true;
+      { const t = $('toast'); if (t) { clearTimeout(U._tt); t.classList.remove('on'); } }   // e.g. the founding "Welcome" toast
       if (FR.audio && FR.audio.bedStop) FR.audio.bedStop();
       try { renderEnd(s); } catch (e) { console.error('end screen failed', e); $('endKicker').textContent = 'Run over'; $('endTitle').textContent = (s.lab && s.lab.name) || 'Lab'; }
       titleStale = true; U.show('end'); $('end').scrollTop = 0;
@@ -7283,10 +7468,12 @@ window.FR_VERSION="0.1.0.0";
   };
 
   FR.enterWorld = function (floor) {
+    if (FR.elevator && FR.elevator.cancel) FR.elevator.cancel();   // a ride from the last lab never lands in this one
+    if (U.sheetId) U.sheet(null);                                   // nor does a sheet it left open
     if (FR.title) FR.title.stop(); // frees the title scene before the floor builds
     U.show(null); U.hud(true); U.refresh(); if (U.updateEnd) U.updateEnd();
     try { FR.r.loadFloor(floor || 'lobby'); } catch (e) { console.error('floor load failed', floor, e); }
-    FR.r.paused = false;
+    FR.r.paused = !!U.sheetId;
     if (FR.audio) { if (FR.audio.bedStart) FR.audio.bedStart(); if (FR.audio.bedTint) FR.audio.bedTint(floor || 'lobby'); }
   };
   // autosave only while playing: after Save and quit the menu may import into or delete the slot FR.state came from
@@ -7313,7 +7500,12 @@ window.FR_VERSION="0.1.0.0";
 
   function boot() {
     document.querySelectorAll('.ver').forEach(v => { v.textContent = 'V' + FR.VERSION; });
-    try { FR.r.init(document.getElementById('game')); } catch (e) { console.error('HQ view failed to start (WebGL?)', e); }
+    try { FR.r.init(document.getElementById('game')); } catch (e) {
+      // no WebGL: the same stub as a build without three.js (the elevator arrives at once and opens the floor's panel)
+      console.error('HQ view failed to start (WebGL?)', e);
+      if (FR.rStub) FR.rStub(FR.r);
+      if (FR.title) FR.title.start = FR.title.stop = FR.title.restart = function () {};
+    }
     U.bind(); FR.menu.bind();
     // the title tower plays behind the boot and menu screens (FR.menu.open restarts it after Save and quit)
     FR.r.paused = true; if (FR.title) FR.title.start();

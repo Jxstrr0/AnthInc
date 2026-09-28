@@ -30,7 +30,7 @@
   FR.clone = (o) => JSON.parse(JSON.stringify(o));
   // $1,234 / $12.3k / $4.5M / $1.20B. Board-memo money: never more than 3 significant figures past the unit.
   FR.fmtMoney = function (n) {
-    const s = n < 0 ? '-$' : '$', a = Math.abs(n);
+    const s = n < 0 ? '\u2212$' : '$', a = Math.abs(n);   // a true minus sign, as the UI writes it
     if (a >= 1e9) return s + (a / 1e9).toFixed(2) + 'B';
     if (a >= 1e6) return s + (a / 1e6).toFixed(a >= 1e8 ? 0 : 1) + 'M';
     if (a >= 1e4) return s + (a / 1e3).toFixed(0) + 'k';

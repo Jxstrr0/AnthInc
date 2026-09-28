@@ -6,8 +6,9 @@
     trustStart: 50, trustMid: 50, trustRevert: 0.05,   // trust closes 5% of its distance to trustMid each week
     trustMultBase: 0.5, trustMultPer: 0.01,             // trustMult = 0.5 + trust / 100  (0.5 .. 1.5)
     // rival weekly gain per skill = gainBase × speed × (1 + ramp × years) × weight × (1 − cap/100)^dimExp;
+    // 0.44 since 2026-09-28: the balance bots accept the DeepField share when it is cheap, as a reading player does
     // a `steady` share arrives every week, the rest in releases (chance `ship` a week) so the expected pace is the same
-    gainBase: 0.43, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
+    gainBase: 0.44, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
     startJitter: 1.5, safeJitter: 2, speedJitter: 0.12,  // start cap ± points, start safe ± points, base speed ± fraction
     speedMin: 0.85, speedMax: 1.15,                     // speed bounds, multiples of the rival's base speed
     fundLift: 0.02, incSlow: 0.015,                     // a funding line speeds a rival up 2%; its own incident slows it 1.5%
@@ -74,7 +75,7 @@
     'm|High-bandwidth memory prices rise {P}% on data-center demand.',
     'm|A new foundry line for AI accelerators slips to next year.',
     'm|Chipmaker raises full-year data-center guidance by {P}%.',
-    'm|Spot GPU rental rates steady this week, brokers report.',
+    'm|Spot GPU rental rates steady this week, brokers report.|calm',   // calm: never during a chip shortage
     'm|State utility board in {ST} approves a {G}-gigawatt line for data-center load.',
     'm|Enterprise AI spending up {P}% year on year, analyst survey finds.',
     'm|Venture funding for AI labs reaches {B} this quarter.',
@@ -273,7 +274,7 @@
     s.news.slice(-K.newsRecent).concat(report.news).forEach(x => seen.add(sig(s, x.text)));
     for (let tries = 0; report.news.length < n && tries < 8; tries++) {
       const line = fill(s, rng.pick(M.NEWS), rng), g = sig(s, line.text);
-      if (seen.has(g)) continue;
+      if (seen.has(g) || (line.fx === 'calm' && s.compute && s.compute.scarcity > 0)) continue;
       seen.add(g);
       report.news.push({ kind: line.kind, text: line.text });
       if (line.fx === 'fund' && line.rival) bump(line.rival, K.fundLift);

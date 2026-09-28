@@ -3,7 +3,7 @@
 // open → camera pulls back to the room view). Reader: reads FR.state only. Emits 'elevator:ride' {from, to} and
 // 'elevator:arrived' {floorId}; FR.cmd.goFloor(id) calls FR.elevator.ride(id).
 (function (FR) {
-  const R = FR.r; const E = FR.elevator = { riding: false, rides: 0, floor: null };
+  const R = FR.r; const E = FR.elevator = { riding: false, rides: 0, floor: null, gen: 0 };   // gen: bumped by cancel()
   const order = FR.HQ_FLOORS, META = FR.HQ_FLOOR_META;
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const sfx = (n) => { try { if (FR.audio && FR.audio.play) FR.audio.play(n); } catch (e) { /* never blocks a ride */ } };
@@ -86,8 +86,9 @@
       '.floors .floor.idle{background:transparent;border-style:dashed;box-shadow:none}.floors .floor.idle .n{background:transparent;color:var(--ink-3,#97a5b4)}';
     document.head.appendChild(st);
   }
+  const noView = () => R.stub || !R.renderer;   // no 3D view: a tap on a row opens that floor's panel at once
   function rowsHtml() {
-    const here = R.current && R.current.id;
+    const here = (R.current && R.current.id) || E.floor;
     return order.slice().reverse().map(id => {
       const m = META[id], l = E.line(id), cls = 'floor' + (id === here ? ' here' : '') + (l.idle ? ' idle' : '') + (l.tone ? ' tone-' + l.tone : '');
       const sub = (id === here ? 'You are here · ' : '') + (l.tone ? `<span class="tn-${l.tone}">${esc(l.text)}</span>` : esc(l.text));
@@ -95,9 +96,9 @@
     }).join('');
   }
   function bindRows(root) {
-    const here = R.current && R.current.id;
+    const here = (R.current && R.current.id) || E.floor;
     root.querySelectorAll('[data-f]').forEach(el => {
-      const go = () => { const f = el.dataset.f; if (f !== here) E.ride(f); else FR.ui.sheet(null); };
+      const go = () => { const f = el.dataset.f; if (f !== here || noView()) E.ride(f); else FR.ui.sheet(null); };
       el.addEventListener('click', go);
       el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     });
@@ -123,11 +124,24 @@
   function fadeEl() { return document.getElementById('fade'); }
   function setDoors(ev, open) { if (!ev || !ev.doors) return; ev.doors[0].position.x = ev.x - 0.5 - open * 0.9; ev.doors[1].position.x = ev.x + 0.5 + open * 0.9; }
 
+  // stop a ride under way (quit to the menu, the end screen, a new lab): it never loads, unpauses or emits
+  E.cancel = function () {
+    E.gen++; if (!E.riding) return;
+    E.riding = false; const f = fadeEl(); if (f) f.style.opacity = '0';
+    const l = document.getElementById('ledOverlay'); if (l) l.style.display = 'none';
+    if (FR.ui && FR.ui.updateEnd) FR.ui.updateEnd();
+  };
   E.ride = function (to) {
-    if (E.riding || !META[to] || !R.renderer) return false;
+    if (E.riding || !META[to]) return false;
+    if (noView()) {   // no renderer: arrive at once and open the floor's panel (the elevator sheet becomes the floor menu)
+      const from = E.floor; try { R.loadFloor(to); } catch (e) { /* stub */ } E.floor = to;
+      FR.emit('elevator:ride', { from, to }); FR.emit('elevator:arrived', { floorId: to });
+      if (FR.ui && FR.ui.panel) FR.ui.panel(to);
+      return true;
+    }
     if (!R.current) { R.loadFloor(to); E.floor = to; R.paused = false; FR.emit('elevator:arrived', { floorId: to }); return true; }
     const from = R.current.id; if (from === to) { if (FR.ui && FR.ui.sheetId) FR.ui.sheet(null); return false; }
-    E.riding = true; E.rides++;
+    E.riding = true; E.rides++; const gen = ++E.gen, gone = () => gen !== E.gen;
     if (FR.ui && FR.ui.sheet) FR.ui.sheet(null);
     R.paused = true; FR.emit('elevator:ride', { from, to });
     const ev = R.current.elevator, fade = fadeEl();
@@ -137,6 +151,7 @@
     const fi = order.indexOf(from), ti = order.indexOf(to); const steps = Math.abs(ti - fi); const dir = ti > fi ? 1 : -1;
     let stepI = 0, lit = false; const rideMs = Math.max(700, Math.min(1600, 300 + steps * 250));
     function anim() {
+      if (gone()) return;
       const t = performance.now() - t0;
       if (t < 500) { requestAnimationFrame(anim); return; }
       if (t < 600) { if (fade) fade.style.opacity = '1'; if (!lit) { lit = true; led(META[from].n); } requestAnimationFrame(anim); return; }
@@ -151,9 +166,10 @@
       R.snap(R.poseOf('elevator') || R.view); setDoors(ev2, 0);
       led(META[to].n, true); sfx('chime'); if (fade) fade.style.opacity = '0';
       const t1 = performance.now();
-      (function open() { const k = Math.min(1, (performance.now() - t1) / 500); setDoors(ev2, k);
-        // doors open: pull back from the doors to the floor's room view, then hand control back
-        if (k < 1) requestAnimationFrame(open); else { R.home(700); E.riding = false; R.paused = false; E.floor = to; FR.emit('elevator:arrived', { floorId: to }); } })();
+      (function open() { if (gone()) return; const k = Math.min(1, (performance.now() - t1) / 500); setDoors(ev2, k);
+        // doors open: pull back from the doors to the floor's room view, then hand control back (paused while a sheet is up
+        // or the world is not on screen)
+        if (k < 1) requestAnimationFrame(open); else { R.home(700); E.riding = false; R.paused = !!(FR.ui && FR.ui.sheetId) || !(FR.inWorld ? FR.inWorld() : true); E.floor = to; FR.emit('elevator:arrived', { floorId: to }); } })();
     }
     // the from-floor doors were open; animate them closing to the centre
     (function close() { const k = Math.min(1, (performance.now() - t0) / 450); setDoors(ev, 1 - k); if (k < 1) requestAnimationFrame(close); })();

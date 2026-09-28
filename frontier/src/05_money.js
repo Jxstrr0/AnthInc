@@ -28,9 +28,11 @@
     reofferTurns: 13,                        // a lapsed or declined offer returns 13 turns later on the same milestone
     lockTurns: 52,                           // a missed milestone closes rounds for 52 turns, then a fresh milestone
     msTurns: 36, msWarn: [8, 4, 1],          // milestone window; memo when 8, 4 and 1 weeks remain
+    msPaceAt: [30, 24, 18, 12],              // weeks left at which the memo flags a capability milestone the current pace misses
     ms: { capFrac: 0.12, avgFrac: 0.18, revMin: 50000, revMult: 2.5, trustAdd: 10, trustMax: 80 },
     msKinds: [['cap', 4], ['avgCap', 3], ['revenue', 2], ['trust', 1]],   // weights for a fresh milestone after a miss
-    runwayWarn: [26, 13, 6]                  // memo flag on crossing each; every week below the last
+    runwayWarn: [26, 13, 6],                 // memo flag on crossing each; every week below the last
+    unservedFlag: 0.1                        // memo flag when revenue falls and serving leaves more than this share of demand
   };
 
   const money = FR.fmtMoney, no = (why) => ({ ok: false, why });
@@ -111,6 +113,18 @@
     const cur = m.kind === 'cap' ? s.model.skills[m.skill || best(s)].cap : m.kind === 'avgCap' ? avg(s) : m.kind === 'revenue' ? s.money.revenue : trust(s);
     return { current: cur, value: m.value, met: cur >= m.value, weeksLeft: m.due - s.turn };
   };
+  // capability milestones: where today's settings leave the measure by the due week (FR.sim.forecast gains held flat, so
+  // slightly generous as gains shrink with capability). null for revenue and trust milestones, or without the full sim.
+  M.pace = function (s, m) {
+    m = m || s.money.milestone;
+    if (!m || (m.kind !== 'cap' && m.kind !== 'avgCap') || !(FR.sim && FR.sim.forecast && s.compute && s.projects)) return null;
+    const g = FR.sim.forecast(s).capGain, left = Math.max(0, m.due - s.turn), at = (k) => Math.min(100, s.model.skills[k].cap + (g[k] || 0) * left);
+    const ks = m.skill ? [m.skill] : FR.SKILLS, k = ks.reduce((b, x) => at(x) > at(b) ? x : b, ks[0]);
+    const projected = m.kind === 'cap' ? at(k) : FR.SKILLS.reduce((t, x) => t + at(x), 0) / FR.SKILLS.length;
+    return { projected: FR.round(projected, 1), short: FR.round(Math.max(0, m.value - projected), 1), skill: m.kind === 'cap' ? k : null, weeksLeft: left };
+  };
+  const paceText = (s, m, p, advise) => 'At this pace: ' + (p.skill ? FR.SKILL_NAME[p.skill] + ' ' : 'average ') + p.projected + ' by ' + FR.dateLabel(m.due) +
+    (p.short > 0 ? ', short by ' + p.short + '.' + (advise ? ' Training output grows with compute and staff: rent PF on Serving or in the Boardroom, hire in Boardroom > Team.' : '') : '.');
   function nowText(s, m) {
     if (m.kind === 'cap') { const k = m.skill || best(s); return FR.SKILL_NAME[k] + ' capability ' + Math.floor(s.model.skills[k].cap); }
     if (m.kind === 'avgCap') return 'average capability ' + Math.floor(avg(s) * 10) / 10;
@@ -146,9 +160,11 @@
         cap1(nowText(s, ms)) + '. No round can be raised until ' + FR.dateLabel(m.lockedUntil) + '.' });
       return;
     }
-    const left = ms.due - T;
+    const left = ms.due - T, p = M.pace(s, ms);
     if (K.msWarn.indexOf(left) >= 0) report.memo.push({ kind: 'due', text: RN(ms.round) + ' milestone due ' + (left === 1 ? 'next week' : 'in ' + left + ' weeks') +
-      ': ' + REACH[ms.kind](ms) + '. Now ' + nowText(s, ms) + '.' });
+      ': ' + REACH[ms.kind](ms) + '. Now ' + nowText(s, ms) + '.' + (p ? ' ' + paceText(s, ms, p) : '') });
+    else if (K.msPaceAt.indexOf(left) >= 0 && p && p.short > 0) report.memo.push({ kind: 'flag', text: RN(ms.round) + ' milestone off pace: ' +
+      REACH[ms.kind](ms) + ' by ' + FR.dateLabel(ms.due) + '. Now ' + nowText(s, ms) + '. ' + paceText(s, ms, p, true) });
   }
 
   function rounds(s, rng, report) {
@@ -206,7 +222,9 @@
     s.money.cash -= fee;
     const at = s.turn + K.hireTurns, h = s.staff.hiring.find(x => x.arrives === at);
     if (h) h.n += n; else s.staff.hiring.push({ n, arrives: at });
-    return done(null, 'Hiring ' + n + ': recruiting fees ' + money(fee) + ', joining ' + FR.dateLabel(at) + '.');
+    // one memo line per week's hires: `key` lets 02_sim replace the earlier line with the week's running total
+    const all = M.hiredThisWeek(s), r = done(null, 'Hiring ' + all + ': recruiting fees ' + money(all * K.hireFee) + ', joining ' + FR.dateLabel(at) + '.');
+    r.memo.key = 'hire:' + at; return r;
   };
   M.layoff = function (s, n) {
     n = int(n); const room = Math.max(0, s.staff.headcount - K.minHead);
@@ -267,13 +285,18 @@
   M.bankrupt = function (s, report) { if (s.status === 'playing' && s.money.cash <= 0) bankrupt(s, report); return s.status === 'dead'; };
 
   M.step = function (s, alloc, rng, report) {
-    const m = s.money, next = s.turn + 1, cash0 = m.cash;
+    const m = s.money, next = s.turn + 1, cash0 = m.cash, rev0 = m.revenue;
     const served = alloc && alloc.serving ? Math.max(0, alloc.serving.pf) : 0, demand = M.demandPF(s);
     const p = M.burnParts(s), burn = Math.round(p.payroll + p.ops + p.compute + p.projects), revenue = Math.round(M.revenue(s, served));
     m.revenue = revenue; m.burn = burn; m.net = revenue - burn; m.cash += m.net;
     const was = weeksOf(cash0, m.net);                  // runway coming into the week, on the week's own bills
     report.flows.money = { revenue, burn, net: m.net, payroll: p.payroll, ops: p.ops, compute: Math.round(p.compute), projects: Math.round(p.projects),
       servedPF: FR.round(Math.min(served, demand), 1), demandPF: FR.round(demand, 1), price: Math.round(M.pricePerPF(avg(s))), cash: m.cash };
+    // revenue fell with demand left unserved: name the cause (the Serving share), not just the drop
+    if (revenue < rev0 && served < demand * (1 - K.unservedFlag)) {
+      report.memo.push({ kind: 'flag', text: 'Serving covers ' + FR.round(served, 1) + ' of ' + FR.round(demand, 1) + ' PF of demand: about ' +
+        money(M.revenue(s, demand) - revenue) + ' a week unserved. Revenue ' + money(revenue) + ', down from ' + money(rev0) + '.' });
+    }
     arrivals(s, next, report);
     m.valuation = M.valuation(s);
     if (m.cash <= 0) { if (s.status === 'playing') bankrupt(s, report); return; }

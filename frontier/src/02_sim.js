@@ -35,7 +35,8 @@
     const rng = FR.rng(s.rngState);
     mods().forEach(m => m && m.init && m.init(s, rng));
     s.rngState = rng.state();
-    s.memo = { turn: 0, lines: [{ kind: 'change', text: s.lab.name + ' is incorporated. Seed funding is on the table in the boardroom.' }] };
+    s.memo = { turn: 0, lines: [{ kind: 'change', text: s.lab.name + ' is incorporated. Seed funding is on the table in the boardroom.' },
+      { kind: 'change', text: 'Training output grows with compute and staff. Rent PF on Serving or in the Boardroom; hire in Boardroom > Team.' }] };
     return s;
   };
 
@@ -64,7 +65,10 @@
   // from a command applied at once (FR.cmd.do) still reaches the bus with End Turn.
   function apply1(s, c) {
     const r = run1(s, c);
-    if (r && r.ok && r.memo) (s.pendingMemo || (s.pendingMemo = [])).push(r.memo);
+    if (r && r.ok && r.memo) {
+      const pm = s.pendingMemo || (s.pendingMemo = []), i = r.memo.key ? pm.findIndex(l => l.key === r.memo.key) : -1;
+      if (i >= 0) pm[i] = r.memo; else pm.push(r.memo);   // a keyed line (the week's hires) replaces its earlier version
+    }
     if (r && r.ok && r.event && r.event.type) (s.pendingEvents || (s.pendingEvents = [])).push(r.event);
     return r;
   }
@@ -138,7 +142,11 @@
     // win check
     if (s.status === 'playing') {
       if (S.safelyAtFrontier(s)) { s.win.streak++; if (s.win.streak === 1) report.memo.push({ kind: 'good', text: 'The lab is at the frontier with safety in step. Hold it for ' + S.K.winTurns + ' weeks.' }); }
-      else { if (s.win.streak >= 1) report.memo.push({ kind: 'flag', text: holdLost(s) }); s.win.streak = 0; }
+      else {
+        if (s.win.streak >= 1) report.memo.push({ kind: 'flag', text: holdLost(s) });
+        else if (S.atFrontier(s)) report.memo.push({ kind: 'flag', text: S.holdBlocked(s) });   // ahead, but safety out of step
+        s.win.streak = 0;
+      }
       s.win.best = Math.max(s.win.best, s.win.streak);
       if (s.win.streak >= S.K.winTurns) {
         s.status = 'won'; s.end = { turn: s.turn, cause: 'win', text: s.lab.name + ' held the frontier safely for a full year.' };
@@ -177,6 +185,14 @@
     return out.join('; ') + '. Safety more than ' + S.K.safeMargin + ' below capability.' + tail;
   }
 
+  // at the frontier with a skill out of step: what keeps the hold from starting (memo, HUD). null when nothing blocks it.
+  S.holdBlocked = function (s) {
+    const out = FR.SKILLS.filter(k => s.model.skills[k].safe < s.model.skills[k].cap - S.K.safeMargin);
+    if (!out.length) return null;
+    const bits = out.map(k => FR.SKILL_NAME[k] + ' safety is ' + FR.round(s.model.skills[k].cap - s.model.skills[k].safe, 1) + ' below capability');
+    return 'At the frontier, but ' + bits.join('; ') + '. The ' + S.K.winTurns + '-week hold starts when every gap is ' + S.K.safeMargin + ' or less.';
+  };
+
   // next-turn projection with no randomness (UI previews). Never mutates.
   S.forecast = function (state) {
     const s = FR.clone(state), alloc = S.allocate(s);
@@ -189,7 +205,9 @@
 
   // end-of-run sheet. Plain, explainable parts.
   S.score = function (s) {
-    const Q = S.K.score, stake = (s.money.valuation || 0) * (s.money.founderPct || 0) / 100;
+    // a lab wound up for want of cash leaves its founder nothing: the stake scores 0 on cause 'cash'
+    const Q = S.K.score, broke = s.status === 'dead' && s.end && s.end.cause === 'cash';
+    const stake = broke ? 0 : (s.money.valuation || 0) * (s.money.founderPct || 0) / 100;
     const parts = [
       { label: 'Weeks operated', value: Math.min(s.turn, Q.horizon) },
       { label: 'Peak average capability', value: Math.round((s.model.peakCap || 0) * Q.capPer) },

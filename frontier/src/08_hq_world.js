@@ -28,13 +28,19 @@
 
   // three.js missing (the CDN script failed): a do-nothing FR.r so the rest of the one-script build (menu, sim, main) still
   // runs; floors register into it harmlessly and nothing renders. The look and title modules skip themselves.
-  if (typeof THREE === 'undefined') {
-    console.error('three.js did not load: the HQ view is off');
-    const no = () => false;
-    FR.r = { floors: {}, stub: true, current: null, mode: 'room', focusId: null, paused: true, cinematic: null, t: 0, LED: {},
+  // FR.rStub(into): turns `into` (or a new object) into that stub in place, so a module that captured FR.r at load sees it.
+  // 99_main uses it too when R.init throws (no WebGL): the elevator then arrives at once and opens the floor's panel.
+  FR.rStub = function (into) {
+    const no = () => false, r = into || {};
+    if (r.renderer && r.renderer.dispose) { try { r.renderer.dispose(); } catch (e) { /* half-built */ } }
+    return Object.assign(r, { floors: r.floors || {}, stub: true, renderer: null, current: null, mode: 'room', focusId: null, paused: true, cinematic: null, t: 0, LED: {},
       init() {}, loadFloor(id) { FR.emit('hq:floor', { floorId: id }); }, home() {}, back() { if (FR.ui && FR.ui.sheetId) FR.ui.sheet(null); },
       focus: no, tapAt: no, glideTo: no, snap() {}, setMode() {}, target: () => null, poseOf: () => null, screenOf: () => null, pick: () => null,
-      live: no, targets: () => [], relabel() {}, setText() {}, staffOn: () => 0, disposeGroup() {}, debug: () => ({ stub: true }) };
+      live: no, targets: () => [], relabel() {}, setText() {}, staffOn: () => 0, disposeGroup() {}, debug: () => ({ stub: true }) });
+  };
+  if (typeof THREE === 'undefined') {
+    console.error('three.js did not load: the HQ view is off');
+    FR.r = FR.rStub({});
     return;
   }
   const R = FR.r = { floors: {}, current: null, t: 0, mode: 'room', focusId: null, view: null, paused: true, cinematic: null, settled: null, dirty: false };
@@ -198,8 +204,30 @@
   // box and the top corners of the walls the cutaway keeps), clipped to what the portrait framing shows, is fitted into
   // the HUD-safe rect instead: the fov narrows until the content fills the rect, and a lens shift centres it. Bare floor
   // in front of the nearest target may crop. It never zooms out past the portrait framing.
+  // Portrait phones keep the hand-framed view, unless a live target's box (or a floor's fitExtra() points) falls off a side
+  // edge: then a horizontal lens shift, and if that is not enough a wider fov, brings every box inside with a small margin.
+  function fitPortrait(p) {
+    const pts = extraPts();
+    targets.forEach(t => { if (!live(t, 'room')) return; const b = t.box; for (let i = 0; i < 8; i++) pts.push([i & 1 ? b[3] : b[0], i & 2 ? b[4] : b[1], i & 4 ? b[5] : b[2]]); });
+    if (!fitCam) fitCam = new THREE.PerspectiveCamera();
+    fitCam.position.set(p.pos[0], p.pos[1], p.pos[2]); fitCam.lookAt(p.look[0], p.look[1], p.look[2]); fitCam.updateMatrixWorld(true);
+    let u0 = Infinity, u1 = -Infinity;
+    pts.forEach(q => { _v.set(q[0], q[1], q[2]).applyMatrix4(fitCam.matrixWorldInverse); if (_v.z > -0.1) return; const u = _v.x / -_v.z; if (u < u0) u0 = u; if (u > u1) u1 = u; });
+    if (!(u1 > u0)) return p;
+    const A = Math.max(W() / H(), R.DESIGN_ASPECT), Tu = Math.tan(p.fov * Math.PI / 360) * A, sx = p.shiftX || 0, m = 0.1 * Tu;   // margin: room for the tag pill
+    if (u0 - m >= (-1 + 2 * sx) * Tu && u1 + m <= (1 + 2 * sx) * Tu) return p;
+    const half = (u1 - u0) / 2 + m;
+    if (half <= Tu) {   // fits at this fov: the smallest shift that brings both sides in
+      const lo = ((u1 + m) / Tu - 1) / 2, hi = ((u0 - m) / Tu + 1) / 2;
+      return Object.assign({}, p, { shiftX: Math.min(hi, Math.max(lo, sx)) });
+    }
+    return Object.assign({}, p, { fov: 2 * Math.atan(half / A) * 180 / Math.PI, shiftX: (u0 + u1) / 2 / (2 * half) });
+  }
+  // a floor's extra fit points (e.g. the lobby's press pack outside the glass, while it is there)
+  function extraPts() { const f = R.current; try { return (f && typeof f.fitExtra === 'function' && f.fitExtra()) || []; } catch (e) { return []; } }
   function fitView(p) {
-    if (!p || W() / H() <= R.FIT_ASPECT) return p; // near-portrait phones (360x740) keep the hand-framed portrait view
+    if (!p) return p;
+    if (W() / H() <= R.FIT_ASPECT) return fitPortrait(p); // near-portrait phones keep the hand-framed view (see fitPortrait)
     const rm = R.roomDims || { w: 16, d: 14, h: 4 }, w2 = rm.w / 2, d2 = rm.d / 2, cx = p.pos[0], cz = p.pos[2], pts = [];
     const wall = (x0, z0, x1, z1) => pts.push([x0, rm.h, z0], [x1, rm.h, z1]);
     if (!(cz > d2)) wall(-w2, d2, w2, d2);
@@ -207,6 +235,7 @@
     if (!(cx < -w2)) wall(-w2, -d2, -w2, d2);
     if (!(cx > w2)) wall(w2, -d2, w2, d2);
     targets.forEach(t => { if (!live(t, 'room')) return; const b = t.box; for (let i = 0; i < 8; i++) pts.push([i & 1 ? b[3] : b[0], i & 2 ? b[4] : b[1], i & 4 ? b[5] : b[2]]); });
+    extraPts().forEach(q => pts.push(q));
     if (!fitCam) fitCam = new THREE.PerspectiveCamera();
     fitCam.position.set(p.pos[0], p.pos[1], p.pos[2]); fitCam.lookAt(p.look[0], p.look[1], p.look[2]); fitCam.updateMatrixWorld(true);
     let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
@@ -226,6 +255,7 @@
       shift: (H() / 2 - (v0 + v1) / 2 * s - ys) / H(), shiftX: (u0 + u1) / 2 * s / W() };
   }
   // re-fit the room view after a resize; a camera resting in (or gliding to) the room view jumps to the new one
+  R.refit = () => refit();   // a floor whose fit points changed (fitExtra) asks for a new room view
   function refit() {
     if (!R.base) return; R.view = fitView(R.base);
     if (R.mode === 'room' && R.view) { glide = null; setRig(R.view); settle(); }
@@ -622,6 +652,8 @@
   const shared = m => m.userData.keep || cachedMats.has(m);
   R.disposeGroup = function (g) {
     g.traverse(o => {
+      // r128 frees an InstancedMesh's instanceMatrix / instanceColor buffers only on the mesh's own 'dispose' event
+      if (o.isInstancedMesh && o.dispose) o.dispose();
       if (o.geometry) o.geometry.dispose();
       (Array.isArray(o.material) ? o.material : o.material ? [o.material] : []).forEach(m => { if (shared(m)) return; if (m.map && !(m.map.userData && m.map.userData.keep)) m.map.dispose(); m.dispose(); });
     });

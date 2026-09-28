@@ -170,6 +170,13 @@ assert.notStrictEqual(J(scripted(5, 3)[2]), J(A[2]), 'a different seed plays dif
   lift(h); h = S.endTurn(h, []); assert.ok(h.memo.lines.some(m => m.text === 'The lab is at the frontier with safety in step. Hold it for ' + S.K.winTurns + ' weeks.'));
   lift(h); h.model.skills.coding.safe = h.model.skills.coding.cap - 8; h = S.endTurn(h, []);
   assert.ok(h.memo.lines.some(m => /^Coding safety [\d.]+ against capability [\d.]+\. Safety more than 5 below capability\. The 52-week hold restarts after 1 week\.$/.test(m.text)), J(h.memo.lines));
+  // ahead of the best rival with a gap between 5 and 10: the memo says what keeps the hold from starting
+  lift(h); h.win.streak = 0; h.model.skills.agents.safe = h.model.skills.agents.cap - 7; h = S.endTurn(h, []);
+  assert.strictEqual(h.win.streak, 0);
+  assert.ok(h.memo.lines.some(m => m.kind === 'flag' && /^At the frontier, but Agents safety is [\d.]+ below capability\. The 52-week hold starts when every gap is 5 or less\.$/.test(m.text)), J(h.memo.lines));
+  // a bankrupt lab's stake is worth nothing on the score sheet
+  const broke = FR.clone(h); broke.status = 'dead'; broke.end = { turn: broke.turn, cause: 'cash', text: '' }; broke.money.valuation = 5e8;
+  assert.strictEqual(S.score(broke).parts.find(p => /Founder stake/.test(p.label)).value, 0);
   // scoring: the same run won later scores less; the founder stake is capped
   const w = FR.clone(h); w.status = 'won'; w.win.best = 52; const late = FR.clone(w); late.turn = w.turn + 100;
   assert.ok(S.score(w).total > S.score(late).total, 'winning sooner scores more');

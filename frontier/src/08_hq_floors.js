@@ -12,7 +12,7 @@
 // turns: the serving floor goes dark under a slow red strobe and a press pack gathers outside the lobby glass.
 // No per-frame allocation: update() only writes preallocated objects.
 (function (FR) {
-  const R = FR.r; if (!R) return;
+  const R = FR.r; if (!R || R.stub || typeof THREE === 'undefined') return;   // no three.js: the stub FR.r, nothing to build
   const W = 16, D = 14, H = 4, HD = D / 2, PI = Math.PI;
   const K = R.FLOOR_K = {
     maxPeople: 24,        // figures per floor at most (instanced), whatever the headcount
@@ -367,6 +367,8 @@
     let nPress = 0, flashT = 0.5, flashLife = 0;
     const f = { group: g, elevator: ev, targets, hint: 'Tap the news wall for the wire. The elevator goes up to the lab floors.',
       view: { pos: [0, 20.3, 13.65], look: [0, 0.8, 0], fov: 62, shift: 0.036 }, // front, over the street: the press pack sits under the room
+      // while the press is outside, a fitted (landscape) room view keeps the pack on screen above the dock
+      fitExtra: () => nPress ? [[-3.2, 0, 7.2], [3.2, 0, 7.2], [-3.2, 1.9, 8.6], [3.2, 1.9, 8.6]] : null,
       light: { hemi: 0.8, sun: 0.5, bg: 0x0b1016 },
       refresh(s) {
         s = s || S();
@@ -377,7 +379,9 @@
         paint(record, { rows: marks.map(mk => { const q = firsts.find(r => r.mark === mk); return q ? [mk, q.by, q.turn, whoName(s, q.by)] : [mk, null, null, null]; }) }, drawRecord);
         paint(name, { n: labName(s) }, (x, w, h, d) => { rect(x, 0, 0, w, h, '#1b232c'); T(x, d.n.toUpperCase(), w / 2, h / 2 + 4, 92, HX.ink, 'center', 700, DISP, w - 64); });
         const inc = recentIncidents(s), ago = inc.length ? s.turn - inc[0].turn : 99;
+        const had = nPress > 0;
         nPress = inc.length ? clamp(K.pressMax + 2 - 2 * ago, K.pressMin, K.pressMax) : 0;
+        if (had !== nPress > 0 && R.refit && R.current === f) R.refit();
         press.set(nPress); gear.count = nPress; pressG.visible = nPress > 0; if (!nPress) flash.visible = false;
       },
       update(dt, t) {
@@ -424,10 +428,11 @@
     rect(x, 0, 0, w, h, HX.sunken);
     if (d.dark) {
       rect(x, 0, 0, w, 250, '#2a0d0c');
-      T(x, 'MODEL PULLED', w / 2, 86, 92, HX.bad, 'center', 800, DISP, w - 80);
-      T(x, d.skill + ' incident · ' + d.when + ' · serving suspended pending review', w / 2, 164, 32, HX.ink2, 'center', 500, SANS, w - 80);
-      T(x, 'Status reverts ' + d.until, w / 2, 210, 26, HX.ink3, 'center', 500, SANS, w - 80);
-      rect(x, 0, 250, w, h - 250, '#140606'); T(x, 'REQUESTS · HALTED', 24, 272, 20, HX.bad, 'left', 600, MONO); return;
+      // the sim does not pull the model: serving and revenue continue while the incident is under review
+      T(x, 'INCIDENT REVIEW', w / 2, 86, 84, HX.bad, 'center', 800, DISP, w - 80);
+      T(x, d.skill + ' incident · ' + d.when + ' · serving continues under review', w / 2, 164, 32, HX.ink2, 'center', 500, SANS, w - 80);
+      T(x, 'Review closes ' + d.until, w / 2, 210, 26, HX.ink3, 'center', 500, SANS, w - 80);
+      rect(x, 0, 250, w, h - 250, '#140606'); T(x, 'REQUESTS · UNDER REVIEW', 24, 272, 20, HX.bad, 'left', 600, MONO); return;
     }
     T(x, 'SERVING', 28, 40, 44, HX.ink, 'left', 700, DISP);
     rrect(x, w - 300, 16, 272, 48, 24, d.pf > 0 ? 'rgba(95,207,154,.18)' : 'rgba(240,162,74,.18)');
@@ -485,7 +490,7 @@
       { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: aim([2.6, 0.8, -2.0], 0, 45, 11) }
     ];
     let act = 0, dark = false, nWalk = 0, split0 = { walk: 0, sit: 0, stand: 0 }, scroll = 0;
-    const f = { group: g, elevator: ev, targets, get hint() { return dark ? 'The model is pulled after an incident. Tap the status wall for serving.' : 'Tap the status wall for the serving share, demand and rented compute.'; },
+    const f = { group: g, elevator: ev, targets, get hint() { return dark ? 'An incident is under review. Serving continues. Tap the status wall for serving.' : 'Tap the status wall for the serving share, demand and rented compute.'; },
       view: { pos: [3.1, 26.61, 14.57], look: [0, 0.8, 0], fov: 60, shift: -0.029, shiftX: 0.012 },
       light: { hemi: 0.62, sun: 0.5, bg: 0x070b10 },
       refresh(s) {
@@ -596,7 +601,7 @@
     rect(x, 24 + (w - 48) * clamp(d.safe / 100, 0, 1), 110, 3, 104, 'rgba(238,242,246,.5)');
     T(x, 'GAP', 24, 262, 22, HX.ink3, 'left', 600); T(x, cap1(d.gap), 90, 264, 56, gapCol(d.gap), 'left', 500, MONO);
     T(x, d.inc ? d.inc + (d.inc === 1 ? ' incident' : ' incidents') + ' in 52 wks' : 'No incidents', w - 24, 256, 20, d.inc ? HX.bad : HX.ink3, 'right', 600, SANS, 250);
-    T(x, d.final ? 'Final incident in ' + d.final + (d.final === 1 ? ' week' : ' weeks') : d.gap > 10 ? 'Above 10: warnings' : 'Within tolerance', w - 24, 282, 20, d.final ? HX.bad : d.gap > 10 ? HX.warn : HX.ink3, 'right', 600, SANS, 250);
+    T(x, d.final ? 'Final incident in ' + d.final + (d.final === 1 ? ' week' : ' weeks') : d.gap > 10 ? 'Above 10: warnings' : d.gap > 5 ? 'Above 5: blocks the hold' : 'Within the hold margin', w - 24, 282, 20, d.final ? HX.bad : d.gap > 10 ? HX.warn : HX.ink3, 'right', 600, SANS, 250);
     rect(x, 0, h - 26, w, 26, HX.surface); T(x, d.run ? 'EVAL SUITE RUNNING' : 'EVALS PAUSED · NO SAFETY COMPUTE', w / 2, h - 13, 16, d.run ? HX.good : HX.warn, 'center', 600, MONO);
   }
   // the incident log (768 × 452): title and date, one row per skill, the pressure gauge (FR.ui.pressure, the safety panel's
@@ -1065,7 +1070,8 @@
     const laps = inst(g, boxes([[0.34, 0.02, 0.24, 0, 0.81, 0.02], [0.34, 0.22, 0.02, 0, 0.92, 0.12, 0, 0.25]]), R.mat(0x9aa4ae), CH.length);
     CH.forEach((c, i) => place(laps, i, c[0] + Math.sin(c[2]) * 0.55, 0, c[1] + Math.cos(c[2]) * 0.55, c[2]));
     // pendants over the table (cables above the cutaway line vanish with the ceiling)
-    [-3.6, -1.6, 0.4].forEach(z => { R.box(g, 0.02, 0.9, 0.02, GRAPH, 0.2, 3.45, z); R.cyl(g, 0.26, 0.34, 0.22, 0xffe2b8, 0.2, 2.95, z, 16).material = R.mat(0xffe2b8, { emissive: 0xffc890, emissiveIntensity: 0.9 }); });
+    // (none over the head of the table: from the board-table close-up a lamp there sat in front of the valuation screen)
+    [-1.6, 0.4].forEach(z => { R.box(g, 0.02, 0.9, 0.02, GRAPH, 0.2, 3.45, z); R.cyl(g, 0.26, 0.34, 0.22, 0xffe2b8, 0.2, 2.95, z, 16).material = R.mat(0xffe2b8, { emissive: 0xffc890, emissiveIntensity: 0.9 }); });
     plant(g, -7.2, 5.6); plant(g, 7.2, 5.6); plant(g, -2.9, -6.4, 0.9);
     R.box(g, 1.2, 0.9, 0.5, WOOD, 5.8, 0.45, 5.6); R.cyl(g, 0.05, 0.05, 0.28, 0xd8e0e8, 5.6, 1.04, 5.6, 8); R.cyl(g, 0.05, 0.05, 0.22, 0xd8e0e8, 5.9, 1.01, 5.5, 8);
     panels(g, [[-5, -4], [5, -4], [-5, 2], [5, 2]], 0.5);
@@ -1084,7 +1090,9 @@
       light: { hemi: 0.6, sun: 0.55, bg: 0x08101c },
       refresh(s) {
         s = s || S(); const m = (s && s.money) || { cash: 0, founderPct: 100, valuation: 0, roundsDone: [], revenue: 0, burn: 0, net: 0 };
-        const burn = tryf(() => FR.money.burnEstimate(s), m.burn || 0), net = (m.revenue || 0) - burn, runway = net >= 0 ? null : Math.max(0, Math.floor(m.cash / -net));
+        // next week's forecast, as the panel below and the HUD show it
+        const fc = tryf(() => FR.sim.forecast(s), null), net = fc ? fc.net : (m.revenue || 0) - (m.burn || 0);
+        const runway = fc ? (fc.runway === Infinity ? null : Math.max(0, fc.runway)) : net >= 0 ? null : Math.max(0, Math.floor(m.cash / -net));
         const o = m.offer, ms = m.milestone;
         paint(val, { val: Math.round(m.valuation || tryf(() => FR.money.valuation(s), 0)), cash: Math.round(m.cash), net: Math.round(net), runway, stake: FR.round(m.founderPct, 1),
           offer: o ? (o.round === 'a' ? 'Series A' : o.round === 'seed' ? 'Seed round' : String(o.round)) + ' on the table: ' + money(o.amount) + ' for ' + FR.round(o.pct * (o.pct <= 1 ? 100 : 1), 1) + '%' : null,

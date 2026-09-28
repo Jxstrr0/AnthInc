@@ -67,6 +67,22 @@ assert.deepStrictEqual(cmd(t, { type: 'hire', n: '2' }).staff.hiring, [{ n: 7, a
 { const r = FR.sim.applyCommands(s, [{ type: 'hire', n: K.maxHire - 5 }, { type: 'hire', n: 5 }, { type: 'hire', n: 1 }]);
   assert.deepStrictEqual(r.results.map(x => x.ok), [true, true, false]); assert.ok(/0 left this week/.test(r.results[2].why));
   let w = FR.sim.endTurn(r.state, []); assert.strictEqual(M.hireRoom(w), K.maxHire); assert.ok(cmd(w, { type: 'hire', n: K.maxHire })); }
+// revenue falls with demand unserved: the memo names the Serving shortfall
+{ const g = game(); g.money.revenue = 1e6; const r = rep(); M.step(g, { serving: { pf: 1 } }, FR.rng(1), r);
+  const d = M.demandPF(g); assert.ok(d > 1.2);
+  assert.ok(r.memo.some(m => m.kind === 'flag' && m.text.startsWith('Serving covers 1 of ' + FR.round(d, 1) + ' PF of demand: about ')), JSON.stringify(r.memo)); }
+// one memo line per week's hires, with the week's total
+{ const r = FR.sim.applyCommands(s, [{ type: 'hire', n: 5 }, { type: 'hire', n: 1 }, { type: 'hire', n: 2 }]);
+  const lines = r.state.pendingMemo.filter(m => /^Hiring/.test(m.text));
+  assert.strictEqual(lines.length, 1, lines.map(l => l.text).join('|'));
+  assert.strictEqual(lines[0].text, 'Hiring 8: recruiting fees ' + FR.fmtMoney(8 * K.hireFee) + ', joining ' + FR.dateLabel(1 + K.hireTurns) + '.'); }
+// milestone pace: capability milestones project the due-week value; an off-pace milestone is flagged well before the 8-week line
+{ let g = cmd(game(), { type: 'acceptRound' }); const ms = g.money.milestone, p = M.pace(g);
+  assert.strictEqual(p.projected, 8); assert.strictEqual(p.short, ms.value - 8); assert.strictEqual(p.weeksLeft, ms.due - g.turn);
+  const flags = []; while (g.turn < ms.due - 8) { g = run(g, 1); g.lastReport.memo.filter(m => m.kind === 'flag' && /off pace/.test(m.text)).forEach(m => flags.push(m.text)); }
+  assert.strictEqual(flags.length, K.msPaceAt.length, flags.join('|'));
+  assert.ok(/^Series A milestone off pace: any skill reaches capability \d+ by Year 1, Week \d+\. Now Coding capability 8\. At this pace: Coding 8 by /.test(flags[0]), flags[0]);
+  assert.strictEqual(M.pace(g, Object.assign({}, ms, { kind: 'revenue' })), null); }
 s = run(s, 1, [{ type: 'hire', n: 5 }]);
 assert.ok(memo(s, /^Hiring 5: recruiting fees \$100k/));
 while (s.turn < 1 + K.hireTurns) {
@@ -112,7 +128,7 @@ for (let i = 0; i < 120; i++) { s = run(s, 1); assert.strictEqual(s.money.offer,
 s = cmd(game(), { type: 'acceptRound' }); ms = s.money.milestone;
 const dues = [];
 while (s.turn <= ms.due) { s = run(s, 1); s.lastReport.memo.filter(m => m.kind === 'due').forEach(m => dues.push(m.text)); }
-assert.ok(dues.some(x => /^Series A milestone due in 4 weeks: any skill reaches capability \d+\. Now Coding capability 8\.$/.test(x)), dues.join('|'));
+assert.ok(dues.some(x => /^Series A milestone due in 4 weeks: any skill reaches capability \d+\. Now Coding capability 8\. At this pace: Coding 8 by Year 1, Week \d+, short by \d+\.$/.test(x)), dues.join('|'));
 assert.ok(dues.some(x => /milestone due next week/.test(x)));
 assert.deepStrictEqual(ev(s, 'money:milestone'), [{ type: 'money:milestone', round: 'a', hit: false }]);
 assert.ok(memo(s, /^Series A milestone missed \(.*\)\. Coding capability 8\. No round can be raised until/));

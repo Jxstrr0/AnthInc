@@ -124,12 +124,22 @@
     const sh = $('sheet'), dim = $('dim'); if (!sh || !dim) return;
     if (!dim.classList.contains('on')) dimDown = false;
     const was = sh.classList.contains('on');
+    const hud = $('hud');
     if (!html) {
-      sh.classList.remove('on', 'scrolled'); dim.classList.remove('on'); U.sheetId = null;
+      sh.classList.remove('on', 'scrolled'); dim.classList.remove('on'); U.sheetId = null; if (hud) hud.inert = false;
+      // focus goes back where it was before the sheet opened (never left inside a closed sheet)
+      if (was && sh.contains(document.activeElement)) { const b = U._sheetFrom; U._sheetFrom = null; try { if (b && b.isConnected) b.focus({ preventScroll: true }); else document.activeElement.blur(); } catch (e) { /* old engines */ } }
       if (FR.r) FR.r.paused = !inWorld(); if (was) sfx('close'); FR.emit('ui:sheet', { id: null }); return;
     }
     if (!was) sfx('open');
     $('sheetBody').innerHTML = html; sh.classList.add('on'); dim.classList.add('on'); U.sheetId = id || 'sheet';
+    // a modal sheet: keyboard focus moves into it and the HUD behind it is inert (a Space or Enter on a focused End Turn
+    // under the memo would otherwise resolve another week)
+    if (hud) hud.inert = true;
+    if (!was || !sh.contains(document.activeElement)) {
+      if (!was) U._sheetFrom = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+      const c = $('sheetClose'); try { if (c) c.focus({ preventScroll: true }); } catch (e) { /* old engines */ }
+    }
     if (FR.r) FR.r.paused = true; FR.emit('ui:sheet', { id: U.sheetId });
   };
   // toast(text, ms, tone): tone 'bad' | 'good' tints the edge. Long lines stay up longer unless ms is given.
@@ -188,7 +198,7 @@
   }
   function bindScroll() {
     const sh = $('sheet'), body = $('sheetBody'); if (!sh || !body) return;
-    const check = () => sh.classList.toggle('scrolled', body.scrollTop > 24);
+    const check = () => sh.classList.toggle('scrolled', body.scrollTop > 0);   // any scroll: the heading band covers content passing under the grab handle
     body.addEventListener('scroll', check, { passive: true });
     // a different sheet starts at the top; the same id re-rendered in place keeps its scroll (panels refresh after
     // state:changed). New content can arrive at the same scrollTop (no scroll event), so re-check after every change.

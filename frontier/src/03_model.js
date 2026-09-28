@@ -91,7 +91,7 @@
     const d = run(state.model.skills, state.target, alloc, noise);
     report.flows.model = { cap: d.cap, safe: d.safe, drift: d.drift, noise };
     const t = state.target, up = d.cap[t], added = FR.SKILLS.reduce((a, k) => a + d.safe[k], 0) + d.drift, bits = [];
-    if (up > 0.05) bits.push('Training on ' + NAME(t) + ': capability ' + Math.round(state.model.skills[t].cap) + ', up ' + r1(up) + '.');
+    if (up > 0.05) bits.push('Training on ' + NAME(t) + ': capability ' + r1(state.model.skills[t].cap) + ', up ' + r1(up) + '.');
     if (added > 0.05 || d.drift > 0.05) bits.push('Safety work added ' + r1(added) + ' across skills; drift took ' + r1(d.drift) + '.');
     if (bits.length) report.memo.push({ kind: 'change', text: bits.join(' ') });
   };
@@ -157,7 +157,11 @@
     report.flows.incidentCost = (report.flows.incidentCost || 0) + cost;
     report.events.push({ type: 'model:incident', skill: k, gap: r1(g), cost, trust });
     report.news.push({ kind: 'incident', text: state.lab.name + ' discloses an incident in its ' + NAME(k).toLowerCase() + ' model. Review under way.' });
-    report.memo.push({ kind: 'flag', text: NAME(k) + ' incident at gap ' + fmtGap(g) + '. Cost ' + FR.fmtMoney(cost) + ' and ' + trust + ' points of public trust.' });
+    // the rule that ends the lab, named with the first incident; with the second, the gap that stops the rolls
+    const n = recent(sk, state.turn).length, rule = n < K.finalIncidents - 1
+      ? ' A ' + ordinal(K.finalIncidents) + ' ' + NAME(k) + ' incident within ' + K.incidentWindow + ' weeks ends the lab.'
+      : ' Incident odds fall to zero once the gap is ' + K.incidentGap + ' or below.';
+    report.memo.push({ kind: 'flag', text: NAME(k) + ' incident at gap ' + fmtGap(g) + '. Cost ' + FR.fmtMoney(cost) + ' and ' + trust + ' points of public trust.' + rule });
   }
 
   function final(state, k, g, why, report) {
