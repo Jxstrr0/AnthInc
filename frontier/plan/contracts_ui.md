@@ -109,3 +109,49 @@ each floor gets its own light rig like Mogul's look.js. `<title>Frontier</title>
 `test/browser.js` (Playwright, Chromium at `/opt/pw-browsers`, never `playwright install`): sections by env var
 `SECTION=boot|flow|floors|save`; boot → new career → 10 End Turns → every floor via elevator → open each panel →
 save → reload → load → no console errors; screenshots at 390×844 into `test/shots/` combined into one contact sheet.
+
+## V0.3 additions (built 2026-09-28)
+
+- Serving floor: hotspot `serving.accounts` (client wall, one plaque per active account on one instanced mesh with one
+  canvas texture; a churned account's plaque is dark for the week after it leaves, then gone). `FR.r.debug().floorDebug`
+  reports `plaques`, `plaquesLit`, `plaquesDark`, `clients`.
+- Floor 1 panel: serving readout "Serving N PF · N reserved for accounts · N open market" (`[data-fpres]`, plus "N PF short
+  of the contracts" in red); Accounts section (`[data-focus="accounts"]`: Contracted / Reserved / Backlog, one `.fp-acc` row
+  per account with a mood bar), offer board (`.fp-aoff[data-acc]`, three requirement rows from `FR.accounts.qualifies`,
+  `[data-fp="sign"]`, `[data-fp="accNo"]` → confirm `[data-fp="accNoOk"]`), locked state with progress meters.
+- Allocation card: `[data-fp="slUndo"]` (back to the shares the week started with) and `[data-fp="slDefault"]`
+  (`FR.sim.K.startSliders`, 40/20/25/15), disabled when they would change nothing.
+- HUD: once the lab has an account, `#hudCashChip` opens `#hudSplit` (open market / contracts last week, next week's
+  forecast, `#hsMoney` → Boardroom Money); `FR.ui.splitOpen()`. A tap on the 3D view that closes it opens nothing.
+- Boardroom Money: Series B in the rounds list like the A; contracted revenue, backlog and a yearly figure; the B offer and
+  B milestone cards state the sector raise (`FR.market.K.raiseLift` / `raiseLag`) when it is on.
+- Commands `FR.cmd.signAccount(id)`, `FR.cmd.declineAccount(id)`. Browser section `SECTION=accounts` with its own contact
+  sheet `test/shots/contact-accounts.png`.
+
+### V0.3 review round (2026-09-28)
+- Dock: `#hOver` "Company" between Memo and End Turn opens the overview sheet (`FR.ui.overview()`, sheet id `overview`).
+  Under 400 px wide the dock labels drop to `--text-xs` so five buttons fit at 360 with 44 px+ targets.
+- Client wall: plaques carry the name (88 px on the 512 x 256 cell, fit down to 56), the tier stripe and a 40 px mood bar,
+  or ONBOARDING / CONTRACT ENDED in the bar's place (sector, PF and fee are in the panel rows). The atlas has mipmaps
+  (`LinearMipmapLinearFilter`). A churned plaque darkens where it hung (`lost[].signed` keeps its slot) at 0.8 tint. An
+  unlocked, empty book shows one placeholder plaque ("NO ACCOUNTS YET", offers on the board); `floorDebug.plaques` counts
+  real plaques only (`placeholder` = 1 when shown). `serving.accounts` is a `stay` target with `focus.rest` 0.04: closing
+  the Serving sheet keeps the close-up.
+- Serving readout counts onboarding contracts: "Serving 38 PF · 14 reserved for accounts · 14 more from Week 26 · 10 open
+  market", red "N PF short" on the total. Offer cards warn on live + onboarding + the offer. A full book shows its notice
+  once (section note), not on every card.
+- Account rows: an onboarding account reads "52 weeks from Year 1, Week 30"; a leaving account (below 30) has a Leaving
+  badge. Accounts stats and the Boardroom block show "Received last week" when fees received differ from the contracted
+  book, with the reasons (DeepField share, incident review, PF short). Boardroom labels: "Contracted · N accounts",
+  "Backlog", "Contracted a year".
+- Memo call to action (`nextStep`): "Serving: N PF short of the contracts" (serving.wall) and "Serving: <name> at risk,
+  mood N" (serving.accounts) come before "account offers the lab qualifies for". Account lines get the building icon
+  (tested before /incident/); the V0.1 project "Enterprise contract" is now "Fixed-scope deployment".
+- Money tab: a met milestone reads "Met Year 1, Week 30: weekly revenue $426k against $400k." (`milestone.metAt`,
+  `metValue`). The decline confirm states the re-offer delay (13, then 26, then 52 weeks). Funding note keeps each round
+  name on one line.
+- Allocation card: Default's label follows the rows' order (Serving floor: "Default 20/40/25/15"); Undo and Default carry
+  the nudge buttons' border and stay on one line.
+- HUD split card: sits under the Cash chip (clamped on screen), hides the room tags while open; its header figure is not
+  uppercased. Overview Accounts section turns warn (border, amber/red Avg mood, one line) when an account is under 45.
+- Frontier strip at < 375 px while holding or blocked: the gap chip hides and the rival name keeps at least 4.5em.

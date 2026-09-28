@@ -469,7 +469,7 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #hud .hud-split.on{display:block;animation:hq-in var(--dur-2) var(--ease-out)}
 #hud .hud-split b{font-family:var(--font-num);font-weight:var(--w-medium);color:var(--ink);white-space:nowrap}
 #hud .hs-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 6px;font-size:var(--text-xs);font-weight:var(--w-bold);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-3)}
-#hud .hs-h b{font-size:var(--text-lg);letter-spacing:0;color:var(--gold)}
+#hud .hs-h b{font-size:var(--text-lg);letter-spacing:0;text-transform:none;color:var(--gold)}
 #hud .hs-r{display:flex;align-items:center;gap:8px;min-height:26px}
 #hud .hs-r span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #hud .hs-r .k,#hud .hs-bar i{display:block;flex:none;width:10px;height:10px;border-radius:2px}
@@ -506,7 +506,8 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 /* the hold count takes the label's room; the hold bar shows only where it fits */
 #hud .strip.holding .st-k{display:none}
 @media (min-width:430px){#hud .strip .st-hold i{display:block}#hud .strip.holding .st-k{display:inline}}
-@media (max-width:374px){#hud .strip .st-k{display:none}}
+@media (max-width:374px){#hud .strip .st-k{display:none}#hud .strip.holding,#hud .strip.blocked{gap:6px;padding:0 8px}
+  #hud .strip.holding .st-riv .nm,#hud .strip.blocked .st-riv .nm{min-width:4.5em}#hud .strip.blocked .st-gap,#hud .strip.holding .st-gap{display:none}}
 
 /* bottom dock */
 #hud .bottom{position:absolute;left:var(--sp-3);right:var(--sp-3);bottom:calc(var(--sp-3) + var(--safe-b));display:flex;gap:6px;max-width:440px;min-height:var(--dock-h);margin:0 auto;padding:6px;border:1px solid var(--glass-line);border-radius:22px;background:var(--glass);box-shadow:var(--sh-2);pointer-events:auto}
@@ -521,6 +522,8 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #hElev{--i:var(--icon-elevator);position:relative}
 #hMemo{--i:var(--icon-memo);position:relative}
 #hEnd{--i:var(--icon-endturn)}
+#hOver{--i:var(--icon-chart)}
+@media (max-width:400px){#hud .bottom{gap:4px}#hud .bottom .btn{padding:6px 2px;font-size:var(--text-xs)}#hud .bottom .btn.endturn{font-size:var(--text-md)}}
 /* something to read: a dot on Memo (an unread weekly memo), like the panels' tab dots */
 #hMemo.dot::after,#hElev.dot::after{content:"";position:absolute;top:6px;left:calc(50% + 9px);width:9px;height:9px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--surface)}
 #hMemo.dot.bad::after{background:var(--bad)}
@@ -631,6 +634,7 @@ body.title-on .car-slot.empty{background:var(--sunken)}
 .tag{position:absolute;left:0;top:0;display:flex;align-items:center;gap:var(--sp-2);min-height:28px;margin:0;padding:var(--sp-1) var(--sp-3) var(--sp-1) 10px;border:1px solid var(--glass-line);border-radius:var(--r-pill);background:var(--glass);color:var(--ink);font:var(--w-bold) var(--text-xs)/1 var(--font-ui);letter-spacing:.01em;white-space:nowrap;pointer-events:auto;cursor:pointer;will-change:transform;box-shadow:var(--sh-2);-webkit-tap-highlight-color:transparent}
 .tag::before{content:"";position:absolute;inset:-8px -2px}
 #tags:not(.on) .tag{pointer-events:none}
+body.hud-split-on #tags{visibility:hidden}
 .tag::after{content:"";position:absolute;left:calc(50% + var(--sx,0px));top:100%;width:1px;height:var(--sh,6px);background:color-mix(in srgb,var(--ink) 45%,transparent)}
 .tag.dn::after{top:auto;bottom:100%}
 .tag i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--brand-bright);animation:tagpulse calc(var(--dur-3) * 5.6) var(--ease-out) infinite}
@@ -1119,6 +1123,7 @@ body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + 
   <div class="bottom">
     <button class="btn" id="hElev">Elevator</button>
     <button class="btn" id="hMemo">Memo</button>
+    <button class="btn" id="hOver" aria-label="Company overview">Company</button>
     <button class="btn endturn" id="hEnd">End Turn</button>
   </div>
 </div>

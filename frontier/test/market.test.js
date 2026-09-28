@@ -24,7 +24,7 @@ const QUIET = { gainBase: 0, incBase: 0, incSlope: 0, dealChance: 0 };
 
 // ---- init shape (contracts §1) ----
 let s = game();
-assert.deepStrictEqual(Object.keys(s.market).sort(), ['dealOffer', 'firsts', 'rivals', 'trust']);
+assert.deepStrictEqual(Object.keys(s.market).sort(), ['dealOffer', 'firsts', 'raised', 'rivals', 'trust']);
 assert.strictEqual(s.market.trust, 50); assert.deepStrictEqual(s.market.firsts, []); assert.strictEqual(s.market.dealOffer, null);
 assert.deepStrictEqual(s.market.rivals.map(r => r.id), ['opal', 'entropic', 'deepfield', 'zeta']);
 assert.deepStrictEqual(s.market.rivals.map(r => r.name), ['Opal AI', 'Entropic', 'DeepField', 'Zeta']);

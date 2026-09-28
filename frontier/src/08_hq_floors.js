@@ -461,19 +461,29 @@
   const MOOD = () => Object.assign({ renew: 60, watch: 45 }, tryf(() => FR.accounts.K.mood, {}));
   const moodCol = (m) => { const M = MOOD(); return m >= M.renew ? HX.brandB : m >= M.watch ? HX.warn : HX.bad; };
   const kfmt = (n) => (FR.ui && FR.ui.kmoney ? FR.ui.kmoney(n) : money(n));
+  // a plaque is read from across the room: the buyer's name large, the tier stripe, and a thick mood bar (or ONBOARDING /
+  // CONTRACT ENDED in its place). Sector, PF and fee live in the Serving panel's rows.
   function drawPlaque(x, cx, cy, p) {
     const W0 = PLQ.cw, H0 = PLQ.ch; x.save(); x.translate(cx, cy); x.clearRect(0, 0, W0, H0);
-    rect(x, 0, 0, W0, H0, p.dark ? '#0b0e12' : '#1a222c'); rect(x, 0, 0, W0, 3, p.dark ? '#151a20' : '#2f3c4a');
-    rect(x, 0, 0, 12, H0, p.dark ? '#2a1414' : TIER_COL[p.tier] || HX.brandB);
-    // the buyer’s name: 48 px, shrunk to fit down to 30 px, then cut with an ellipsis
-    x.font = fnt(700, 48, DISP); const nw = x.measureText(p.name).width, ns = nw > W0 - 64 ? Math.max(30, Math.floor(48 * (W0 - 64) / nw)) : 48;
-    x.font = fnt(700, ns, DISP);
-    T(x, fit(x, p.name, W0 - 64), 36, 60, ns, p.dark ? HX.ink3 : HX.ink, 'left', 700, DISP, W0 - 64);
-    T(x, p.dark ? 'LEFT ' + wk(p.left).toUpperCase() : (p.sector || 'Enterprise').toUpperCase() + ' · TIER ' + p.tier, 36, 110, 24, p.dark ? '#5d6875' : HX.ink3, 'left', 600, MONO, W0 - 64);
-    if (p.dark) { T(x, 'CONTRACT ENDED', 36, 172, 34, HX.bad, 'left', 700, MONO); x.restore(); return; }
-    T(x, fmtPF(p.pf) + ' · ' + kfmt(p.fee) + '/WK', 36, 160, 32, HX.gold, 'left', 500, MONO, W0 - 64);
-    if (p.pending) T(x, 'ONBOARDING', W0 - 28, 110, 22, HX.info, 'right', 700, MONO);
-    bar(x, 36, 204, W0 - 72, 14, clamp(p.mood / 100, 0, 1), moodCol(p.mood), 'rgba(255,255,255,.1)');
+    rect(x, 0, 0, W0, H0, p.dark ? '#10151b' : '#1a222c'); rect(x, 0, 0, W0, 4, p.dark ? '#1c232b' : '#2f3c4a');
+    rect(x, 0, 0, 18, H0, p.dark ? '#5a2020' : p.empty ? '#2f3c4a' : TIER_COL[p.tier] || HX.brandB);
+    if (p.empty) {
+      T(x, 'NO ACCOUNTS YET', 44, 92, 50, HX.ink2, 'left', 700, DISP, W0 - 72);
+      T(x, p.offers ? p.offers + (p.offers === 1 ? ' OFFER' : ' OFFERS') + ' ON THE BOARD' : 'OFFERS ARRIVE ON A BOARD', 44, 172, 36, p.offers ? HX.gold : HX.ink3, 'left', 700, MONO, W0 - 72);
+      x.restore(); return;
+    }
+    // the buyer’s name: one line at 88 px, shrunk down to 64; a longer name takes two lines at 60 px (then an ellipsis)
+    const NW = W0 - 72, ink = p.dark ? HX.ink2 : HX.ink;
+    x.font = fnt(700, 88, DISP); const nw = x.measureText(p.name).width, ns = nw > NW ? Math.floor(88 * NW / nw) : 88;
+    if (ns >= 64) { x.font = fnt(700, ns, DISP); T(x, p.name, 44, 86, ns, ink, 'left', 700, DISP, NW); }
+    else {   // two lines: the largest size from 60 down to 40 that wraps into two
+      let f = 60, L; for (; f >= 40; f -= 4) { x.font = fnt(700, f, DISP); L = wrap(x, p.name, NW); if (L.length <= 2) break; }
+      if (L.length > 2) L = wrap(x, p.name, NW, 2);
+      L.forEach((ln, i) => T(x, ln, 44, 50 + i * (f + 6), f, ink, 'left', 700, DISP, NW));
+    }
+    if (p.dark) { T(x, 'CONTRACT ENDED', 44, 190, 46, '#ff8a7a', 'left', 700, MONO, W0 - 72); x.restore(); return; }
+    if (p.pending) { T(x, 'ONBOARDING', 44, 190, 46, HX.info, 'left', 700, MONO, W0 - 72); x.restore(); return; }
+    bar(x, 44, 170, W0 - 88, 40, clamp(p.mood / 100, 0, 1), moodCol(p.mood), 'rgba(255,255,255,.12)');
     x.restore();
   }
   function drawClients(x, w, h, d) {
@@ -483,7 +493,8 @@
   }
   function clientWall(g) {
     const n = PLQ.max, cv = canvas(PLQ.cols * PLQ.cw, PLQ.rows * PLQ.ch), cx = cv.getContext('2d');
-    const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter; tex.anisotropy = 4;
+    // 1024 x 1024 atlas (a power of two): mipmaps keep the small plaques from aliasing into noise
+    const tex = new THREE.CanvasTexture(cv); tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.anisotropy = 4;
     const geo = new THREE.PlaneGeometry(PLQ.w, PLQ.h), cell = new THREE.InstancedBufferAttribute(new Float32Array(n * 2), 2);
     geo.setAttribute('aCell', cell);
     const mat = new THREE.MeshBasicMaterial({ map: tex });
@@ -501,12 +512,15 @@
   }
   function clientList(s) {
     const a = s && s.accounts; if (!a) return { locked: true, list: [], max: 4 };
-    const act = (a.active || []).slice().sort((p, q) => (p.signed || 0) - (q.signed || 0)).map(x => ({ name: x.name, sector: x.sector, tier: x.tier, pf: FR.round(+x.pfPerWeek || 0, 1),
-      fee: Math.round(+x.feePerWeek || 0), mood: Math.round(+x.mood || 0), pending: x.starts != null && x.starts > s.turn }));
-    // churned in the week just resolved: dark for this week (lost.turn is the week it left), gone after the next End Turn
-    const gone = (a.lost || []).filter(l => l && l.why === 'churn' && s.turn - l.turn <= 1 && !act.some(x => x.name === l.name)).map(l => ({ name: l.name, left: l.turn, tier: 0, dark: true }));
-    const max = tryf(() => FR.accounts.maxActive(s), 4);
-    return { locked: !(a.unlocked || act.length || (a.offers || []).length), list: act.concat(gone).slice(0, PLQ.max), max, n: act.length };
+    const act = (a.active || []).map(x => ({ name: x.name, tier: x.tier, mood: Math.round(+x.mood || 0), pending: x.starts != null && x.starts > s.turn, at: x.signed || 0 }));
+    // churned in the week just resolved: dark for this week (lost.turn is the week it left) in the place it hung (lost
+    // carries the signing week), gone after the next End Turn
+    const gone = (a.lost || []).filter(l => l && l.why === 'churn' && s.turn - l.turn <= 1 && !act.some(x => x.name === l.name))
+      .map(l => ({ name: l.name, left: l.turn, tier: 0, dark: true, at: l.signed != null ? l.signed : l.turn }));
+    const max = tryf(() => FR.accounts.maxActive(s), 4), locked = !(a.unlocked || act.length || (a.offers || []).length);
+    let list = act.concat(gone).sort((p, q) => p.at - q.at).slice(0, PLQ.max);
+    if (!locked && !list.length) list = [{ name: '', empty: true, offers: (a.offers || []).length, at: 0 }];   // an empty book, not a missing texture
+    return { locked, list, max, n: act.length };
   }
   function paintClients(cw, s) {
     const d = clientList(s), sig = JSON.stringify(d); if (cw.sig === sig) return; cw.sig = sig;
@@ -518,18 +532,19 @@
       cw.cell.setXY(i, c / PLQ.cols, 1 - (r + 1) / PLQ.rows);
       const px = PLQ.x + (c === 0 ? -PLQ.dx : PLQ.dx), py = PLQ.y0 - r * PLQ.dy;
       place(cw.plq, i, px, py, -HD + 0.085); place(cw.frm, i, px, py, -HD + 0.06);
-      cw.plq.setColorAt(i, _col.setScalar(p.dark ? 0.55 : 1));
+      cw.plq.setColorAt(i, _col.setScalar(p.dark ? 0.8 : 1));
     });
     cw.plq.count = cw.frm.count = d.list.length; cw.cell.needsUpdate = true;
     cw.plq.instanceMatrix.needsUpdate = cw.frm.instanceMatrix.needsUpdate = true; if (cw.plq.instanceColor) cw.plq.instanceColor.needsUpdate = true;
     cw.tex.needsUpdate = true;
-    cw.lit = d.list.filter(p => !p.dark).length; cw.dark = d.list.length - cw.lit; cw.names = d.list.map(p => (p.dark ? '(dark) ' : '') + p.name);
+    cw.lit = d.list.filter(p => !p.dark && !p.empty).length; cw.dark = d.list.filter(p => p.dark).length; cw.names = d.list.filter(p => !p.empty).map(p => (p.dark ? '(dark) ' : '') + p.name);
     if (cw.target) cw.target.focus = clientFocus(d.list.length);
   }
   // the close-up frames the name plate and the rows of plaques in use (two rows minimum), so a short book reads large
   function clientFocus(n) {
     const rows = Math.max(2, Math.ceil(n / PLQ.cols)), top = 3.82, bot = PLQ.y0 - (rows - 1) * PLQ.dy - PLQ.h / 2 - 0.08;
-    return aim([PLQ.x, (top + bot) / 2, -6.9], 0, 6, fitD(2.5, top - bot));
+    // rest: once the Serving sheet closes, the close-up stays (a stay target) with the lens centred on the wall
+    return Object.assign(aim([PLQ.x, (top + bot) / 2, -6.9], 0, 6, fitD(2.5, top - bot)), { rest: 0.04 });
   }
   R.floors.serving = { build(id) {
     const g = start(), scr = [];
@@ -570,7 +585,7 @@
       { id: 'serving.wall', label: 'Status wall', box: [-1.3, 0.75, -7, 6.5, 3.8, -6.8], focus: aim([2.6, 2.15, -6.9], 0, 10, fitD(7.8, 2.8)) },
       { id: 'serving.racks', label: 'Rack row', box: [-6.85, 0, -4.4, -5.75, 2.3, 5.4], focus: aim([-6.3, 1.1, 0.5], 68, 18, 10.5) },
       { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: aim([2.6, 0.8, -2.0], 0, 45, 11) },
-      { id: 'serving.accounts', label: 'Client wall', box: [-3.55, 1.0, -7, -1.35, 3.85, -6.8], focus: clientFocus(0) }
+      { id: 'serving.accounts', label: 'Client wall', box: [-3.55, 1.0, -7, -1.35, 3.85, -6.8], focus: clientFocus(0), stay: true, labelAt: [-3.2, 3.95, -6.9] }
     ];
     cw.target = targets[targets.length - 1];
     let act = 0, dark = false, nWalk = 0, split0 = { walk: 0, sit: 0, stand: 0 }, scroll = 0;
@@ -600,7 +615,7 @@
         else { beacon.emissiveIntensity = 0; washMat.opacity = 0; rig(f, 0.72 + 0.28 * act, 0); }
       },
       debug() { return { dark, activity: +act.toFixed(2), people: split0, racks: racks.vis, racksLit: racks.lit, desks: desks.count, beacon: +beacon.emissiveIntensity.toFixed(2), targets: targets.map(t => t.id),
-        plaques: cw.plq.count, plaquesLit: cw.lit, plaquesDark: cw.dark, clients: cw.names.slice() }; }
+        plaques: cw.lit + cw.dark, placeholder: cw.plq.count - cw.lit - cw.dark, plaquesLit: cw.lit, plaquesDark: cw.dark, clients: cw.names.slice() }; }
     };
     return finish(f, id, scr);
   } };

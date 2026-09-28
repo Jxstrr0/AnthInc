@@ -6,11 +6,15 @@
     trustStart: 50, trustMid: 50, trustRevert: 0.05,   // trust closes 5% of its distance to trustMid each week
     trustMultBase: 0.5, trustMultPer: 0.01,             // trustMult = 0.5 + trust / 100  (0.5 .. 1.5)
     // rival weekly gain per skill = gainBase × speed × (1 + ramp × years) × weight × (1 − cap/100)^dimExp;
-    // 0.44 since 2026-09-28: the balance bots accept the DeepField share when it is cheap, as a reading player does
+    // 0.44 since 2026-09-28: the balance bots accept the DeepField share when it is cheap, as a reading player does;
+    // 0.48 for V0.3: enterprise account fees carry a lab that never raises past the A (balanced-noB wins ~13%)
     // a `steady` share arrives every week, the rest in releases (chance `ship` a week) so the expected pace is the same
-    gainBase: 0.44, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
+    gainBase: 0.48, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
     startJitter: 1.5, safeJitter: 2, speedJitter: 0.12,  // start cap ± points, start safe ± points, base speed ± fraction
     speedMin: 0.85, speedMax: 1.15,                     // speed bounds, multiples of the rival's base speed
+    raiseLift: 0.48, raiseLag: 13,                      // V0.3 sector raise: once the lab's Series B closes (market.raised = that
+                                                        //   turn) rivals raise in step and, from raiseLag weeks later, train
+                                                        //   raiseLift faster for the rest of the run
     fundLift: 0.02, incSlow: 0.015,                     // a funding line speeds a rival up 2%; its own incident slows it 1.5%
     safeFollow: 0.1,                                    // rival safe closes 10% of the way to cap − margin each week, never falls
     incBase: 0.004, incGap: 8, incSlope: 0.004,         // rival incident chance = risk × (incBase + (worst gap − incGap) × incSlope)
@@ -167,12 +171,13 @@
       dealOpen: M.DEALS[id].live, incidents: 0 };
   }
   M.init = function (s, rng) {
-    s.market = { trust: K.trustStart, rivals: M.ORDER.map(id => make(id, rng)), firsts: [], dealOffer: null };
+    s.market = { trust: K.trustStart, rivals: M.ORDER.map(id => make(id, rng)), firsts: [], dealOffer: null, raised: 0 };
   };
 
   // ---- the week ----
   function advance(s, r, rng, report) {
-    const d = RV(r.id), rate = K.gainBase * r.speed * (1 + d.ramp * (s.turn - 1) / 52), a0 = avg(r);
+    const lift = s.market.raised && s.turn >= s.market.raised + K.raiseLag ? K.raiseLift : 0;
+    const d = RV(r.id), rate = K.gainBase * r.speed * (1 + d.ramp * (s.turn - 1) / 52) * (1 + lift), a0 = avg(r);
     const gain = (k) => rate * d.w[k] * Math.pow(Math.max(0, 1 - r.cap[k] / 100), K.dimExp);
     const noise = FR.clamp(1 + rng.normal() * K.gainNoise, 0.2, 1.8);
     FR.SKILLS.forEach(k => { r.cap[k] = r2(Math.min(100, r.cap[k] + gain(k) * d.steady * noise)); });
@@ -281,9 +286,22 @@
     }
   }
 
+  // the lab's Series B sets off a sector raise: every rival trains K.raiseLift faster from K.raiseLag weeks after it closes
+  function raised(s, report) {
+    const m = s.market;
+    if (m.raised || !K.raiseLift || !s.money || s.money.roundsDone.indexOf('b') < 0) return;
+    m.raised = s.turn;
+    const names = M.ORDER.map(id => RV(id).name);
+    report.news.push({ kind: 'market', text: names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] + ' close new funding rounds within weeks of ' +
+      s.lab.name + '\'s Series B.' });
+    report.memo.push({ kind: 'flag', text: 'Rivals have raised in step with our Series B. Their training pace rises ' + Math.round(K.raiseLift * 100) +
+      '% from ' + FR.dateLabel(s.turn + K.raiseLag) + ' for the rest of the run.' });
+  }
+
   M.step = function (s, rng, report) {
     const m = s.market;
     M.nudgeTrust(s, (K.trustMid - m.trust) * K.trustRevert, 'drift', report);
+    raised(s, report);
     m.rivals.forEach(r => advance(s, r, rng, report));
     m.rivals.forEach(r => incident(s, r, rng, report));
     records(s, report);

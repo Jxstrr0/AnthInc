@@ -82,13 +82,17 @@
   U.split = function (on) {
     let el = $('hudSplit'); const s = FR.state;
     if (on === undefined) on = !U.splitOpen();
-    if (!on || !s || !hasBook(s)) { if (el) el.classList.remove('on'); const c = $('hudCashChip'); if (c) c.setAttribute('aria-expanded', 'false'); return false; }
+    if (!on || !s || !hasBook(s)) { if (el) el.classList.remove('on'); document.body.classList.remove('hud-split-on'); const c = $('hudCashChip'); if (c) c.setAttribute('aria-expanded', 'false'); return false; }
     if (!el) {
       el = document.createElement('div'); el.id = 'hudSplit'; el.className = 'hud-split'; el.setAttribute('role', 'group'); el.setAttribute('aria-label', 'Revenue split');
       $('hud').appendChild(el);
       el.addEventListener('click', e => { e.stopPropagation(); if (e.target.closest('#hsMoney')) { sfx('tap'); U.split(false); route('boardroom.money'); } });
     }
     el.innerHTML = splitHtml(s); el.classList.add('on'); $('hudCashChip').setAttribute('aria-expanded', 'true');
+    // under the Cash chip (landscape centres the chip row), kept on screen; the room's tags hide while the card is up
+    const c = $('hudCashChip').getBoundingClientRect(), W = window.innerWidth, w = Math.min(360, W - 24);
+    el.style.left = Math.round(Math.max(12, Math.min(c.left, W - w - 12))) + 'px'; el.style.right = 'auto'; el.style.width = w + 'px';
+    document.body.classList.add('hud-split-on');
     return true;
   };
 
@@ -196,6 +200,8 @@
     });
     $('hBack').addEventListener('click', () => { sfx('tap'); if (FR.r && FR.r.back) FR.r.back(); });
     $('hMemo').addEventListener('click', () => { sfx('tap'); U.openMemo(); });
+    // the company overview sheet (owner call, V0.3): every section, each with an Open that rides to its floor
+    const ov = $('hOver'); if (ov) ov.addEventListener('click', () => { if (!FR.state || (FR.elevator && FR.elevator.riding) || typeof U.overview !== 'function') return; sfx('tap'); U.overview(); });
     // never behind a sheet: a key press on the focused End Turn under the memo must not resolve another week
     $('hEnd').addEventListener('click', () => { if (U.endWhy() || U.sheetId) return; FR.cmd.endTurn(); });
     // the chips and the strip open what they summarise: Cash the Money tab, Trust the lobby trust board, Week the memo,

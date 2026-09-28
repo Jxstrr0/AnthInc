@@ -33,7 +33,7 @@ function meet(s, ms) {   // make a milestone true for the next resolution
 
 // init: exactly the §1 shape, seed on the table at turn 1, 9-12 months of runway before any round
 let s = game();
-assert.deepStrictEqual(Object.keys(s.money).sort(), ['burn', 'cash', 'founderPct', 'lockedUntil', 'milestone', 'net', 'offer', 'revContracts', 'revMarket', 'revenue', 'roundsDone', 'valuation']);
+assert.deepStrictEqual(Object.keys(s.money).sort(), ['burn', 'cash', 'founderPct', 'lockedUntil', 'milestone', 'net', 'offer', 'passes', 'revContracts', 'revMarket', 'revenue', 'roundsDone', 'valuation']);
 assert.deepStrictEqual(s.staff, { headcount: K.startHead, hiring: [] });
 assert.strictEqual(s.money.founderPct, 100); assert.deepStrictEqual(s.money.roundsDone, []);
 assert.strictEqual(s.money.milestone, null); assert.strictEqual(s.money.lockedUntil, 0); assert.strictEqual(s.money.cash, K.startCash);
@@ -160,8 +160,18 @@ setCap(s, 20);
 while (s.turn < K.offerTurns + K.reofferTurns) { assert.strictEqual(s.money.offer, null); s = run(s, 1); }
 assert.strictEqual(s.money.offer.round, 'seed'); assert.strictEqual(s.money.offer.expires, s.turn + K.offerTurns - 1);
 assert.ok(s.money.offer.pct < 0.2); assert.ok(memo(s, /^Investors are back\. Seed round offer:/));
-// decline works the same way
-t = cmd(s, { type: 'declineRound' }); assert.strictEqual(t.money.offer, null); assert.strictEqual(t.money.lockedUntil, s.turn + K.reofferTurns);
+// decline works the same way; a second pass on the same round waits longer (13, then 26, then 52 weeks)
+assert.strictEqual(K.reofferBack[0], K.reofferTurns);
+t = cmd(s, { type: 'declineRound' }); assert.strictEqual(t.money.offer, null); assert.strictEqual(t.money.lockedUntil, s.turn + K.reofferBack[1]);
+{ const u = FR.clone(t); u.money.passes = 5; u.money.offer = FR.clone(s.money.offer); const v = cmd(u, { type: 'declineRound' }); assert.strictEqual(v.money.lockedUntil, u.turn + 52); }
+{ const u = cmd(s, { type: 'acceptRound' }); assert.strictEqual(u.money.passes, 0, 'closing a round resets the count'); }
+// waiting out a round never buys a bigger one: above the valuation where pctMin buys the amount, the amount grows to at
+// most amount × amountCap and the stake sold falls below pctMin
+{ const g = game(); g.money.roundsDone = ['seed', 'a']; g.money.offer = null; setCap(g, 70); g.money.revenue = 5e6; const v = M.valuation(g), R = K.rounds.b;
+  assert.ok(R.amount / v < R.pctMin, 'test needs a valuation where pctMin buys more than the amount: ' + v);
+  const o = (() => { g.money.milestone = { round: 'b', kind: 'revenue', value: 1, due: g.turn + 30, text: '' }; return FR.sim.endTurn(g, []).money.offer; })();
+  assert.ok(o && o.round === 'b'); assert.ok(o.amount <= R.amount * K.amountCap + 1, o.amount); assert.ok(o.pct < R.pctMin && o.pct >= K.pctFloor, o.pct);
+  near(o.amount / o.valuation, o.pct, 1e-6); }
 // Series A offer lapses and returns on the same met milestone, even after its due date and with cap back down
 s = cmd(game(), { type: 'acceptRound' }); ms = s.money.milestone; setCap(s, ms.value); s = run(s, 1);
 const kept = FR.clone(s.money.milestone); setCap(s, 8);

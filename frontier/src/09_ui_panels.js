@@ -42,7 +42,7 @@
   let refTurn = null;
   const when = (t) => { const s = S(), ref = refTurn != null ? refTurn : s && s.turn;
     return (s && FR.year(t) === FR.year(ref) ? 'Week ' + FR.weekOfYear(t) : FR.dateLabel(t)).replace(/ /g, '\u00a0'); };
-  const runwayText = (w) => (w == null || w === Infinity) ? 'cash-positive' : wks(Math.max(0, w));
+  const runwayText = (w) => (w == null || w === Infinity) ? 'cash-positive' : w >= 104 ? 'over 2 years' : wks(Math.max(0, w));
   const META = (id) => (FR.HQ_FLOOR_META || {})[id] || { n: '?', name: String(id) };
   const ORD = ['first', 'second', 'third', 'fourth', 'fifth'];
 
@@ -119,6 +119,25 @@
     if (!Number.isFinite(c)) c = has('accounts', 'feeRevenue') && s.turn > 1 ? +tryr(() => FR.accounts.feeRevenue(s), 0) || 0 : 0;
     c = clamp(c, 0, tot);
     return { market: tot - c, contracts: c, total: tot };
+  }
+  // the book against next week's serving: live contract PF, PF still onboarding (with the week it starts) and the shortfall
+  const pendingPF = (s) => has('accounts', 'pending') ? Math.max(0, +tryr(() => FR.accounts.pending(s), 0) || 0) : 0;
+  function book(s, pf) {
+    if (pf == null) { const f = fc(s); pf = f && f.alloc && f.alloc.serving ? f.alloc.serving.pf : 0; }
+    const res = reservedPF(s), pend = pendingPF(s), next = (accOf(s).active || []).filter(a => a.starts > s.turn).reduce((m, a) => Math.min(m, a.starts), Infinity);
+    const lastShort = (accOf(s).active || []).some(a => a.starts < s.turn && !a.leaving && a.served != null && a.served < a.pfPerWeek - 0.05);
+    return { pf: Math.max(0, +pf || 0), res, pend, next: next === Infinity ? null : next, short: Math.max(0, res + pend - Math.max(0, +pf || 0)), lastShort };
+  }
+  // the contract money actually received last week against the gross book, and why they differ
+  function received(s) {
+    const gross = (accOf(s).active || []).filter(x => x.starts < s.turn && !x.leaving).reduce((t, x) => t + (+x.feePerWeek || 0), 0);
+    const got = +s.money.revContracts || 0, why = [];
+    const share = has('compute', 'revShare') ? tryr(() => FR.compute.revShare(s), 0) : 0;
+    if (share > 0) why.push(`the ${pct0(share)} DeepField share`);
+    if (has('money', 'underReview') && tryr(() => FR.money.underReview(s), false)) why.push('half while under incident review');
+    const short = (accOf(s).active || []).filter(x => x.starts < s.turn && !x.leaving && x.served != null && x.served < x.pfPerWeek - 0.05);
+    if (short.length) why.push(`${short.reduce((t, x) => t + x.pfPerWeek - x.served, 0).toFixed(0)} PF short`);
+    return { gross, got, why, gap: gross - got > 500 };
   }
   U.revSplit = (s, pf) => { s = s || S(); return s && s.money ? revSplit(s, pf) : null; };
   U.revSplitLast = (s) => { s = s || S(); return s && s.money ? revSplitLast(s) : null; };
@@ -265,14 +284,22 @@
         <p class="fp-sl-f">${fcText(k, s, nums[k])}</p>${k === 'serving' ? resLine(s, (al.serving || {}).pf) : ''}
         <div class="fp-nudge" role="group" aria-label="Adjust ${esc(AN(k))}">${[-5, -1, 1, 5].map(d => btn('nudge', k + ':' + d, (d > 0 ? '+' : '−') + Math.abs(d), 'quiet', !live(s) || (d < 0 ? v <= 0 : v >= 100))).join('')}</div></div>`;
     }).join('');
-    return `<div class="card fp-sliders" id="fpSliders"><div class="fp-cardh"><span class="kicker">Allocation</span>${tip(TIPS.sliders, 'the allocation')}<span class="fp-sum num">Total 100%</span></div>${rows}<p class="fp-sl-foot" data-fpfoot>${footText(f, f)}</p></div>`;
+    const w0 = weekStart(s), same = (a) => AL().every(k => a[k] === s.sliders[k]);
+    const resets = `<div class="fp-reset" role="group" aria-label="Reset the allocation">${btn('slUndo', '', 'Undo', 'quiet', !live(s) || same(w0))}${btn('slDefault', '', `Default ${order.map(k => SDEF()[k]).join('/')}`, 'quiet', !live(s) || same(SDEF()))}</div>`;
+    return `<div class="card fp-sliders" id="fpSliders"><div class="fp-cardh"><span class="kicker">Allocation</span>${tip(TIPS.sliders, 'the allocation')}<span class="fp-sum num">Total 100%</span></div>${rows}${resets}<p class="fp-sl-foot" data-fpfoot>${footText(f, f)}</p></div>`;
   }
+  // slider resets (owner call, V0.3): Undo = back to the shares this week started with; Default = the new-lab split
+  const SDEF = () => (FR.sim && FR.sim.K && FR.sim.K.startSliders) || { training: 40, serving: 20, safety: 25, research: 15 };
+  let W0 = null;
+  const markWeek = () => { const s = S(); W0 = s ? { turn: s.turn, lab: s.lab && s.lab.name, sliders: Object.assign({}, s.sliders) } : null; };
+  function weekStart(s) { if (!W0 || W0.turn !== s.turn || W0.lab !== (s.lab && s.lab.name)) markWeek(); return (W0 && W0.sliders) || s.sliders; }
   // the serving readout once accounts reserve PF: "Serving 38 PF · 14 reserved for accounts · 24 open market"
+  // onboarding contracts count too: "Serving 38 PF · 14 reserved · 14 more from Week 26 · 10 open market"
   function resText(s, pf) {
-    const need = reservedPF(s); pf = Math.max(0, +pf || 0); if (!(need > 0)) return '';
-    const res = Math.min(pf, need), f = (v) => v >= 100 ? String(Math.round(v)) : trim1(v);
-    return `Serving <b class="num">${f(pf)} PF</b> · <b class="num">${f(res)}</b> reserved for accounts · <b class="num">${f(Math.max(0, pf - need))}</b> open market`
-      + (need > pf + 0.05 ? ` · <span class="neg">${f(need - pf)} PF short of the contracts</span>` : '');
+    const b = book(s, pf), need = b.res + b.pend; pf = b.pf; if (!(need > 0)) return '';
+    const res = Math.min(pf, b.res), f = (v) => v >= 100 ? String(Math.round(v)) : trim1(v);
+    return `Serving <b class="num">${f(pf)} PF</b> · <b class="num">${f(res)}</b> reserved for accounts` + (b.pend > 0 ? ` · <b class="num">${f(b.pend)}</b> more from ${esc(when(b.next))}` : '')
+      + ` · <b class="num">${f(Math.max(0, pf - need))}</b> open market` + (need > pf + 0.05 ? ` · <span class="neg">${f(need - pf)} PF short of the contracts</span>` : '');
   }
   const resLine = (s, pf) => { const t = resText(s, pf); return t ? `<p class="fp-sl-r" data-fpres>${t}</p>` : ''; };
   let drag = null, raf = 0, SL = null;
@@ -361,11 +388,12 @@
     return { ok: q ? !!q.ok : out.every(r => r[0]), why: q && q.why ? String(q.why) : '', rows: out };
   }
   function accRow(s, a) {
-    const left = Math.max(0, a.ends - s.turn + 1), pending = a.starts != null && a.starts > s.turn, mood = Math.round(+a.mood || 0), hue = moodHue(mood);
-    const short = a.starts != null && a.starts < s.turn && a.served != null && a.served < a.pfPerWeek - 0.05;
-    const tag = mood < AK().watchMood ? badge('At risk', 'bad', 'alert') : left <= 8 ? badge(mood >= AK().renewMood ? 'Renews' : 'Ends', mood >= AK().renewMood ? 'good' : 'warn', 'clock') : pending ? badge('Onboarding', 'info', 'clock') : '';
-    return `<div class="fp-acc"><div class="fp-acc-h"><b>${esc(a.name)}</b>${badge('Tier ' + a.tier, 'brand')}${tag}<span class="num fp-acc-fee">${kmoney(a.feePerWeek)}<small>/wk</small></span></div>
-      <p class="fp-acc-s">${esc(a.sector || '')} · <span class="num">${trim1(a.pfPerWeek)} PF</span> · <span class="num">${wks(left)}</span> left${pending ? ` · fee from ${esc(when(a.starts))}` : ''}</p>
+    const pending = a.starts != null && a.starts > s.turn, left = Math.max(0, a.ends - (pending ? a.starts : s.turn) + 1), mood = Math.round(+a.mood || 0), hue = moodHue(mood);
+    const short = a.starts != null && a.starts < s.turn && a.served != null && a.served < a.pfPerWeek - 0.05 && !a.leaving;
+    const tag = a.leaving || mood < AK().churnMood ? badge('Leaving', 'bad', 'alert') : mood < AK().watchMood ? badge('At risk', 'bad', 'alert') : left <= 8 ? badge(mood >= AK().renewMood ? 'Renews' : 'Ends', mood >= AK().renewMood ? 'good' : 'warn', 'clock') : pending ? badge('Onboarding', 'info', 'clock') : '';
+    // name and fee on the first line (the name gets the width), tier and status badges lead the second
+    return `<div class="fp-acc"><div class="fp-acc-h"><b>${esc(a.name)}</b><span class="num fp-acc-fee">${kmoney(a.feePerWeek)}<small>/wk</small></span></div>
+      <p class="fp-acc-s">${badge('Tier ' + a.tier, 'brand')}${tag}<span>${esc(a.sector || '')} · <span class="num">${trim1(a.pfPerWeek)} PF</span> · ${pending ? `<span class="num">${wks(left)}</span> from ${esc(when(a.starts))}` : `<span class="num">${wks(left)}</span> left`}</span></p>
       <div class="fp-acc-m"><span>Mood</span><div class="meter ${hue}" style="--v:${clamp(mood, 0, 100)}" role="img" aria-label="Mood ${mood} of 100"><i></i></div><b class="num tone-${hue === 'cap' ? 'cap' : hue}">${mood}</b></div>
       ${short ? `<p class="fp-acc-w">${ico('alert')}<span>Served ${n1(a.served)} of ${trim1(a.pfPerWeek)} PF last week. Each short week costs ${AK().mood.unserved} mood.</span></p>` : ''}</div>`;
   }
@@ -374,10 +402,10 @@
     const dis = dead ? 'The run is over.' : room <= 0 ? `The book is full: ${maxActive(s)} accounts at most${(s.money.roundsDone || []).indexOf('b') < 0 ? `, ${AK().maxActiveB} once the Series B closes` : ''}.`
       : !rq.ok ? (rq.why ? esc(rq.why.replace(/\.$/, '')) + '.' : 'The lab does not meet every requirement yet.')
         : s.money.cash < cost ? `Signing costs ${kmoney(cost)}; cash is ${kmoney(s.money.cash)}.` : '';
-    const need = reservedPF(s) + o.pfPerWeek, sv = revSplit(s).pf;
+    const need = reservedPF(s) + pendingPF(s) + o.pfPerWeek, sv = revSplit(s).pf;
     const left = o.expires != null ? o.expires - s.turn + 1 : null;
     const actions = P.confirm === 'accNo:' + o.id
-      ? confirmBox(false, `Decline ${esc(o.name)}?`, 'Declining costs nothing. The offer leaves the board and this buyer does not return this run.', 'Keep the offer', 'accNoOk', o.id, 'Decline')
+      ? confirmBox(false, `Decline ${esc(o.name)}?`, `Declining costs nothing. The offer leaves the board; this buyer can return on a board after ${wks((FR.accounts && FR.accounts.K.cooldown) || 52)}.`, 'Keep the offer', 'accNoOk', o.id, 'Decline')
       : `<div class="card-actions">${btn('accNo', o.id, 'Decline', 'quiet', dead)}${btn2('sign', o.id, 'Sign', `${kmoney(cost)} now`, 'primary', !!dis, 'check')}</div>`;
     return `<div class="card fp-aoff${rq.ok ? '' : ' ghost'}" data-acc="${esc(o.id)}">
       <div class="fp-cardk"><span class="pl-kind">${esc(o.sector || 'Enterprise')}</span>${badge('Tier ' + o.tier, 'brand')}${left != null ? badge(left <= 1 ? 'Last week' : wks(left) + ' left', left <= 2 ? 'warn' : '', 'clock') : ''}</div>
@@ -386,7 +414,7 @@
       <ul class="fp-req">${rq.rows.map(r => `<li class="${r[0] ? 'ok' : 'no'}">${ico(r[0] ? 'check' : 'close')}<span>${r[1]}</span><em class="num">${r[2]}</em></li>`).join('')}</ul>
       ${kv('clock', `Fee from <b>${esc(when(start))}</b>, ${wks(AK().startDelay)} after signing. <b class="num">${kmoney(o.feePerWeek * o.turns)}</b> over the term.`)}
       ${!dis && need > sv + 0.05 ? why(`Serving is ${n1(sv)} PF; the contracts would reserve ${n1(need)} PF. Raise the serving share or rent more, or each account left short loses ${AK().mood.unserved} mood a week.`) : ''}
-      ${actions}${dis && P.confirm !== 'accNo:' + o.id ? why(dis, rq.ok && room > 0 ? 'warn' : 'info') : ''}</div>`;
+      ${actions}${dis && room > 0 && P.confirm !== 'accNo:' + o.id ? why(dis, rq.ok ? 'warn' : 'info') : ''}</div>`;
   }
   function accountsBlock(s) {
     const a = accOf(s), K = AK(), act = a.active || [], offers = a.offers || [], mx = maxActive(s), room = mx - act.length;
@@ -400,8 +428,9 @@
         ${!accOn() ? note('info', 'Accounts are not in this build.') : ''}</div>`;
     }
     if (act.length) {
-      const fees = act.reduce((t, x) => t + (x.starts != null && x.starts > s.turn ? 0 : +x.feePerWeek || 0), 0);
+      const fees = act.reduce((t, x) => t + (x.starts != null && x.starts > s.turn || x.leaving ? 0 : +x.feePerWeek || 0), 0), rc = received(s);
       out += `<div class="stats">${stat('Contracted', kmoney(fees), 'a week')}${stat('Reserved', trim1(reservedPF(s)) + ' PF', 'from serving')}${stat('Backlog', kmoney(backlog(s)), 'fees to come')}</div>`;
+      if (rc.gap && s.turn > 1) out += note('coin', `Received <b class="num">${kmoney(rc.got)}</b> last week against <b class="num">${kmoney(rc.gross)}</b> contracted: ${esc(rc.why.join(', ') || 'contracts served in part')}.`);
       out += `<div class="card fp-accs">${act.map(x => accRow(s, x)).join('')}</div>`;
     } else out += `<p class="hint">No accounts signed. Signing reserves serving PF for the contract and pays its fee each week from the third week.</p>`;
     const M = K.mood;
@@ -660,7 +689,7 @@
     const m = s.money, o = m.offer, name = roundName(o.round), left = o.expires - s.turn + 1, pv = preview({ type: 'acceptRound' }, s), after = pv.ok ? pv.state : null;
     const ms = after && after.money.milestone;
     const actions = P.confirm === 'decline'
-      ? (() => { const back = s.turn + MoK().reofferTurns; return confirmBox(true, `Decline the ${esc(name)} offer?`, `Investors return ${esc(when(back))}, in ${wks(back - s.turn)}, with an offer at the valuation then. Runway now: <b class="num">${runwayText(f && f.runway)}</b>.`, 'Keep the offer', 'declineOk', '', 'Decline'); })()
+      ? (() => { const B = MoK().reofferBack || [MoK().reofferTurns], back = s.turn + B[Math.min((m.passes || 0) + 1, B.length) - 1]; return confirmBox(true, `Decline the ${esc(name)} offer?`, `Investors return ${esc(when(back))}, in ${wks(back - s.turn)}, with an offer at the valuation then${B.length > 1 ? `; each further pass waits longer (${B.join(', ')} weeks)` : ''}. Runway now: <b class="num">${runwayText(f && f.runway)}</b>.`, 'Keep the offer', 'declineOk', '', 'Decline'); })()
       : `<div class="card-actions">${btn('decline', '', 'Decline', 'quiet', !live(s))}${btn('accept', '', `Accept ${kmoney(o.amount)}`, 'primary', !live(s), 'check')}</div>`;
     return `<div class="card fp-round selected" data-focus="round">
       <div class="card-head">${ico('coin')}<b class="card-title">${esc(name)} offer</b>${badge(left <= 1 ? 'Last week' : wks(left) + ' left', left <= 2 ? 'warn' : 'gold', 'clock')}</div>
@@ -669,7 +698,14 @@
       ${kv('coin', `Cash after closing <b class="num">${kmoney(m.cash + o.amount)}</b>${pv.f ? `; runway <b class="num">${runwayText(pv.f.runway)}</b>` : ''}.`)}
       ${after ? kv('users', `Your stake falls from <b class="num">${pctS(m.founderPct)}</b> to <b class="num">${pctS(after.money.founderPct)}</b>.${tip(TIPS.stake, 'your stake')}`) : ''}
       ${kv('record', ms ? esc(ms.text) : 'No further rounds are scheduled after this one.')}
+      ${raiseNote(s, o.round)}
       ${actions}</div>`;
+  }
+  // the sector raise (06_market K.raiseLift): rivals raise in step with the lab's Series B and train faster from raiseLag weeks
+  // after it closes. Shown on the B offer and the B milestone, so the cost of taking the B is on the card before the decision.
+  function raiseNote(s, round) {
+    const MK = (FR.market && FR.market.K) || {}; if (round !== 'b' || !(MK.raiseLift > 0)) return '';
+    return kv('rival', `Rivals raise in step with a Series B: from ${wks(MK.raiseLag || 0)} after it closes, their training pace rises <b class="num">${Math.round(MK.raiseLift * 100)}%</b> for the rest of the run. Declining leaves their pace as it is.`);
   }
   function milestoneCard(s) {
     const ms = s.money.milestone, pr = tryr(() => FR.money.progress(s), null); if (!pr) return '';
@@ -679,9 +715,9 @@
     const said = pr.met ? (lock ? `Met. Investors return ${esc(when(m.lockedUntil))} with the ${esc(roundName(ms.round))} offer.` : `Met. The ${esc(roundName(ms.round))} offer arrives at the next End Turn.`)
       : `Missing it closes rounds for ${wks(MoK().lockTurns)}.`;
     return `<div class="card" data-focus="milestone"><div class="card-head">${ico('record')}<b class="card-title">${esc(roundName(ms.round))} milestone</b>${pr.met ? badge('Met', 'good', 'check') : badge(pr.weeksLeft <= 0 ? 'Due now' : wks(pr.weeksLeft) + ' left', pr.weeksLeft <= 4 ? 'warn' : '', 'clock')}</div>
-      <p class="card-meta">${esc(ms.text)}</p>
+      <p class="card-meta">${pr.met && ms.metAt ? `Met ${esc(when(ms.metAt))}: ${esc(label.toLowerCase())} ${fmt(ms.metValue)} against ${fmt(ms.value)}.` : esc(ms.text)}</p>
       <div class="pl-mrow-l"><span>${esc(label)}</span><span class="num"><b>${fmt(pr.current)}</b> of ${fmt(pr.value)}</span></div>${meter(pr.value > 0 ? pr.current / pr.value * 100 : 0, pr.met ? 'good' : 'gold')}
-      ${pr.met ? '' : paceNote(s, ms)}${note(pr.met ? 'check' : 'alert', said)}</div>`;
+      ${pr.met ? '' : paceNote(s, ms)}${ms.kind === 'revenue' && !pr.met && accOn() ? kv('building', `Weekly revenue counts open-market serving and account fees. ${unlocked(s) ? `The book holds ${(accOf(s).active || []).length} of ${maxActive(s)} accounts.` : 'Account offers open on the Serving floor at average capability ' + AK().unlockCap + ' and public trust ' + AK().unlockTrust + '.'}`) : ''}${raiseNote(s, ms.round)}${note(pr.met ? 'check' : 'alert', said)}</div>`;
   }
   // FR.money.pace: where today's settings leave a capability milestone by its due week
   const paceOf = (s, ms) => has('money', 'pace') ? tryr(() => FR.money.pace(s, ms), null) : null;
@@ -694,15 +730,17 @@
   BV.money = function (s, f) {
     const m = s.money, bp = tryr(() => FR.money.burnParts(s), { payroll: 0, ops: 0, compute: 0, projects: 0 }), rw = f ? f.runway : Infinity;
     const rcls = rw === Infinity ? 'pos' : rw < 6 ? 'neg' : rw < 13 ? 'tone-warn' : '';
-    let out = `<div class="stats">${stat('Cash', kmoney(m.cash))}${stat('Runway', rw === Infinity ? 'Positive' : Math.max(0, rw) + ' wks', rw === Infinity ? 'revenue covers burn' : 'forecast', { tip: tip(TIPS.runway, 'runway'), cls: rcls })}${stat('Valuation', kmoney(m.valuation), 'stake ' + pctS(m.founderPct), { tip: tip(TIPS.stake, 'your stake') })}</div>`;
+    let out = `<div class="stats">${stat('Cash', kmoney(m.cash))}${stat('Runway', rw === Infinity ? 'Positive' : rw >= 104 ? '2+ yrs' : Math.max(0, rw) + ' wks', rw === Infinity ? 'revenue covers burn' : 'forecast', { tip: tip(TIPS.runway, 'runway'), cls: rcls })}${stat('Valuation', kmoney(m.valuation), 'stake ' + pctS(m.founderPct), { tip: tip(TIPS.stake, 'your stake') })}</div>`;
     // contracted revenue and the backlog (V0.3): the cap table view carries the customer book beside the investors
     const act = accOf(s).active || [];
     if (act.length) {
-      const fees = act.reduce((t, x) => t + (x.starts != null && x.starts > s.turn ? 0 : +x.feePerWeek || 0), 0), yr = fees * 52;
+      const fees = act.reduce((t, x) => t + (x.starts != null && x.starts > s.turn || x.leaving ? 0 : +x.feePerWeek || 0), 0), yr = fees * 52, rc = received(s);
       out += `<div class="pl-money fp-contract" data-focus="contracts">
-        <div><span>Contracted revenue · ${act.length} ${act.length === 1 ? 'account' : 'accounts'}</span><b class="num">${kmoney(fees)}<small> a week</small></b></div>
-        <div><span>Backlog · fees still to be paid</span><b class="num">${kmoney(backlog(s))}</b></div>
-        <div><span>Contracted a year at today’s book</span><b class="num">${kmoney(yr)}</b></div></div>`;
+        <div><span>Contracted · ${act.length} ${act.length === 1 ? 'account' : 'accounts'}</span><b class="num">${kmoney(fees)}<small> a week</small></b></div>
+        ${rc.gap && s.turn > 1 ? `<div><span>Received last week</span><b class="num">${kmoney(rc.got)}</b></div>` : ''}
+        <div><span>Backlog</span><b class="num">${kmoney(backlog(s))}</b></div>
+        <div><span>Contracted a year</span><b class="num">${kmoney(yr)}</b></div></div>`
+        + (rc.gap && s.turn > 1 ? note('coin', `Received is net of ${esc(rc.why.join(', ') || 'short service')}.`) : '');
     }
     const sp = f ? revSplit(s, (f.alloc && f.alloc.serving || {}).pf) : { contracts: 0 };
     if (f) {
@@ -717,7 +755,7 @@
         <div class="pl-money-t"><span>Net a week</span><b class="num ${f.net < 0 ? 'neg' : 'pos'}">${smoney(f.net)}</b></div></div>`;
       out += note('clock', s.turn > 1 ? `Last week: revenue <b class="num">${kmoney(m.revenue)}</b>, burn <b class="num">${kmoney(m.burn)}</b>, net <b class="num">${smoney(m.net)}</b>.` : 'The first week resolves at End Turn.');
     }
-    out += sec('record', 'Funding', `closed: ${m.roundsDone.length ? m.roundsDone.map(roundName).join(', ') : 'none yet'}`, 'funding');
+    out += sec('record', 'Funding', `closed: ${m.roundsDone.length ? m.roundsDone.map(r => roundName(r).replace(/ /g, '\u00a0')).join(', ') : 'none yet'}`, 'funding');
     const next = tryr(() => FR.money.nextRound(s), null), locked = !m.offer && m.lockedUntil && m.lockedUntil > s.turn;
     if (m.offer) out += roundCard(s, f);
     if (locked) out += banner('warn', 'clock', `No round until ${esc(when(m.lockedUntil))}`, `Investors return in ${wks(m.lockedUntil - s.turn)}.${m.milestone ? '' : ' A new milestone follows.'}`);
@@ -906,10 +944,11 @@
   function lineIcon(l) {
     const t = l.text;
     if (/\bgap \d/i.test(t) && !/incident at gap/i.test(t)) return 'alert';
+    if (/^Account (mood|board)|^Signed |^Declined |contracts? (live|ends?)|ended (its|their) contracts?|renews|without renewal|^Enterprise buyers/.test(t)) return 'building';
     if (/incident/i.test(t)) return 'incident';
     if (/\brecord\b/i.test(t)) return 'record';
     if (/round|series [ab]|milestone|investor/i.test(t)) return 'coin';
-    if (/\baccounts?\b|contract|signed|churn|renew|buyers?\b/i.test(t)) return 'building';
+    if (/\baccounts?\b|signed|churn|renew|buyers?\b/i.test(t)) return 'building';
     if (/cluster|compute|PF/.test(t)) return 'compute';
     if (/\bhir(e|es|ing)\b|headcount|laid off/i.test(t)) return 'hire';
     if (/project|complete|greenlit|started|cancelled|overran|failed/i.test(t)) return 'project';
@@ -960,7 +999,10 @@
     if (s.money.offer) return { label: `Boardroom: the ${roundName(s.money.offer.round)} offer`, icon: 'coin', go: 'boardroom.table' };
     if (s.market.dealOffer) return { label: `Boardroom: the ${rival(s, s.market.dealOffer.rivalId).name} offer`, icon: 'rival', go: 'boardroom.compute' };
     const f = fc(s); if (f && f.runway !== Infinity && f.runway < 13) return { label: `Boardroom: runway ${wks(Math.max(0, f.runway))}`, icon: 'coin', go: 'boardroom.table' };
-    const ac = accOf(s), room = maxActive(s) - (ac.active || []).length;
+    const ac = accOf(s), room = maxActive(s) - (ac.active || []).length, bk = book(s);
+    if (bk.short > 0.05) return { label: `Serving: ${trim1(bk.short)} PF short of the contracts`, icon: 'building', go: 'serving.wall' };
+    const risk = (ac.active || []).filter(a => !a.leaving && +a.mood < AK().watchMood).sort((a, b) => a.mood - b.mood)[0];
+    if (risk) return { label: `Serving: ${risk.name} at risk, mood ${Math.round(risk.mood)}`, icon: 'building', go: 'serving.accounts' };
     const can = room > 0 ? (ac.offers || []).filter(o => reqList(s, o).ok && s.money.cash >= signCost(o)).length : 0;
     if (can) return { label: `Serving: ${can} account ${can === 1 ? 'offer' : 'offers'} the lab qualifies for`, icon: 'building', go: 'serving.accounts' };
     const pj = s.projects; if (pj.active.length < pj.slots && pj.offers.some(o => o.tier <= s.research.tier)) return { label: 'Research: greenlight a project', icon: 'research', go: 'research.offers' };
@@ -1054,6 +1096,8 @@
       case 'hire': said(run({ type: 'hire', n: Math.max(1, Math.min(Math.round(+v) || 1, hireRoom(s))) })); return;
       case 'layoff': sfx('tap'); P.confirm = 'layoff:' + Math.max(1, Math.round(+v) || 1); render(true); return;
       case 'layoffOk': said(run({ type: 'layoff', n: Math.round(+v) })); return;
+      case 'slUndo': sfx('tap'); run(Object.assign({ type: 'sliders' }, weekStart(s))); return;
+      case 'slDefault': sfx('tap'); run(Object.assign({ type: 'sliders' }, SDEF())); return;
       case 'nudge': { const [k, d] = String(v).split(':'); if (s.sliders[k] == null) return; sfx('tap'); run(Object.assign({ type: 'sliders' }, link(s.sliders, k, s.sliders[k] + (+d || 0)))); return; }
       case 'retire': sfx('tap'); P.confirm = 'retire'; render(true); return;
       case 'retireOk': run({ type: 'retire' }); return;
@@ -1106,8 +1150,8 @@
     if (U.sheetId && U.sheetId.indexOf('fp:') === 0 && P.floor) render(true);
   };
   FR.on('state:changed', () => { if (!busy) P.refresh(); });
-  FR.on('turn:ended', () => { P.confirm = null; if (!busy) P.refresh(); });
-  ['game:new', 'game:loaded'].forEach(ev => FR.on(ev, () => { P.floor = P.tab = P.focus = P.confirm = P.hotspot = null; drag = null; SL = null; }));
+  FR.on('turn:ended', () => { P.confirm = null; markWeek(); if (!busy) P.refresh(); });
+  ['game:new', 'game:loaded'].forEach(ev => FR.on(ev, () => { P.floor = P.tab = P.focus = P.confirm = P.hotspot = null; drag = null; SL = null; markWeek(); }));
   FR.on('ui:sheet', d => { const id = d && d.id; if (!id || id.indexOf('fp:') !== 0) { drag = null; SL = null; P.confirm = null; } });
   P.debug = () => ({ floor: P.floor, tab: P.tab, focus: P.focus, confirm: P.confirm, hotspot: P.hotspot, sheet: U.sheetId, dragging: !!drag, sliders: !!SL });
 
@@ -1166,6 +1210,7 @@
       '.fp-sl .pl-range::-moz-range-thumb{pointer-events:auto;width:28px;height:28px;border:8px solid transparent;background-clip:padding-box;box-shadow:inset 0 0 0 3px var(--rc)}',
       '.fp-sl .pl-range:focus-visible::-webkit-slider-thumb{box-shadow:inset 0 0 0 3px var(--rc),0 0 0 3px var(--focus)}',
       '.fp-sl-f{margin:-8px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3)}',
+      '.fp-reset{display:flex;gap:8px;margin:12px 0 0;padding-top:10px;border-top:1px solid var(--line)}.fp-reset .btn{flex:1;width:auto;min-width:0;min-height:var(--tap);margin:0;padding:4px 8px;border-color:var(--line);white-space:nowrap;font-size:var(--text-sm);font-variant-numeric:tabular-nums}',
       '.fp-nudge{display:flex;gap:6px;margin:6px 0 0}.fp-nudge .btn{flex:1;width:auto;min-width:0;min-height:var(--tap);margin:0;padding:4px 6px;border-color:var(--line);font-variant-numeric:tabular-nums}',
       '.fp-sl-f b,.fp-sl-foot b{color:var(--ink)}',
       '.fp-sl-foot b.neg{color:var(--bad)}.fp-sl-foot b.pos{color:var(--good)}',
@@ -1233,14 +1278,14 @@
       '.fp-memo .fp-news li{background:transparent;border:1px solid var(--line)}',
       /* enterprise accounts (V0.3): the serving readout, the book, requirement lists on offer cards */
       '.fp-sl-r{margin:4px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3)}.fp-sl-r b{color:var(--ink)}.fp-sl-r .neg{color:var(--bad)}',
-      '.fp-split,.fp-contract{margin-top:var(--sp-2)}.fp-contract small{font-family:var(--font-ui);font-size:var(--text-xs);color:var(--ink-3)}',
+      '.fp-split,.fp-contract{margin-top:var(--sp-2)}.fp-contract{padding-top:6px;padding-bottom:6px}.fp-contract small{font-family:var(--font-ui);font-size:var(--text-xs);color:var(--ink-3)}',
       '.fp-accs{padding-top:2px;padding-bottom:2px}',
       '.fp-acc{padding:10px 0}.fp-acc+.fp-acc{border-top:1px solid var(--line)}',
       '.fp-acc-h{display:flex;align-items:center;gap:6px;min-width:0}',
       '.fp-acc-h>b{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-md)}',
       '.fp-acc-h .badge{flex:none}',
       '.fp-acc-fee{flex:none;margin-left:auto;font-size:var(--text-md);font-weight:var(--w-medium);color:var(--gold)}.fp-acc-fee small{font-size:var(--text-xs);color:var(--ink-3)}',
-      '.fp-acc-s{margin:2px 0 6px;font-size:var(--text-sm);color:var(--ink-3)}',
+      '.fp-acc-s{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin:4px 0 6px;font-size:var(--text-sm);color:var(--ink-3)}.fp-acc-s .badge{flex:none}',
       '.fp-acc-m{display:grid;grid-template-columns:44px minmax(0,1fr) 30px;align-items:center;gap:8px;font-size:var(--text-xs);color:var(--ink-3)}',
       '.fp-acc-m .meter{height:6px;margin:0}.fp-acc-m>b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);text-align:right}',
       '.fp-acc-w{display:flex;align-items:flex-start;gap:6px;margin:6px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--warn)}.fp-acc-w .ico{flex:none;width:16px;height:16px;margin-top:1px}',

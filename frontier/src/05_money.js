@@ -26,16 +26,23 @@
     rounds: {
       seed: { name: 'Seed round', amount: 18e6, pctMin: 0.1, pctMax: 0.3 },
       a: { name: 'Series A', amount: 75e6, pctMin: 0.1, pctMax: 0.35 },
-      b: { name: 'Series B', amount: 120e6, pctMin: 0.10, pctMax: 0.20 }
+      b: { name: 'Series B', amount: 150e6, pctMin: 0.10, pctMax: 0.20 }   // 150M: 10-11.5% at the ~$1.3-1.5B valuations where it lands
     },
     order: ['seed', 'a', 'b'],               // after the last, no further rounds (C and IPO are back-burner)
+    amountCap: 1.25,                         // above the valuation where pctMin buys the round's amount, the amount grows to at
+                                             //   most amount × amountCap and the stake sold falls below pctMin (floor pctFloor):
+    pctFloor: 0.005,                         //   waiting out a round never buys a bigger one
+    reofferBack: [13, 26, 52],               // re-offer delay after the 1st, 2nd, 3rd+ decline or lapse of the same round
     offerTurns: 8, offerWarn: [3, 1],        // an offer stays open 8 turns; memo when 3 and 1 remain
     reofferTurns: 13,                        // a lapsed or declined offer returns 13 turns later on the same milestone
     lockTurns: 52,                           // a missed milestone closes rounds for 52 turns, then a fresh milestone
     msTurns: 36, msWarn: [8, 4, 1],          // milestone window; memo when 8, 4 and 1 weeks remain
     msPaceAt: [30, 24, 18, 12],              // weeks left at which the memo flags a capability milestone the current pace misses
     ms: { capFrac: 0.12, avgFrac: 0.18, revMin: 50000, revMult: 2.5, trustAdd: 10, trustMax: 80,
-      bRevMin: 400000, bRevMult: 3 },        // the Series B milestone: weekly revenue max(bRevMin, revenue × bRevMult)
+      bWait: 26,                             // the B milestone cannot be met until this many weeks after the A closes (owner call V0.3)
+      bRevMin: 400000, bRevMult: 3,          // the Series B milestone: weekly revenue max(bRevMin, trailing revenue × bRevMult)
+      bRevAgain: 1.3, bRevWeeks: 8 },        //   when the A closes; after a miss (or on a 0.2 save) × bRevAgain. Trailing = the
+                                             //   mean of the last bRevWeeks weeks, so one starved week cannot rig the target
     msKinds: [['cap', 4], ['avgCap', 3], ['revenue', 2], ['trust', 1]],   // weights for a fresh milestone after a miss
     msKindsFor: { b: [['revenue', 1]] },     // per-round override: the B milestone is always weekly revenue
     runwayWarn: [26, 13, 6],                 // memo flag on crossing each; every week below the last
@@ -109,13 +116,22 @@
 
   // ---- rounds and milestones ----
   M.nextRound = (s) => K.order.find(r => s.money.roundsDone.indexOf(r) < 0) || null;
-  // fixed raise at the current valuation; dilution rounded to 0.5% and held inside the round's bounds
+  // fixed raise at the current valuation; dilution rounded to 0.5% and held inside the round's bounds. Above pctMax the
+  // amount shrinks; below pctMin it grows to at most amount × amountCap, then the stake sold falls under pctMin
   function makeOffer(s, round, from) {
     const r = K.rounds[round], v = Math.max(1, M.valuation(s)), raw = r.amount / v;
-    const p = FR.clamp(Math.round(raw * 200) / 200, r.pctMin, r.pctMax);
-    const amount = raw >= r.pctMin && raw <= r.pctMax ? r.amount : Math.round(p * v / 1e5) * 1e5;
+    let p, amount;
+    if (raw > r.pctMax) { p = r.pctMax; amount = Math.round(p * v / 1e5) * 1e5; }
+    else if (raw >= r.pctMin) { p = FR.clamp(Math.round(raw * 200) / 200, r.pctMin, r.pctMax); amount = r.amount; }
+    else {
+      amount = Math.round(Math.min(r.pctMin * v, r.amount * K.amountCap) / 1e5) * 1e5;
+      p = Math.min(r.pctMin, Math.max(K.pctFloor, Math.round(amount / v * 200) / 200));
+    }
     return (s.money.offer = { round, amount, pct: p, valuation: Math.round(amount / p), expires: from + K.offerTurns - 1 });
   }
+  // re-offer delay after a decline or lapse: 13 weeks, then 26, then 52 for the same round (a lab that keeps saying no is
+  // asked less often); money.passes counts them and resets when a round closes
+  function reoffer(m) { m.passes = (m.passes || 0) + 1; return K.reofferBack[Math.min(m.passes, K.reofferBack.length) - 1] || K.reofferTurns; }
   const offerText = (o) => RN(o.round) + ' offer: ' + money(o.amount) + ' for ' + pct(o.pct) + ' at a ' + money(o.valuation) +
     ' valuation. Open until ' + FR.dateLabel(o.expires) + '.';
   function offer(s, round, from, report, lead) {
@@ -132,7 +148,8 @@
   M.progress = function (s, m) {
     m = m || s.money.milestone; if (!m) return null;
     const cur = m.kind === 'cap' ? s.model.skills[m.skill || best(s)].cap : m.kind === 'avgCap' ? avg(s) : m.kind === 'revenue' ? s.money.revenue : trust(s);
-    return { current: cur, value: m.value, met: cur >= m.value, weeksLeft: m.due - s.turn };
+    const early = !!(m.opens && s.turn < m.opens);   // the window has not opened yet: reaching the value does not count
+    return { current: cur, value: m.value, met: !early && cur >= m.value, early, opensIn: early ? m.opens - s.turn : 0, weeksLeft: m.due - s.turn };
   };
   // capability milestones: where today's settings leave the measure by the due week (FR.sim.forecast gains held flat, so
   // slightly generous as gains shrink with capability). null for revenue and trust milestones, or without the full sim.
@@ -152,15 +169,21 @@
     if (m.kind === 'revenue') return 'weekly revenue ' + money(s.money.revenue);
     return 'public trust ' + Math.floor(trust(s));
   }
-  function setMilestone(s, round, kind, from) {
+  // mean weekly revenue over the last K.ms.bRevWeeks weeks of history (this week's revenue when there is none)
+  M.trailRevenue = function (s) {
+    const h = (s.history || []).slice(-K.ms.bRevWeeks).map(r => +r.revenue || 0);
+    return h.length ? h.reduce((a, b) => a + b, 0) / h.length : Math.max(0, s.money.revenue || 0);
+  };
+  function setMilestone(s, round, kind, from, again) {
     const Q = K.ms; let value;
     if (kind === 'cap') { const c = s.model.skills[best(s)].cap; value = Math.min(100, ceil5(c + Q.capFrac * (100 - c))); }
     else if (kind === 'avgCap') { const a = avg(s); value = Math.min(100, ceil5(a + Q.avgFrac * (100 - a))); }
-    else if (kind === 'revenue' && round === 'b') value = sig2(Math.max(Q.bRevMin, s.money.revenue * Q.bRevMult));
+    else if (kind === 'revenue' && round === 'b') value = sig2(Math.max(Q.bRevMin, M.trailRevenue(s) * (again ? Q.bRevAgain : Q.bRevMult)));
     else if (kind === 'revenue') value = sig2(Math.max(Q.revMin, s.money.revenue * Q.revMult));
     else value = Math.min(Q.trustMax, ceil5(trust(s) + Q.trustAdd));
-    const m = { round, kind, skill: null, value, due: from + K.msTurns, text: '' };
-    m.text = RN(round) + ' opens if ' + REACH[kind](m) + ' by ' + FR.dateLabel(m.due) + '.';
+    const wait = round === 'b' && !again ? Q.bWait : 0;
+    const m = { round, kind, skill: null, value, opens: wait ? from + wait : 0, due: from + wait + K.msTurns, text: '' };
+    m.text = RN(round) + ' opens if ' + REACH[kind](m) + (wait ? ' between ' + FR.dateLabel(m.opens) + ' and ' : ' by ') + FR.dateLabel(m.due) + '.';
     return (s.money.milestone = m);
   }
   function pickKind(rng, round) {
@@ -175,9 +198,11 @@
 
   function checkMilestone(s, report) {
     const m = s.money, ms = m.milestone, T = s.turn;
-    if (M.progress(s, ms).met) {
+    const pr = M.progress(s, ms);
+    if (pr.met) {
+      ms.metAt = T; ms.metValue = pr.current;   // kept for the Money tab once the offer is declined or lapses
       report.events.push({ type: 'money:milestone', round: ms.round, hit: true });
-      return offer(s, ms.round, T + 1, report, RN(ms.round) + ' milestone met: ' + nowText(s, ms) + ' against ' + ms.value + '.');
+      return offer(s, ms.round, T + 1, report, RN(ms.round) + ' milestone met: ' + nowText(s, ms) + ' against ' + (ms.kind === 'revenue' ? money(ms.value) : ms.value) + '.');
     }
     if (T >= ms.due) {
       m.milestone = null; m.lockedUntil = T + 1 + K.lockTurns;
@@ -198,7 +223,7 @@
     if (m.offer) {
       const o = m.offer, left = o.expires - T;
       if (left <= 0) {
-        m.offer = null; m.lockedUntil = T + K.reofferTurns;
+        m.offer = null; m.lockedUntil = T + reoffer(m);
         report.memo.push({ kind: 'change', text: RN(o.round) + ' offer lapsed unanswered. Investors expect to return ' + FR.dateLabel(m.lockedUntil) + '.' });
       } else if (K.offerWarn.indexOf(left) >= 0) report.memo.push({ kind: 'due', text: RN(o.round) + ' offer (' + money(o.amount) + ' for ' + pct(o.pct) + ') lapses ' +
         (left === 1 ? 'after next week' : 'in ' + left + ' weeks') + '.' });
@@ -212,7 +237,7 @@
     }
     if (!r) return;
     if (r === K.order[0]) return offer(s, r, next, report);
-    if (!m.milestone) { setMilestone(s, r, pickKind(rng, r), next); report.memo.push({ kind: 'change', text: 'Investors are back. ' + m.milestone.text }); return; }
+    if (!m.milestone) { setMilestone(s, r, pickKind(rng, r), next, true); report.memo.push({ kind: 'change', text: 'Investors are back. ' + m.milestone.text }); return; }
     checkMilestone(s, report);
   }
 
@@ -223,7 +248,7 @@
     if (!o) return no('No round on the table');
     if (s.turn > o.expires) return no('The ' + RN(o.round) + ' offer has lapsed');
     m.cash += o.amount; m.founderPct = FR.round(m.founderPct * (1 - o.pct), 4); m.valuation = o.valuation;
-    m.roundsDone.push(o.round); m.offer = null; m.milestone = null; m.lockedUntil = 0;
+    m.roundsDone.push(o.round); m.offer = null; m.milestone = null; m.lockedUntil = 0; m.passes = 0;
     const next = M.nextRound(s);
     if (next) setMilestone(s, next, firstKind(next), s.turn);
     const r = done({ type: 'money:round', round: o.round, amount: o.amount, pct: o.pct },
@@ -232,7 +257,7 @@
   };
   M.declineRound = function (s) {
     const m = s.money; if (!m.offer) return no('No round on the table');
-    const r = m.offer.round; m.offer = null; m.lockedUntil = s.turn + K.reofferTurns;
+    const r = m.offer.round; m.offer = null; m.lockedUntil = s.turn + reoffer(m);
     return done(null, RN(r) + ' offer declined. Investors expect to return ' + FR.dateLabel(m.lockedUntil) + '.');
   };
   // hires ordered this week (they all join on the same turn)
@@ -268,7 +293,7 @@
   M.init = function (s, rng) {
     s.staff = { headcount: K.startHead, hiring: [] };
     s.money = { cash: K.startCash, founderPct: 100, valuation: 0, roundsDone: [], offer: null, milestone: null, lockedUntil: 0, revenue: 0, burn: 0, net: 0,
-      revMarket: 0, revContracts: 0 };
+      revMarket: 0, revContracts: 0, passes: 0 };
     if (FR.accounts) FR.accounts.init(s);
     s.money.valuation = M.valuation(s);
     makeOffer(s, K.order[0], s.turn);
@@ -329,14 +354,21 @@
         money(M.marketRevenue(s, demand) - sp.market) + ' a week unserved. Revenue ' + money(revenue) + ', down from ' + money(rev0) + '.' });
     }
     // accounts after revenue resolves (mood, churn, expiry and renewal, the offer board); their lines follow the money lines
-    const acct = { turn: report.turn, events: report.events, memo: [], news: report.news, flows: report.flows };
+    const acct = { turn: report.turn, events: report.events, memo: [], news: report.news, flows: report.flows, deferAccounts: report.deferAccounts };
     if (FR.accounts) FR.accounts.step(s, alloc, rng, acct);
     arrivals(s, next, report);
     m.valuation = M.valuation(s);
-    if (m.cash <= 0) { if (s.status === 'playing') bankrupt(s, report); report.memo.push.apply(report.memo, acct.memo); return; }
+    const tail = () => { report.memo.push.apply(report.memo, acct.memo); if (report.flows.accounts) report.flows.accounts.at = report.memo.length; };
+    if (m.cash <= 0) { if (s.status === 'playing') bankrupt(s, report); return tail(); }
     rounds(s, rng, report);
     runwayMemo(s, was, report);
-    report.memo.push.apply(report.memo, acct.memo);
+    tail();
+  };
+  // a save from before the Series B existed (0.2) that has closed the A: open the B on a revenue milestone now
+  M.openB = function (s) {
+    const m = s.money;
+    if (!m || m.roundsDone.indexOf('a') < 0 || m.roundsDone.indexOf('b') >= 0 || m.milestone || m.offer || m.lockedUntil) return null;
+    return setMilestone(s, 'b', 'revenue', s.turn, true);
   };
 
   M.debug = function (s) {

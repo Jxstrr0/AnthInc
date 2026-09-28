@@ -754,8 +754,10 @@ SECTIONS.accounts = async function (T) {
     assert(await ok.count(), 'no Decline confirm on the offer card');
     await ok.scrollIntoViewIfNeeded(); await ok.click();
     await T.until((id) => !FR.state.accounts.offers.some(o => o.id === id), other, 4000, 'the declined offer to leave the board');
-    const used = await T.ev((id) => FR.state.accounts.used.length, other);
-    assert(used >= 2, 'the declined buyer is not marked used');
+    const cool = await T.ev(() => (FR.state.accounts.cool || []).filter(c => c.why === 'declined' && c.until === FR.state.turn + FR.accounts.K.cooldown).length);
+    assert(cool === 1, 'the declined buyer is not resting for the cooldown');
+    const ml = await T.ev(() => FR.state.pendingMemo.filter(m => m.key === 'accounts:' + FR.state.turn).map(m => m.text));
+    assert(ml.length === 1 && /^Signed .+ Declined .+\.$/.test(ml[0]), 'signing and declining in one week do not share one memo line: ' + JSON.stringify(ml));
   } else T.note('one offer on the board: Decline not exercised');
   await T.closeSheet(); await T.settle();
   // three weeks: the fee starts two weeks after signing
@@ -779,7 +781,7 @@ SECTIONS.accounts = async function (T) {
   await T.until(() => FR.ui.sheetId === 'fp:boardroom' && FR.ui.panels.debug().tab === 'money' && !FR.ui.splitOpen(), null, 4000, 'the Money tab from the split card');
   await sleep(350);
   const mt = await T.ev(() => document.getElementById('sheetBody').innerText);
-  assert(/Contracted revenue · 1 account/.test(mt) && /Backlog/.test(mt) && /Revenue · contracts/.test(mt), 'the Money tab lacks contracted revenue or the backlog: ' + mt.slice(0, 300));
+  assert(/Contracted · 1 account/.test(mt) && /Backlog/.test(mt) && /Revenue · contracts/.test(mt), 'the Money tab lacks contracted revenue or the backlog: ' + mt.slice(0, 300));
   await T.shot('money-contracts');
   await T.closeSheet(); await T.settle();
   // the serving slider readout
@@ -815,6 +817,12 @@ SECTIONS.accounts = async function (T) {
   await sleep(700);
   const spent = await T.ev(() => ({ sheet: FR.ui.sheetId, mode: FR.r.mode }));
   assert(!spent.sheet && spent.mode !== 'focus', 'the tap that closed the split card also opened something: ' + JSON.stringify(spent));
+  await T.closeSheet(); await T.settle();
+  // the Company dock button opens the overview sheet (owner call, V0.3); the dock fits at 360 with 44 px targets
+  await T.smallTargets('#hud .bottom .btn', 'the dock at 360');
+  await T.page.click('#hOver');
+  await T.until(() => FR.ui.sheetId === 'overview', null, 3000, 'the company overview from the dock');
+  await T.fitsWidth('overview at 360x740'); await T.shot('overview-360');
   await T.closeSheet(); await T.settle();
   await wallView(T); await T.shot('client-wall-360');
   await T.ev(() => FR.r.home(0)); await T.settle();
