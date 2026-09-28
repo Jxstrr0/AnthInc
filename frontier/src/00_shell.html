@@ -522,11 +522,13 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #hElev{--i:var(--icon-elevator);position:relative}
 #hMemo{--i:var(--icon-memo);position:relative}
 #hEnd{--i:var(--icon-endturn)}
-#hOver{--i:var(--icon-chart)}
+#hOver{--i:var(--icon-chart);position:relative}
 @media (max-width:400px){#hud .bottom{gap:4px}#hud .bottom .btn{padding:6px 2px;font-size:var(--text-xs)}#hud .bottom .btn.endturn{font-size:var(--text-md)}}
 /* something to read: a dot on Memo (an unread weekly memo), like the panels' tab dots */
 #hMemo.dot::after,#hElev.dot::after{content:"";position:absolute;top:6px;left:calc(50% + 9px);width:9px;height:9px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--surface)}
 #hMemo.dot.bad::after{background:var(--bad)}
+/* V0.4: renewal meetings with no answer: an amber count on Company (data-n) */
+#hOver.meet::after{content:attr(data-n);position:absolute;top:3px;left:calc(50% + 7px);min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--warn);box-shadow:0 0 0 2px var(--surface);color:#1a1206;font:700 11px/16px var(--font-num);text-align:center}
 /* ---- Bottom sheet chrome (#sheet): grab handle, title, close, safe areas. Content is owned by each panel. ---- */
 /* #sheet is the frame (grab, close, rounded top) and never scrolls; #sheetBody is the scroller, so the close
    and the grab stay put however long the content is. Panels pin things (.tabs.sticky, .pl-nav) against
@@ -641,6 +643,9 @@ body.hud-split-on #tags{visibility:hidden}
 .tag.on,.tag:active{background:var(--brand);border-color:var(--brand-bright);color:var(--on-brand)}
 .tag.on i,.tag:active i{background:var(--on-brand)}
 .tag.off{display:none}
+/* V0.4: a count on a tag (unanswered renewal meetings on the client wall) */
+.tag .tag-n{flex:none;min-width:16px;height:16px;margin-right:-4px;padding:0 4px;border-radius:8px;background:var(--warn);color:#1a1206;font:700 11px/16px var(--font-num);text-align:center}
+.tag .tag-n[hidden]{display:none}
 .tag:focus-visible{outline:none;box-shadow:var(--ring)}
 @media (max-height:500px){.tag{min-height:22px;padding:3px var(--sp-2) 3px 7px;font-size:var(--text-xs);gap:var(--sp-1)}.tag i{width:6px;height:6px}.tag::before{inset:-11px -2px}}
 @keyframes tagpulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--brand-bright) 60%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}

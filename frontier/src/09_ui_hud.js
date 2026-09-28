@@ -4,6 +4,7 @@
 //   FR.ui.refresh()        chips + strip from FR.state (after every command, End Turn, load)
 //   FR.ui.updateEnd()      End Turn: disabled while the elevator rides (and with no run in play)
 //   FR.ui.memoDot()        the dot on Memo while this week's memo is unread
+//   FR.ui.meetDot()        the count on Company while a renewal meeting has no answer (V0.4)
 //   FR.ui.openMemo()       FR.ui.memo() (09_ui_panels.js) or, without it, a plain memo sheet
 //   FR.ui.gameMenu()       behind the top-right button: how to play, sound, reduce motion, save and quit
 //   FR.ui.goFloor(id, fn)  ride there, then run fn once the doors open (at once when already there)
@@ -38,7 +39,7 @@
     const tr = Math.round((s.market && s.market.trust) || 0), tc = $('hudTrustChip');
     $('hudTrust').textContent = String(tr); tc.classList.toggle('warn', tr < 35 && tr >= 20); tc.classList.toggle('bad', tr < 20);
     tc.setAttribute('aria-label', `Public trust ${tr} of 100`);
-    U.strip(s); U.memoDot(); U.updateEnd();
+    U.strip(s); U.memoDot(); U.meetDot(); U.updateEnd();
     if (U.splitOpen()) { if (hasBook(s)) $('hudSplit').innerHTML = splitHtml(s); else U.split(false); }
   };
   // the frontier strip: your average capability vs the best rival's, and the safe-hold count n / 52 once it runs
@@ -104,6 +105,16 @@
     const flag = on && (m.lines || []).some(l => l && l.kind === 'flag');
     b.classList.toggle('dot', on); b.classList.toggle('bad', flag);
     b.setAttribute('aria-label', on ? `Memo: ${flag ? 'unread, with flags' : 'unread'}` : 'Memo');
+  };
+  // V0.4: renewal meetings with no answer: a count badge on the Company dock button
+  U.meetsUnanswered = function (s) {
+    s = s || FR.state; if (!s || !s.accounts || !FR.accounts || typeof FR.accounts.meetings !== 'function') return 0;
+    try { return FR.accounts.meetings(s).filter(a => a.meeting && a.meeting.answer == null).length; } catch (e) { return 0; }
+  };
+  U.meetDot = function () {
+    const b = $('hOver'); if (!b) return; const n = U.meetsUnanswered();
+    b.classList.toggle('meet', n > 0); if (n > 0) b.dataset.n = String(n); else delete b.dataset.n;
+    b.setAttribute('aria-label', n > 0 ? `Company overview: ${n} renewal ${n === 1 ? 'meeting' : 'meetings'} unanswered` : 'Company overview');
   };
   U.markMemoRead = function () { const s = FR.state; if (s && s.memo) memoSeen = s.memo.turn; U.memoDot(); };
   // a plain memo sheet for builds without 09_ui_panels.js (the panels' FR.ui.memo replaces it)
@@ -234,13 +245,13 @@
     ['turn:ended', 'game:new', 'game:loaded'].forEach(e => FR.on(e, U.refresh));
     // a ride disables End Turn; re-enable it on arrival
     ['elevator:ride', 'elevator:arrived', 'ui:sheet'].forEach(e => FR.on(e, U.updateEnd));
-    ['game:new', 'game:loaded'].forEach(e => FR.on(e, () => { memoSeen = -1; last.strip = null; U.memoDot(); }));
+    ['game:new', 'game:loaded'].forEach(e => FR.on(e, () => { memoSeen = -1; last.strip = null; U.memoDot(); U.meetDot(); }));
     // any sheet whose id names the memo marks this week's memo read (FR.ui.memo's own sheet included)
     FR.on('ui:sheet', d => { if (d && d.id && /memo/i.test(d.id)) U.markMemoRead(); });
     U.updateEnd();
   };
   const baseDebug = U.debug;
-  U.debug = () => Object.assign(baseDebug ? baseDebug() : {}, { endTurn: U.endWhy() || 'ready', memoUnread: U.memoUnread(),
+  U.debug = () => Object.assign(baseDebug ? baseDebug() : {}, { endTurn: U.endWhy() || 'ready', memoUnread: U.memoUnread(), meetBadge: U.meetsUnanswered(),
     chips: { week: ($('hudWeek') || {}).textContent, cash: ($('hudCash') || {}).textContent, runway: ($('hudRunway') || {}).textContent, trust: ($('hudTrust') || {}).textContent },
     strip: ($('hudStrip') || {}).textContent || '', panels: typeof U.panel === 'function', split: U.splitOpen() ? ($('hudSplit').innerText || '').replace(/\s+/g, ' ').trim() : null });
 })(typeof window !== 'undefined' ? window.FR : globalThis.FR);

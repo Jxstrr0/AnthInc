@@ -27,6 +27,11 @@
 //           backlog, serving readout, elevator line) → save → reload → Continue → same book and plaque → 360x740 fit →
 //           a crafted churn: the plaque goes dark for a week, then disappears. Shots at 390x844 and 360x740, and its own
 //           contact sheet test/shots/contact-accounts.png
+//           V0.4: two crafted live accounts (one inside its renewal meeting, one with a crafted ask) and a crafted hot and
+//           cold sector → badges on Company and the client wall tag, the sector strip, skill tags, the ask line (Accept
+//           through the UI), the meeting card (Push up through the UI), the client-work line, plaque tags and the hot
+//           tint, the overview's clients section → End Turn to the contract end: tier 2 → save → reload → load → 360
+//           fit. Its shots (390x844) form test/shots/contact-v04.png
 // Output: one line per section, 'ok <section>' or 'FAIL <section>: <reason>', then 'ALL PASS' or the failure count.
 // Screenshots: test/shots/<n>-<section>-<nn>-<name>.png, combined into test/shots/contact.png (python3 + PIL).
 'use strict';
@@ -839,8 +844,142 @@ SECTIONS.accounts = async function (T) {
   assert(gone === 0, `the churned plaque is still up a week later (${gone})`);
   const again = await T.ev((n) => FR.state.accounts.offers.some(o => o.name === n), ch.lost.name);
   assert(!again, 'the churned buyer is back on the offer board');
+  T.noErrors('V0.3 accounts');
+  await accountsV04(T);
   T.noErrors();
 };
+
+// V0.4 (docs/frontier-handoff-v0.4.html §3.5): a renewal meeting answered Push up through the UI and resolved at the
+// contract end; a client ask accepted through the UI; a hot sector on the strip and the plaque tint; the badges on the
+// Company button and the client wall's tag; the client-work line; the overview's clients section; save → reload → load.
+// State is set up directly (two crafted live accounts, a crafted ask, a crafted swing). Shots carry "v04" for their own sheet.
+async function accountsV04(T) {
+  await T.page.setViewportSize(PHONE); await sleep(400);
+  await T.ride('serving');
+  const ok = await T.ev(() => !!(FR.cmd.renewAccount && FR.cmd.answerAsk && FR.accounts.meetingView && FR.accounts.askView && FR.accounts.sectorStrip && FR.model.fieldText));
+  assert(ok, 'the V0.4 commands or reads are missing from the build');
+  // the lab in step at tier 2's minimums, cash to spare, serving compute for both contracts
+  const keep = () => {
+    FR.SKILLS.forEach(k => { const x = FR.state.model.skills[k]; x.cap = 40; x.safe = 39; });
+    FR.state.market.trust = 62; FR.state.money.cash = Math.max(FR.state.money.cash, 60e6);
+    FR.state.accounts.active.forEach(a => { if (a.id === 'v04-meet') a.mood = 86; });
+  };
+  const ids = await T.ev((keepSrc) => {
+    const keep = eval(keepSrc), s = FR.state, A = FR.accounts, T0 = s.turn, sk = FR.accounts.K;
+    keep();
+    const mk = (id, name, sector, tier, pf, starts, ends, mood) => ({ id, name, sector, tier, pfPerWeek: pf, feePerWeek: A.fee(tier, T0), ends, signed: starts - 2, starts,
+      mood, served: pf, turns: ends - starts + 1, meeting: null, ask: null, field: 0 });
+    const m = mk('v04-meet', 'Coastline Freight', 'Logistics', 1, 14, T0 - 46, T0 + 5, 86);
+    m.meeting = { opens: T0 - 3, answer: null };
+    const k = mk('v04-ask', 'Brightwell Stores', 'Retail', 1, 12, T0 - 20, T0 + 40, 72);
+    const cur = s.model.skills.coding.cap;
+    k.ask = { type: 'cap', skill: 'coding', target: Math.ceil(cur + 4), arrived: T0, from: T0, due: T0 + 12, weeks: 12, progress: FR.round(cur, 1),
+      reward: Math.round(4 * k.feePerWeek / 1000) * 1000, answered: null, declineBy: T0 + sk.ask.declineWeeks };
+    s.accounts.active = [m, k];
+    s.accounts.sectors.hot = { name: 'Logistics', from: T0, until: T0 + 20 };
+    s.accounts.sectors.cold = { name: 'Pharma', from: T0, until: T0 + 14 };
+    const f = FR.sim.forecast(s), need = 26 + 4, sv = f.alloc.serving.pf, share = s.sliders.serving / 100;
+    if (sv < need && share > 0) FR.cmd.do({ type: 'rent', pf: Math.min(FR.compute.maxRent(s), s.compute.rentPF + Math.ceil((need - sv) / share) + 2) });
+    FR.emit('state:changed', {});
+    return { meet: m.id, ask: k.id, T0 };
+  }, '(' + keep.toString() + ')');
+  await sleep(300);
+  // badges: the Company dock button and the client wall's tag while the meeting has no answer
+  const b0 = await T.ev(() => ({ ui: FR.ui.debug().meetBadge, cls: document.getElementById('hOver').classList.contains('meet'), n: document.getElementById('hOver').dataset.n,
+    fd: FR.r.debug().floorDebug, tag: (() => { const el = document.querySelector('#tags .tag[data-t="serving.accounts"] .tag-n'); return el ? { hidden: el.hidden, n: el.textContent } : null; })() }));
+  assert(b0.ui === 1 && b0.cls && b0.n === '1', 'no badge on the Company button for an unanswered meeting: ' + JSON.stringify(b0));
+  assert(b0.fd.meetBadge === 1 && b0.tag && !b0.tag.hidden && b0.tag.n === '1', 'no badge on the client wall tag: ' + JSON.stringify(b0));
+  assert(b0.fd.plaquesTagged === 2 && b0.fd.plaquesHot === 1 && b0.fd.plaqueTints.indexOf('hot') >= 0, 'plaque tags / hot tint: ' + JSON.stringify(b0.fd));
+  await T.shot('v04-room-badge');
+  // the Accounts section: the strip, the skill tags, the ask line, the meeting card
+  await T.ev(() => FR.ui.panel('serving.accounts')); await sleep(450);
+  const p0 = await T.ev(([m, k]) => {
+    const b = document.getElementById('sheetBody'), st = b.querySelector('.fp-strip'), hot = b.querySelector('.fp-sw.hot'), cold = b.querySelector('.fp-sw.cold');
+    const row = (id) => b.querySelector(`[data-accrow="${id}"]`), mc = b.querySelector(`[data-meet="${m}"]`), ak = b.querySelector(`[data-ask="${k}"]`);
+    return { strip: st ? { n: +st.dataset.strip, sw: st.scrollWidth, cw: st.clientWidth, ox: getComputedStyle(st).overflowX } : null, hot: hot ? hot.innerText : '', cold: cold ? cold.innerText : '',
+      hotCol: hot ? getComputedStyle(hot).borderLeftColor : '', coldCol: cold ? getComputedStyle(cold).borderLeftColor : '',
+      mrow: row(m) ? row(m).innerText : '', krow: row(k) ? row(k).innerText : '', ask: ak ? ak.innerText : '', meet: mc ? mc.innerText : '',
+      btns: mc ? Array.from(mc.querySelectorAll('[data-fp="meet"]')).map(e => ({ t: e.textContent.trim(), h: Math.round(e.getBoundingClientRect().height), sel: e.classList.contains('sel') })) : [],
+      askBtns: ak ? Array.from(ak.querySelectorAll('button')).map(e => e.textContent.trim()) : [], pv: FR.accounts.askView(FR.state, k).progressText };
+  }, [ids.meet, ids.ask]);
+  assert(p0.strip && p0.strip.n === 2 && p0.strip.ox === 'auto', 'the sector strip: ' + JSON.stringify(p0.strip));
+  assert(/Logistics/.test(p0.hot) && /agents/.test(p0.hot) && /Hot/.test(p0.hot) && /weeks? left/.test(p0.hot), 'the hot chip reads: ' + p0.hot);
+  assert(/Pharma/.test(p0.cold) && /Cold/.test(p0.cold), 'the cold chip reads: ' + p0.cold);
+  assert(p0.hotCol !== p0.coldCol, 'hot and cold chips share a colour');
+  assert(/Logistics · agents/.test(p0.mrow) && /Retail · coding/.test(p0.krow), 'no sector skill tag on the rows: ' + p0.mrow.slice(0, 120) + ' | ' + p0.krow.slice(0, 120));
+  assert(p0.ask.indexOf(p0.pv) >= 0 && /\d+(\.\d)? \/ \d+ · \d+ weeks left/.test(p0.pv) && /counts as accepted/.test(p0.ask), 'the ask line reads: ' + p0.ask);
+  assert(p0.askBtns.length === 2 && /Decline/.test(p0.askBtns[0]) && /Accept/.test(p0.askBtns[1]), 'Accept / Decline on the ask: ' + JSON.stringify(p0.askBtns));
+  assert(p0.btns.length === 3 && p0.btns.map(x => x.t).join('|') === 'Renew|Push up|Let go' && p0.btns.every(x => x.h >= 48 && !x.sel), 'the meeting buttons: ' + JSON.stringify(p0.btns));
+  assert(/Push up to tier 2/.test(p0.meet) && /Unanswered, it renews at tier 1/.test(p0.meet), 'the meeting card reads: ' + p0.meet);
+  await T.fitsWidth('V0.4 accounts at 390');
+  await T.smallTargets('#sheet.on .fp-meet button, #sheet.on .fp-ask button', 'meeting and ask buttons');
+  const scrollTo = (sel) => T.ev((q) => { const el = document.querySelector(q), b = document.getElementById('sheetBody'); if (el && b) b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top - 70; }, sel);
+  await scrollTo('#sheetBody [data-focus="accounts"]'); await T.shot('v04-strip');
+  await scrollTo(`#sheetBody [data-accrow="${ids.ask}"]`); await T.shot('v04-ask');
+  // accept the ask through the UI
+  await T.page.locator(`#sheetBody [data-fp="askOk"][data-v="${ids.ask}"]`).click();
+  await T.until((k) => { const a = FR.state.accounts.active.find(x => x.id === k); return a && a.ask && a.ask.answered === true; }, ids.ask, 4000, 'the ask accepted');
+  const a1 = await T.ev((k) => ({ t: document.querySelector(`#sheetBody [data-ask="${k}"]`).innerText, b: document.querySelectorAll(`#sheetBody [data-ask="${k}"] button`).length }), ids.ask);
+  assert(/Accepted/.test(a1.t) && a1.b === 0, 'the accepted ask still offers Accept / Decline: ' + a1.t);
+  // Push up through the UI
+  await scrollTo(`#sheetBody [data-meet="${ids.meet}"]`);
+  await T.page.locator(`#sheetBody [data-fp="meet"][data-v="${ids.meet}:up"]`).click();
+  await T.until((m) => { const a = FR.state.accounts.active.find(x => x.id === m); return a && a.meeting && a.meeting.answer === 'up'; }, ids.meet, 4000, 'the Push up answer');
+  await sleep(250);
+  const m1 = await T.ev((m) => ({ sel: Array.from(document.querySelectorAll(`#sheetBody [data-meet="${m}"] .btn.sel`)).map(e => e.textContent.trim()), t: document.querySelector(`#sheetBody [data-meet="${m}"]`).innerText,
+    badge: document.getElementById('hOver').classList.contains('meet'), ui: FR.ui.debug().meetBadge }), ids.meet);
+  assert(m1.sel.join() === 'Push up' && /accepts/.test(m1.t) && !m1.badge && m1.ui === 0, 'after Push up: ' + JSON.stringify(m1));
+  await T.shot('v04-meeting');
+  // the serving readout's client-work line (same text as the forecast)
+  await T.closeSheet(); await T.ev(() => FR.ui.panel('serving.wall')); await sleep(400);
+  const fl = await T.ev(() => ({ el: (document.querySelector('#sheetBody [data-fpfield]') || {}).textContent || '', want: FR.model.fieldText(FR.sim.forecast(FR.state).fieldGain) }));
+  assert(fl.want && fl.el === fl.want && /^Client work: \+[\d.]+ /.test(fl.el), 'the client-work line: ' + JSON.stringify(fl));
+  await T.closeSheet(); await T.settle();
+  // the client wall close-up: tags and the hot tint
+  await T.until(() => { const d = FR.r.debug().floorDebug || {}; return d.meetBadge === 0; }, null, 4000, 'the wall badge to clear');
+  await wallView(T); await T.shot('v04-wall');
+  await T.ev(() => FR.r.home(0)); await T.settle();
+  // the Company overview: model line, meetings, asks, the strip
+  await T.page.click('#hOver');
+  await T.until(() => FR.ui.sheetId === 'overview', null, 3000, 'the company overview');
+  const ov = await T.ev(() => ({ t: document.getElementById('sheetBody').innerText, field: (document.querySelector('#sheetBody [data-ovfield]') || {}).textContent || '', strip: !!document.querySelector('#sheetBody .fp-strip .fp-sw.hot') }));
+  assert(/Renewal meetings/i.test(ov.t) && /Coastline Freight/.test(ov.t) && /Client asks/i.test(ov.t) && /Brightwell Stores/.test(ov.t) && ov.strip, 'the overview clients section: ' + ov.t.slice(-600));
+  assert(/^Client work:/.test(ov.field), 'the overview model section lacks the client-work line');
+  await T.fitsWidth('overview V0.4 at 390');
+  await T.ev(() => { const el = document.querySelector('#sheetBody [data-ovmeet]'), b = document.getElementById('sheetBody'); if (el) b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top - 150; });
+  await T.shot('v04-overview');
+  await T.closeSheet(); await T.settle();
+  // end turns to the contract end: the push up resolves at mood 86 (sure) → tier 2
+  const ends = await T.ev((m) => FR.state.accounts.active.find(x => x.id === m).ends, ids.meet);
+  let memoSeen = '';
+  while ((await T.ev(() => FR.state.turn)) <= ends) {
+    await T.ev((src) => eval(src)(), '(' + keep.toString() + ')');
+    await T.endTurn();
+    const mt = await T.ev(() => (FR.state.memo.lines || []).map(l => l.text).join(' | '));
+    if (!memoSeen && /Coastline Freight/.test(mt)) memoSeen = mt;
+  }
+  const r = await T.ev((m) => { const a = FR.state.accounts.active.find(x => x.id === m); return { a, memo: FR.state.memo.lines.map(l => l.text).join(' | ') }; }, ids.meet);
+  assert(r.a && r.a.tier === 2 && !r.a.meeting, 'the pushed-up account is not at tier 2: ' + JSON.stringify(r.a) + ' memo: ' + r.memo);
+  assert(/Coastline Freight renews at tier 2/.test(r.memo), 'the memo does not say the account renewed at tier 2: ' + r.memo);
+  assert(memoSeen, 'no memo line named the account before its contract end');
+  // save → reload → load: the book and the swings come back
+  const bk = await T.ev(() => { FR.cmd.save(); return JSON.stringify(FR.state.accounts); });
+  await T.page.reload({ waitUntil: 'load' });
+  await T.until(() => !!(window.FR && FR.menu && document.getElementById('boot').classList.contains('on')), null, 15000, 'the boot screen after reload');
+  await T.toMenu();
+  await T.page.click('#mContinue');
+  await T.until(() => !!(FR.state && FR.inWorld() && FR.r.current), null, 10000, 'the lab after Continue');
+  await T.settle();
+  const bk2 = await T.ev(() => JSON.stringify(FR.state.accounts));
+  assert(bk2 === bk, 'the V0.4 book changed across save and load');
+  await T.ev(() => FR.ui.panel('serving.accounts')); await sleep(400);
+  const after = await T.ev(() => ({ strip: !!document.querySelector('#sheetBody .fp-strip .fp-sw.hot'), rows: document.querySelectorAll('#sheetBody .fp-acc').length }));
+  assert(after.strip && after.rows === 2, 'the Accounts section after the load: ' + JSON.stringify(after));
+  await T.page.setViewportSize(SMALL); await sleep(400);
+  await T.fitsWidth('V0.4 accounts at 360x740');
+  await T.closeSheet(); await T.settle();
+  await T.page.setViewportSize(PHONE); await sleep(300);
+}
 
 // ---------- contact sheet (python3 + PIL) ----------
 const CONTACT_PY = `
@@ -848,7 +987,8 @@ import os, sys
 from PIL import Image, ImageDraw, ImageFont
 d, out = sys.argv[1], sys.argv[2]
 pre = sys.argv[3] if len(sys.argv) > 3 else ''
-files = sorted(f for f in os.listdir(d) if f.endswith('.png') and not f.startswith('contact') and f.startswith(pre))
+has = sys.argv[4] if len(sys.argv) > 4 else ''
+files = sorted(f for f in os.listdir(d) if f.endswith('.png') and not f.startswith('contact') and f.startswith(pre) and has in f)
 if not files: sys.exit(0)
 S, CW, CH, LH, COLS, PAD = 0.4, 156, 338, 26, 8, 6
 rows = (len(files) + COLS - 1) // COLS
@@ -867,8 +1007,8 @@ for i, f in enumerate(files):
 sheet.save(out)
 print(len(files))
 `;
-function contactSheet(prefix, name) {
-  const r = spawnSync('python3', ['-c', CONTACT_PY, SHOTS, path.join(SHOTS, name || 'contact.png')].concat(prefix ? [prefix] : []), { encoding: 'utf8' });
+function contactSheet(prefix, name, has) {
+  const r = spawnSync('python3', ['-c', CONTACT_PY, SHOTS, path.join(SHOTS, name || 'contact.png')].concat(prefix || has ? [prefix || ''] : []).concat(has ? [has] : []), { encoding: 'utf8' });
   if (r.status !== 0) console.log('note: contact sheet not made: ' + String(r.stderr || r.error || '').trim().split('\n').pop());
   else log(`contact sheet: ${String(r.stdout).trim()} shots → test/shots/${name || "contact.png"}`);
 }
@@ -908,7 +1048,7 @@ async function main() {
     if (VERBOSE && T) Object.keys(T.warnings).forEach(k => console.log(`    console.warn ×${T.warnings[k]} ${name}: ${k}`));
   }
   await browser.close();
-  if (!SKIP_SHOTS) { contactSheet(); if (list.indexOf('accounts') >= 0) contactSheet(ALL.indexOf('accounts') + 1 + '-accounts-', 'contact-accounts.png'); }
+  if (!SKIP_SHOTS) { contactSheet(); if (list.indexOf('accounts') >= 0) { contactSheet(ALL.indexOf('accounts') + 1 + '-accounts-', 'contact-accounts.png'); contactSheet(ALL.indexOf('accounts') + 1 + '-accounts-', 'contact-v04.png', '-v04-'); } }
   console.log(fails ? `${fails} FAILED` : 'ALL PASS');
   process.exit(fails ? 1 : 0);
 }

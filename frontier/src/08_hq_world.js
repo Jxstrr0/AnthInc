@@ -36,7 +36,7 @@
     return Object.assign(r, { floors: r.floors || {}, stub: true, renderer: null, current: null, mode: 'room', focusId: null, paused: true, cinematic: null, t: 0, LED: {},
       init() {}, loadFloor(id) { FR.emit('hq:floor', { floorId: id }); }, home() {}, back() { if (FR.ui && FR.ui.sheetId) FR.ui.sheet(null); },
       focus: no, tapAt: no, glideTo: no, snap() {}, setMode() {}, target: () => null, poseOf: () => null, screenOf: () => null, pick: () => null,
-      live: no, targets: () => [], relabel() {}, setText() {}, staffOn: () => 0, disposeGroup() {}, debug: () => ({ stub: true }) });
+      live: no, targets: () => [], relabel() {}, badge() {}, setText() {}, staffOn: () => 0, disposeGroup() {}, debug: () => ({ stub: true }) });
   };
   if (typeof THREE === 'undefined') {
     console.error('three.js did not load: the HQ view is off');
@@ -459,14 +459,23 @@
   // one tag per target, except onlyIn targets (they are never live in the room view, where tags show)
   function buildTags() {
     tagEls = {}; if (!tagsEl) return;
-    tagsEl.innerHTML = targets.filter(t => !t.onlyIn).map(t => `<button class="tag" data-t="${esc(t.id)}" aria-label="${esc(t.label)}"><i></i><span>${esc(t.label)}</span></button>`).join('');
+    tagsEl.innerHTML = targets.filter(t => !t.onlyIn).map(t => `<button class="tag" data-t="${esc(t.id)}" aria-label="${esc(t.label + (t.badge ? ', ' + t.badgeLabel : ''))}"><i></i><span>${esc(t.label)}</span><b class="tag-n"${t.badge ? '' : ' hidden'}>${t.badge || ''}</b></button>`).join('');
     tagsEl.querySelectorAll('.tag').forEach(el => { tagEls[el.dataset.t] = el; el._k = null; el._off = false; el._w = 0; });
     tagStale = true;
   }
+  // a count badge on one target's tag (V0.4: unanswered renewal meetings on the client wall); 0 hides it. Kept on the
+  // target so a rebuilt tag layer shows it too. Touches the DOM only when the count changes.
+  R.badge = function (t, n, label) {
+    if (typeof t === 'string') t = byId[t]; if (!t) return; n = Math.max(0, n | 0);
+    if ((t.badge || 0) === n) return; t.badge = n; t.badgeLabel = label || '';
+    const el = tagEls[t.id]; if (!el) return; const b = el.querySelector('.tag-n');
+    if (b) { b.textContent = n ? String(n) : ''; b.hidden = !n; }
+    el.setAttribute('aria-label', t.label + (n ? ', ' + (label || n) : '')); el._w = 0; tagStale = true;
+  };
   // re-label one target's tag in place (a project floor's tag after a greenlight); placement re-runs on the next frame
   R.relabel = function (id, label) {
     const t = byId[id]; if (!t) return; t.label = label; const el = tagEls[id]; if (!el) return;
-    const sp = el.querySelector('span'); if (sp) sp.textContent = label; el.setAttribute('aria-label', label); el._w = 0; tagStale = true;
+    const sp = el.querySelector('span'); if (sp) sp.textContent = label; el.setAttribute('aria-label', label + (t.badge ? ', ' + t.badgeLabel : '')); el._w = 0; tagStale = true;
   };
   // Tags hang above their anchors, or below when every spot above is taken. Each tag takes the cheapest spot near its
   // anchor that is on screen, clear of the HUD and of the tags already placed, and covers no other target's centre;

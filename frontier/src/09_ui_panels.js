@@ -92,8 +92,11 @@
   // panel shows the locked state and revenue stays one number. ----------
   const AK = () => {
     const K = (FR.accounts && FR.accounts.K) || {}, M = Object.assign({ start: 70, top: 80, up: 1, unserved: 3, incident: 25, rival: 10, churn: 30, renew: 60, watch: 45 }, K.mood || {});
+    // V0.4 renewal meetings: K.meet replaces K.mood.renew (Renew at 45, Push up from 60, sure at 70; +10 in a cold sector)
+    const MT = Object.assign({ renewMood: 45, upMood: 60, upSure: 70, upOdds: 0.5, coldAdd: 10 }, K.meet || {});
     return { unlockCap: K.unlockCap || 20, unlockTrust: K.unlockTrust || 45, maxActive: K.maxActive || 4, maxActiveB: K.maxActiveB || 6, signCost: K.signCost || 150000,
-      startDelay: K.signWeeks || 2, renewMood: M.renew, churnMood: M.churn, watchMood: M.watch, mood: M, churnTrust: K.churnTrust || 2 };
+      startDelay: K.signWeeks || 2, renewMood: MT.renewMood, upMood: MT.upMood, meet: MT, churnMood: M.churn, watchMood: M.watch, mood: M, churnTrust: K.churnTrust || 2,
+      ask: K.ask || { declineMood: 5, costDecline: 10, metMood: 10, missMood: 15 }, sector: K.sector || { hotWeight: 3, hotFee: 1.25, coldMood: 1 }, dueWarn: K.dueWarn || 8 };
   };
   const accOn = () => has('accounts', 'sign');
   const accOf = (s) => (s && s.accounts) || { active: [], offers: [], lost: [], refreshAt: 0, unlocked: false };
@@ -102,8 +105,18 @@
   const backlog = (s) => has('accounts', 'backlog') ? Math.max(0, +tryr(() => FR.accounts.backlog(s), 0) || 0) : 0;
   const unlocked = (s) => { const a = accOf(s); return !!(a.unlocked || (a.active || []).length || (a.offers || []).length); };
   const signCost = (o) => o.signCost != null ? o.signCost : AK().signCost * (o.tier || 1);
-  // mood colour: board blue at the renewal mark and above, amber below it, red under the watch line (the sim's memo flag)
-  const moodHue = (m) => { const K = AK(); return m >= K.renewMood ? 'cap' : m >= K.watchMood ? 'warn' : 'bad'; };
+  // mood colour (V0.4 K.meet): board blue where a push up is on (60+), amber where Renew still holds (45+), red below it.
+  // `add` is the cold-sector surcharge on every threshold (K.meet.coldAdd) for one account.
+  const moodHue = (m, add) => { const K = AK(), c = +add || 0; return m >= K.upMood + c ? 'cap' : m >= Math.max(K.renewMood, K.watchMood) + c ? 'warn' : 'bad'; };
+  // V0.4 reads (guarded): sector swing, the sector's skill, meetings, asks, the sector strip
+  const swingOf = (s, sector) => has('accounts', 'swing') ? tryr(() => FR.accounts.swing(s, sector), null) : null;
+  const skillOfAcc = (x) => has('accounts', 'skillOf') ? tryr(() => FR.accounts.skillOf(x), null) : null;
+  const coldAddOf = (s, a) => swingOf(s, a.sector) === 'cold' ? AK().meet.coldAdd : 0;
+  const meetView = (s, a) => a && a.meeting && has('accounts', 'meetingView') ? tryr(() => FR.accounts.meetingView(s, a), null) : null;
+  const askV = (s, a) => a && a.ask && has('accounts', 'askView') ? tryr(() => FR.accounts.askView(s, a), null) : null;
+  const strip = (s) => has('accounts', 'sectorStrip') ? tryr(() => FR.accounts.sectorStrip(s), []) || [] : [];
+  const meetingsOpen = (s) => has('accounts', 'meetings') ? tryr(() => FR.accounts.meetings(s), []) || [] : [];
+  const asksOpen = (s) => has('accounts', 'asks') ? tryr(() => FR.accounts.asks(s), []) || [] : [];
   // revenue split at `pf` served (default: next week's forecast serving PF): { market, contracts, total, reserved, open, pf }
   function revSplit(s, pf) {
     if (pf == null) { const f = fc(s); pf = f && f.alloc && f.alloc.serving ? f.alloc.serving.pf : 0; }
@@ -281,7 +294,7 @@
       const v = s.sliders[k];
       return `<div class="fp-sl${k === own ? ' own' : ''}"><div class="fp-sl-h"><span class="fp-sl-n">${ico(k)}<b>${esc(AN(k))}</b></span><span class="fp-sl-u num">${unitText(al[k])}</span><b class="fp-sl-v num">${v}%</b></div>
         <input class="pl-range" type="range" min="0" max="100" step="1" value="${v}" data-fps="${k}" aria-label="${esc(AN(k))} share of compute and staff, percent" style="--p:${v / 100};--rc:${ACOL[k]}">
-        <p class="fp-sl-f">${fcText(k, s, nums[k])}</p>${k === 'serving' ? resLine(s, (al.serving || {}).pf) : ''}
+        <p class="fp-sl-f">${fcText(k, s, nums[k])}</p>${k === 'serving' ? resLine(s, (al.serving || {}).pf) + fieldLine(f) : ''}
         <div class="fp-nudge" role="group" aria-label="Adjust ${esc(AN(k))}">${[-5, -1, 1, 5].map(d => btn('nudge', k + ':' + d, (d > 0 ? '+' : '−') + Math.abs(d), 'quiet', !live(s) || (d < 0 ? v <= 0 : v >= 100))).join('')}</div></div>`;
     }).join('');
     const w0 = weekStart(s), same = (a) => AL().every(k => a[k] === s.sliders[k]);
@@ -302,10 +315,13 @@
       + ` · <b class="num">${f(Math.max(0, pf - need))}</b> open market` + (need > pf + 0.05 ? ` · <span class="neg">${f(need - pf)} PF short of the contracts</span>` : '');
   }
   const resLine = (s, pf) => { const t = resText(s, pf); return t ? `<p class="fp-sl-r" data-fpres>${t}</p>` : ''; };
+  // V0.4: capability client work adds this week ("Client work: +0.4 agents, +0.2 coding a week."), from the forecast
+  const fieldText = (f) => f && f.fieldGain && FR.model && typeof FR.model.fieldText === 'function' ? String(tryr(() => FR.model.fieldText(f.fieldGain), '') || '') : '';
+  const fieldLine = (f) => { const t = fieldText(f); return `<p class="fp-sl-r fp-field" data-fpfield${t ? '' : ' hidden'}>${esc(t)}</p>`; };
   let drag = null, raf = 0, SL = null;
   function bindSliders() {
     SL = null; const box = $('fpSliders'); if (!box) return;
-    SL = { foot: box.querySelector('[data-fpfoot]'), res: box.querySelector('[data-fpres]') };
+    SL = { foot: box.querySelector('[data-fpfoot]'), res: box.querySelector('[data-fpres]'), field: box.querySelector('[data-fpfield]') };
     AL().forEach(k => {
       const inp = box.querySelector(`[data-fps="${k}"]`); if (!inp) return; const r = inp.closest('.fp-sl');
       SL[k] = { inp, v: r.querySelector('.fp-sl-v'), u: r.querySelector('.fp-sl-u'), f: r.querySelector('.fp-sl-f') };
@@ -335,6 +351,7 @@
     });
     if (SL.foot) SL.foot.innerHTML = footText(pv.f, base.f);
     if (SL.res) SL.res.innerHTML = resText(pv.state, (pv.f.alloc.serving || {}).pf);
+    if (SL.field) { const ft = fieldText(pv.f); if (SL.field.textContent !== ft) SL.field.textContent = ft; SL.field.hidden = !ft; }
   }
   // on release: one 'sliders' command, then the panel re-renders from the new state
   function commitSliders() {
@@ -387,15 +404,68 @@
     if (o.minTrust) out.push([tr >= o.minTrust, `Public trust ${o.minTrust}`, `now ${n1(tr)}`]);
     return { ok: q ? !!q.ok : out.every(r => r[0]), why: q && q.why ? String(q.why) : '', rows: out };
   }
+  const SKN = (k) => k ? String(SN(k)).toLowerCase() : '';
+  // V0.4 client ask: one plain label per type ("Agents capability 38 by Year 2, Week 8")
+  function askLabel(s, a, v) {
+    const q = a.ask, d = (t) => esc(when(t));
+    if (q.type === 'cap') return `${esc(SN(q.skill))} capability <b class="num">${q.target}</b> by ${d(q.due)}`;
+    if (q.type === 'inStep') return `Every safety within <b class="num">${q.target}</b> of capability for <b class="num">${wks(q.weeks)}</b> by ${d(q.due)}`;
+    if (q.type === 'peak') return `<b class="num">${q.target} PF</b> more from ${d(q.from)} for <b class="num">${wks(q.weeks)}</b>`;
+    if (q.type === 'clean') return `No incident at the lab before ${d(q.due + 1)}`;
+    return `A <b class="num">${Math.round(q.target * 100)}%</b> fee cut for the rest of the term`;
+  }
+  function askBlock(s, a) {
+    const v = askV(s, a); if (!v) return '';
+    const q = a.ask, K = AK(), dead = !live(s), cost = v.type === 'cost', dm = cost ? K.ask.costDecline : K.ask.declineMood;
+    const state = v.answered === true ? badge('Accepted', 'good', 'check') : v.declinable ? badge('Open', 'warn', 'clock') : '';
+    const track = cost ? '' : badge(v.onTrack ? 'On track' : 'Off track', v.onTrack ? 'good' : 'warn');
+    const terms = cost ? `Accepting lifts mood ${K.ask.costMood || 10}; declining costs ${dm} mood.`
+      : `Met: <b class="num">${kmoney(v.reward)}</b> bonus and mood +${K.ask.metMood}. Missed: mood −${K.ask.missMood}.`;
+    const acts = v.declinable
+      ? `<div class="card-actions fp-ask-a">${btn('askNo', a.id, 'Decline', 'quiet', dead)}${btn('askOk', a.id, cost ? 'Accept the cut' : 'Accept', 'primary', dead, 'check')}</div>
+        <p class="fp-ask-n">Declining costs ${dm} mood, until ${esc(when(v.declineBy))}. Unanswered, the ask counts as accepted.</p>` : '';
+    return `<div class="fp-ask" data-ask="${esc(a.id)}"><p class="fp-ask-h">${ico('star')}<b>Ask</b>${state}${track}</p>
+      <p class="fp-ask-t">${askLabel(s, a, v)}.</p>
+      <p class="fp-ask-p num">${esc(v.progressText)}</p>
+      <p class="fp-ask-n">${terms}</p>${acts}</div>`;
+  }
+  // V0.4 renewal meeting card: Renew / Push up / Let go (48 px), the pick highlighted, the odds line, the unanswered default
+  const MEET = [['renew', 'Renew'], ['up', 'Push up'], ['go', 'Let go']];
+  function meetBlock(s, a) {
+    const v = meetView(s, a); if (!v) return '';
+    const dead = !live(s), pick = v.answer;
+    const odds = pick ? v.text : a.tier < 3 ? v.up.text : v.renew.text;
+    const seg = `<div class="seg fp-meet-seg" role="group" aria-label="Renewal meeting: ${esc(a.name)}">${MEET.map(([k, l]) =>
+      `<button class="btn${pick === k ? ' sel' : ''}" data-fp="meet" data-v="${esc(a.id)}:${k}" aria-pressed="${pick === k}"${dead || (k === 'up' && a.tier >= 3) ? ' disabled' : ''}><span>${l}</span></button>`).join('')}</div>`;
+    return `<div class="fp-meet" data-meet="${esc(a.id)}"><p class="fp-ask-h">${ico('clock')}<b>Renewal meeting</b>${pick ? badge(MEET.find(m => m[0] === pick)[1], 'brand', 'check') : badge('No answer', 'warn', 'alert')}<em class="num">${wks(v.weeksLeft)} left</em></p>
+      ${seg}<p class="fp-meet-t">${esc(odds)}</p>
+      <p class="fp-ask-n${pick ? '' : ' warn'}">${pick ? `Changeable until ${esc(when(v.ends))}, the last contract week.` : `${esc(v.unanswered)} Decided ${esc(when(v.ends))}.`}</p></div>`;
+  }
   function accRow(s, a) {
-    const pending = a.starts != null && a.starts > s.turn, left = Math.max(0, a.ends - (pending ? a.starts : s.turn) + 1), mood = Math.round(+a.mood || 0), hue = moodHue(mood);
+    const pending = a.starts != null && a.starts > s.turn, left = Math.max(0, a.ends - (pending ? a.starts : s.turn) + 1), mood = Math.round(+a.mood || 0), c = coldAddOf(s, a), hue = moodHue(mood, c);
     const short = a.starts != null && a.starts < s.turn && a.served != null && a.served < a.pfPerWeek - 0.05 && !a.leaving;
-    const tag = a.leaving || mood < AK().churnMood ? badge('Leaving', 'bad', 'alert') : mood < AK().watchMood ? badge('At risk', 'bad', 'alert') : left <= 8 ? badge(mood >= AK().renewMood ? 'Renews' : 'Ends', mood >= AK().renewMood ? 'good' : 'warn', 'clock') : pending ? badge('Onboarding', 'info', 'clock') : '';
+    const renewAt = AK().renewMood + c, sw = swingOf(s, a.sector), sk = skillOfAcc(a);
+    const tag = a.leaving || mood < AK().churnMood ? badge('Leaving', 'bad', 'alert') : mood < AK().watchMood ? badge('At risk', 'bad', 'alert')
+      : a.meeting ? badge('Meeting', a.meeting.answer ? 'brand' : 'warn', 'clock') : left <= 8 && !pending ? badge(mood >= renewAt ? 'Renews' : 'Ends', mood >= renewAt ? 'good' : 'warn', 'clock') : pending ? badge('Onboarding', 'info', 'clock') : '';
+    const swb = sw === 'hot' ? badge('Hot', 'brand') : sw === 'cold' ? badge('Cold', '') : '';
     // name and fee on the first line (the name gets the width), tier and status badges lead the second
-    return `<div class="fp-acc"><div class="fp-acc-h"><b>${esc(a.name)}</b><span class="num fp-acc-fee">${kmoney(a.feePerWeek)}<small>/wk</small></span></div>
-      <p class="fp-acc-s">${badge('Tier ' + a.tier, 'brand')}${tag}<span>${esc(a.sector || '')} · <span class="num">${trim1(a.pfPerWeek)} PF</span> · ${pending ? `<span class="num">${wks(left)}</span> from ${esc(when(a.starts))}` : `<span class="num">${wks(left)}</span> left`}</span></p>
+    return `<div class="fp-acc" data-accrow="${esc(a.id)}"><div class="fp-acc-h"><b>${esc(a.name)}</b><span class="num fp-acc-fee">${kmoney(a.feePerWeek)}<small>/wk</small></span></div>
+      <p class="fp-acc-s">${badge('Tier ' + a.tier, 'brand')}${tag}${swb}<span>${esc(a.sector || '')}${sk ? ` · ${esc(SKN(sk))}` : ''} · <span class="num">${trim1(a.pfPerWeek)} PF</span> · ${pending ? `<span class="num">${wks(left)}</span> from ${esc(when(a.starts))}` : `<span class="num">${wks(left)}</span> left`}</span></p>
       <div class="fp-acc-m"><span>Mood</span><div class="meter ${hue}" style="--v:${clamp(mood, 0, 100)}" role="img" aria-label="Mood ${mood} of 100"><i></i></div><b class="num tone-${hue === 'cap' ? 'cap' : hue}">${mood}</b></div>
-      ${short ? `<p class="fp-acc-w">${ico('alert')}<span>Served ${n1(a.served)} of ${trim1(a.pfPerWeek)} PF last week. Each short week costs ${AK().mood.unserved} mood.</span></p>` : ''}</div>`;
+      ${short ? `<p class="fp-acc-w">${ico('alert')}<span>Served ${n1(a.served)} of ${trim1(a.pfPerWeek)} PF last week. Each short week costs ${AK().mood.unserved} mood.</span></p>` : ''}
+      ${a.leaving ? '' : askBlock(s, a) + meetBlock(s, a)}</div>`;
+  }
+  // V0.4 reads for the Company overview (09_ui_overview.js): the sector strip and one plain line per ask
+  U.accounts.strip = (s) => { s = s || S(); return s && s.accounts ? sectorStripHtml(s) : ''; };
+  U.accounts.askLine = (s, a) => { const v = askV(s, a); return v ? `${askLabel(s, a, v)}. <span class="num">${esc(v.progressText)}</span>` : ''; };
+  // V0.4 sector strip: swinging sectors (hot in board blue, cold in grey, weeks left); scrolls inside itself
+  function sectorStripHtml(s) {
+    const st = strip(s), K = AK(), sc = accOf(s).sectors;
+    const chips = st.map(x => `<div class="fp-sw ${x.kind === 'hot' ? 'hot' : 'cold'}" role="listitem" data-sw="${x.kind}"><b>${esc(x.name)}<small> · ${esc(SKN(x.skill))}</small></b>
+      <span><em>${x.kind === 'hot' ? 'Hot' : 'Cold'}</em> · <span class="num">${wks(x.weeksLeft)}</span> left</span>
+      <small>${x.kind === 'hot' ? `Offers ${K.sector.hotWeight}× as often, fees +${Math.round(((K.sector.hotFee || 1.25) - 1) * 100)}%` : `No offers; renewals need +${K.meet.coldAdd} mood`}</small></div>`).join('');
+    const next = sc && sc.nextAt > s.turn ? `<div class="fp-sw none" role="listitem"><b>No other swing</b><span>Next roll ${esc(when(sc.nextAt))}</span></div>` : '';
+    return `<div class="fp-strip" role="list" aria-label="Sector swings" data-strip="${st.length}">${chips || `<div class="fp-sw none" role="listitem"><b>No sector swings</b><span>${sc && sc.nextAt ? `Next roll ${esc(when(sc.nextAt))}` : 'Every sector at its usual rate'}</span></div>`}${chips && st.length < 2 ? next : ''}</div>`;
   }
   function accOffer(s, o, room) {
     const rq = reqList(s, o), cost = signCost(o), dead = !live(s), start = s.turn + AK().startDelay;
@@ -419,6 +489,7 @@
   function accountsBlock(s) {
     const a = accOf(s), K = AK(), act = a.active || [], offers = a.offers || [], mx = maxActive(s), room = mx - act.length;
     let out = sec('building', 'Accounts', unlocked(s) ? `${act.length} of ${mx} · new board ${esc(when(a.refreshAt || s.turn))}` : 'locked', 'accounts');
+    if (unlocked(s) && has('accounts', 'sectorStrip')) out += sectorStripHtml(s);
     if (!unlocked(s)) {
       const cap = avgCap(s), tr = s.market.trust;
       return out + `<div class="card fp-alock"><div class="card-head">${ico('lock')}<b class="card-title">Enterprise accounts</b>${badge('Locked', '', 'lock')}</div>
@@ -434,9 +505,10 @@
       out += `<div class="card fp-accs">${act.map(x => accRow(s, x)).join('')}</div>`;
     } else out += `<p class="hint">No accounts signed. Signing reserves serving PF for the contract and pays its fee each week from the third week.</p>`;
     const M = K.mood;
-    out += `<p class="hint">Mood falls ${M.incident} on an incident at the lab, ${M.rival} on a rival’s and ${M.unserved} for each week its PF goes unserved; it rises ${M.up} a week toward ${M.top} while every gap stays within ${tryr(() => FR.sim.K.safeMargin, 5)} and the PF is served. Below ${M.churn} the account leaves the next week, for good, and public trust falls ${K.churnTrust}. At term end an account at ${M.renew} or more renews one tier up.</p>`;
+    out += `<p class="hint">Mood falls ${M.incident} on an incident at the lab, ${M.rival} on a rival’s and ${M.unserved} for each week its PF goes unserved; it rises ${M.up} a week toward ${M.top} while every gap stays within ${tryr(() => FR.sim.K.safeMargin, 5)} and the PF is served. Below ${M.churn} the account leaves the next week, for good, and public trust falls ${K.churnTrust}.</p>
+      <p class="hint">A renewal meeting opens ${wks(K.dueWarn)} before term end. Renew needs mood ${K.meet.renewMood}. Push up needs mood ${K.meet.upMood} and the next tier’s requirements: ${K.meet.upSure} or more accepts, ${K.meet.upMood} to ${K.meet.upSure - 1} is even odds and a refusal renews at the same tier. Let go frees the PF with no trust cost. Unanswered, the contract renews at the same tier at mood ${K.meet.renewMood} or more and ends below it. In a cold sector every mark is ${K.meet.coldAdd} higher.</p>`;
     const lost = (a.lost || []).filter(l => l && l.turn >= s.turn - 26).slice(-3).reverse();
-    if (lost.length) out += lost.map(l => row(l.why === 'churn' ? 'alert' : 'clock', esc(l.name), `${l.why === 'churn' ? 'Ended the contract' : l.why === 'expired' ? 'Contract ran out' : 'Dropped'} · ${esc(when(l.turn))}`, l.why === 'churn' ? badge('Churned', 'bad') : '')).join('');
+    if (lost.length) out += lost.map(l => row(l.why === 'churn' ? 'alert' : 'clock', esc(l.name), `${l.why === 'churn' ? 'Ended the contract' : l.why === 'expired' ? 'Contract ran out' : l.why === 'let go' ? 'Let go at term end' : 'Dropped'} · ${esc(when(l.turn))}`, l.why === 'churn' ? badge('Churned', 'bad') : '')).join('');
     out += sec('tag', 'Offer board', offers.length ? `${offers.length} open` : '', 'accoffers');
     if (!offers.length) return out + empty('clock', 'No offers on the board', `New buyers arrive ${esc(when(a.refreshAt || s.turn + 1))}.`, '');
     if (room <= 0) out += why(`The book is full: ${mx} accounts at most${(s.money.roundsDone || []).indexOf('b') < 0 ? `. The Series B raises it to ${AK().maxActiveB}` : ''}. An account frees its place when its term ends.`, 'info');
@@ -944,7 +1016,7 @@
   function lineIcon(l) {
     const t = l.text;
     if (/\bgap \d/i.test(t) && !/incident at gap/i.test(t)) return 'alert';
-    if (/^Account (mood|board)|^Signed |^Declined |contracts? (live|ends?)|ended (its|their) contracts?|renews|without renewal|^Enterprise buyers/.test(t)) return 'building';
+    if (/^Account (mood|board)|^Signed |^Declined |contracts? (live|ends?)|ended (its|their) contracts?|renews|without renewal|^Enterprise buyers|renewal meeting|let go at term end| asks (for|that)| ask (met|missed|accepted|declined)|fee cut accepted|turns (hot|cold) through|(demand|budgets) back to normal/.test(t)) return 'building';
     if (/incident/i.test(t)) return 'incident';
     if (/\brecord\b/i.test(t)) return 'record';
     if (/round|series [ab]|milestone|investor/i.test(t)) return 'coin';
@@ -974,11 +1046,15 @@
       out.push({ w: m.milestone.due - T, icon: 'record', re: /milestone due/i, text: `${esc(m.milestone.text)}${pr ? ` Now ${cur}${pr.met ? ', met' : ''}.` : ''}`
         + (pc ? ` At this pace ${n1(pc.projected)}${pc.short > 0 ? `, short by ${n1(pc.short)}` : ''}.` : '') });
     }
-    // accounts: a fee that starts soon, a term that ends within 8 weeks (renews at mood 60 or more, else leaves)
+    // accounts: a fee that starts soon; a renewal meeting (V0.4: the answer and its odds, or what happens unanswered);
+    // an open client ask with its progress
     (accOf(s).active || []).forEach(a => {
       if (a.starts != null && a.starts > T) out.push({ w: a.starts - T, icon: 'building', re: /fee starts/i, text: `${esc(a.name)}: fee of ${kmoney(a.feePerWeek)} a week and ${trim1(a.pfPerWeek)} PF reserved from ${esc(when(a.starts))}.` });
-      const left = a.ends - T + 1, K = AK();
-      if (left <= 8) out.push({ w: left, icon: 'building', re: /renewal due|contract ends/i, text: `${esc(a.name)} contract ends ${esc(when(a.ends))}. Mood ${Math.round(a.mood)}: ${a.mood >= K.renewMood ? `renews at tier ${Math.min(3, a.tier + 1)} fees` : `leaves unless mood reaches ${K.renewMood}`}.` });
+      if (a.leaving) return;
+      const left = a.ends - T + 1, v = meetView(s, a), q = askV(s, a), nm = esc(a.name), rx = String(a.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (v) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.round(a.mood)}. Renewal meeting: ${v.answer ? esc(MEET.find(m => m[0] === v.answer)[1]) + '. ' + esc(v.text) : 'no answer. ' + esc(v.unanswered)}` });
+      else if (left <= 8 && a.starts <= T) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.round(a.mood)}.` });
+      if (q) out.push({ w: q.weeksLeft, icon: 'building', re: new RegExp('^' + rx + ' asks '), text: `${nm} ask: ${askLabel(s, a, q)}. ${esc(q.progressText)}.${q.declinable ? ` Decline by ${esc(when(q.declineBy))}; unanswered, it counts as accepted.` : ''}` });
     });
     (s.projects.active || []).forEach((p, i) => out.push({ w: p.turnsLeft, icon: 'project', text: `${esc(p.name)} finishes in ${wks(p.turnsLeft)} (${esc(META('proj' + (i + 1)).name)}).` }));
     (s.compute.deals || []).forEach(d => out.push({ w: d.ends - T, icon: 'rival', re: /compute share ends/i, text: `${esc(rival(s, d.rivalId).name)} compute share ends ${esc(when(d.ends))}: ${d.pf} PF withdrawn.` }));
@@ -1001,7 +1077,12 @@
     const f = fc(s); if (f && f.runway !== Infinity && f.runway < 13) return { label: `Boardroom: runway ${wks(Math.max(0, f.runway))}`, icon: 'coin', go: 'boardroom.table' };
     const ac = accOf(s), room = maxActive(s) - (ac.active || []).length, bk = book(s);
     if (bk.short > 0.05) return { label: `Serving: ${trim1(bk.short)} PF short of the contracts`, icon: 'building', go: 'serving.wall' };
+    // V0.4: an unanswered renewal meeting (soonest first), then an ask still open to decline
+    const mt = meetingsOpen(s).filter(a => a.meeting && a.meeting.answer == null).sort((a, b) => a.ends - b.ends)[0];
+    if (mt) return { label: `Serving: ${mt.name} renewal meeting, ${wks(mt.ends - s.turn + 1)} left`, icon: 'building', go: 'serving.accounts' };
     const risk = (ac.active || []).filter(a => !a.leaving && +a.mood < AK().watchMood).sort((a, b) => a.mood - b.mood)[0];
+    const ak = asksOpen(s).filter(a => a.ask && a.ask.answered == null && s.turn <= a.ask.declineBy)[0];
+    if (ak && !risk) return { label: `Serving: ${ak.name} ask, accept or decline`, icon: 'building', go: 'serving.accounts' };
     if (risk) return { label: `Serving: ${risk.name} at risk, mood ${Math.round(risk.mood)}`, icon: 'building', go: 'serving.accounts' };
     const can = room > 0 ? (ac.offers || []).filter(o => reqList(s, o).ok && s.money.cash >= signCost(o)).length : 0;
     if (can) return { label: `Serving: ${can} account ${can === 1 ? 'offer' : 'offers'} the lab qualifies for`, icon: 'building', go: 'serving.accounts' };
@@ -1118,6 +1199,17 @@
         return;
       }
       case 'accNo': sfx('tap'); P.confirm = 'accNo:' + v; render(true); return;
+      // V0.4: a renewal meeting answer ("<id>:renew|up|go") and a client ask (Accept / Decline), through FR.cmd
+      case 'meet': case 'askOk': case 'askNo': {
+        const i = String(v).lastIndexOf(':'), id = act === 'meet' ? String(v).slice(0, i) : v, choice = act === 'meet' ? String(v).slice(i + 1) : null;
+        busy = true; let r;
+        try {
+          r = act === 'meet' ? (FR.cmd && FR.cmd.renewAccount ? FR.cmd.renewAccount(id, choice) : { ok: false })
+            : (FR.cmd && FR.cmd.answerAsk ? FR.cmd.answerAsk(id, act === 'askOk') : { ok: false });
+        } finally { busy = false; }
+        r = r || { ok: false }; if (r.ok) { P.confirm = null; sfx(act === 'askNo' ? 'tap' : 'confirm'); }
+        render(true); said(r); return;
+      }
       case 'accNoOk': {
         const o = (accOf(s).offers || []).find(x => x.id === v);
         busy = true; let r; try { r = FR.cmd && FR.cmd.declineAccount ? FR.cmd.declineAccount(v) : { ok: false }; } finally { busy = false; }
@@ -1289,6 +1381,25 @@
       '.fp-acc-m{display:grid;grid-template-columns:44px minmax(0,1fr) 30px;align-items:center;gap:8px;font-size:var(--text-xs);color:var(--ink-3)}',
       '.fp-acc-m .meter{height:6px;margin:0}.fp-acc-m>b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);text-align:right}',
       '.fp-acc-w{display:flex;align-items:flex-start;gap:6px;margin:6px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--warn)}.fp-acc-w .ico{flex:none;width:16px;height:16px;margin-top:1px}',
+      /* V0.4: client asks, renewal meetings, the sector strip (scrolls inside itself), the client-work line */
+      '.fp-ask,.fp-meet{margin:8px 0 0;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--sunken)}',
+      '.fp-meet{border-color:color-mix(in srgb,var(--brand-bright) 45%,var(--line))}',
+      '.fp-ask-h{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin:0;font-size:var(--text-sm);color:var(--ink-2)}.fp-ask-h .ico{flex:none;width:16px;height:16px}.fp-ask-h>b{margin-right:2px}',
+      '.fp-ask-h>em{margin-left:auto;font-style:normal;font-size:var(--text-xs);color:var(--ink-3)}',
+      '.fp-ask-t{margin:4px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink)}',
+      '.fp-ask-p{margin:2px 0 0;font-family:var(--font-num);font-size:var(--text-sm);color:var(--brand-text)}',
+      '.fp-ask-n{margin:4px 0 0;font-size:var(--text-xs);line-height:var(--lh-snug);color:var(--ink-3)}.fp-ask-n.warn{color:var(--warn)}',
+      '.fp-ask-a{margin-top:6px;gap:8px}.fp-ask-a .btn{min-height:var(--tap)}',
+      '.fp-meet-seg{margin:8px 0 0}.fp-meet-seg .btn{min-height:var(--control);padding:6px 4px}',
+      '.fp-meet-t{margin:6px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}',
+      '.fp-strip{display:flex;gap:8px;max-width:100%;margin:0 0 10px;padding:0 0 4px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch}',
+      '.fp-sw{flex:none;display:flex;flex-direction:column;gap:2px;min-width:0;max-width:78%;padding:7px 10px;border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:var(--r-sm);background:var(--surface);font-size:var(--text-xs);color:var(--ink-3);white-space:nowrap}',
+      '.fp-sw>b{font-size:var(--text-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis}.fp-sw>b small{font-weight:var(--w-medium);color:var(--ink-3)}',
+      '.fp-sw em{font-style:normal;font-weight:var(--w-bold)}.fp-sw>small{font-size:var(--text-xs);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}',
+      '.fp-sw.hot{border-left-color:var(--brand-bright);background:color-mix(in srgb,var(--brand) 14%,var(--surface))}.fp-sw.hot em{color:var(--brand-text)}',
+      '.fp-sw.cold{border-left-color:var(--ink-3);background:var(--raised)}.fp-sw.cold em{color:var(--ink-2)}',
+      '.fp-sw.none{border-left-color:var(--line)}',
+      '.fp-field{color:var(--brand-text)}',
       '.fp-req{display:flex;flex-direction:column;gap:4px;margin:10px 0 6px;padding:0;list-style:none}',
       '.fp-req li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:start;gap:8px;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}',
       '.fp-req li .ico{width:16px;height:16px;margin-top:2px}.fp-req li.ok .ico{color:var(--good)}.fp-req li.no .ico{color:var(--bad)}.fp-req li.no>span{color:var(--ink)}',

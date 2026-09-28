@@ -48,7 +48,9 @@
     const lvl = (k) => tryr(() => FR.model.outlook(s, k).level, 'ok');
     const TONE = { ok: 'good', watch: 'warn', warning: 'bad', critical: 'bad' }, LBL = { ok: 'OK', watch: 'Watch', warning: 'Warning', critical: 'Critical' };
     const pr = tryr(() => FR.model.pressureLevel(s), null);
-    out += sec('safety', 'Model', `Training ${esc(FR.SKILL_NAME[s.target])}.${pr ? ' ' + esc(pr.text) : ''}`,
+    // V0.4: capability client work adds a week (same figure as the Serving readout)
+    const fieldT = f && f.fieldGain && FR.model.fieldText ? tryr(() => FR.model.fieldText(f.fieldGain), '') : '';
+    out += sec('safety', 'Model', `Training ${esc(FR.SKILL_NAME[s.target])}.${pr ? ' ' + esc(pr.text) : ''}${fieldT ? ` <span class="ov-field" data-ovfield>${esc(fieldT)}</span>` : ''}`,
       `<div class="ov-skills">${FR.SKILLS.map(k => { const sk = s.model.skills[k], l = lvl(k); return `<div><span>${esc(FR.SKILL_NAME[k])}</span><b class="num">${Math.round(sk.cap)}</b><b class="num ov-safe">${Math.round(sk.safe)}</b><em class="badge ${TONE[l] || ''}">${LBL[l] || l}</em></div>`; }).join('')}`
       + `<p class="ov-key"><b class="num">cap</b> capability · <b class="num ov-safe">safe</b> safety</p></div>`, 'safety:safety.evals', pr && pr.level !== 'ok' ? 'warn' : '');
 
@@ -70,7 +72,8 @@
       out += sec('serving', 'Accounts', unlocked ? `Contracted ${km(tryr(() => A.contracted(s), dbg.contracted || 0))} a week · backlog ${km(tryr(() => A.backlog(s), 0))}.`
         : 'Enterprise buyers open talks once average capability reaches 20 and public trust is 45 or more.',
         unlocked ? `<div class="stats">${stat('Active', acts.length + ' of ' + maxA)}${stat('Offers', (s.accounts.offers || []).length)}${stat('Avg mood', acts.length ? Math.round(dbg.avgMood || 0) : '—', '', moodCls)}</div>`
-          + (risk.length ? `<p class="ov-line tone-warn">${risk.length === 1 ? esc(risk[0].name) + ' is' : risk.length + ' accounts are'} below mood ${MK.watch}; under ${MK.churn} an account leaves the next week.</p>` : '') : '', 'serving:serving.accounts', risk.length ? 'warn' : '');
+          + (risk.length ? `<p class="ov-line tone-warn">${risk.length === 1 ? esc(risk[0].name) + ' is' : risk.length + ' accounts are'} below mood ${MK.watch}; under ${MK.churn} an account leaves the next week.</p>` : '')
+          + clients(s) : '', 'serving:serving.accounts', risk.length || tryr(() => A.meetings(s), []).some(a => a.meeting.answer == null) ? 'warn' : '');
     }
 
     // funding
@@ -80,6 +83,24 @@
     out += sec('record', 'Funding', fund, `<p class="ov-line">Closed: ${m.roundsDone.length ? m.roundsDone.map(r => esc(rn(r))).join(', ') : 'none yet'}.</p>`, 'boardroom:boardroom.table', offer ? 'gold' : '');
     return out;
   };
+
+  // V0.4 clients: meetings due (the answer or what happens unanswered), open asks with progress, the sector strip
+  function clients(s) {
+    const A = FR.accounts, P = U.accounts || {}, CH = { renew: 'Renew', up: 'Push up', go: 'Let go' };
+    const mts = tryr(() => A.meetings(s), []).slice().sort((a, b) => a.ends - b.ends), asks = tryr(() => A.asks(s), []);
+    let out = '';
+    if (mts.length) out += `<p class="ov-sub">Renewal meetings</p><ul class="ov-list">${mts.map(a => {
+      const v = tryr(() => A.meetingView(s, a), null); if (!v) return '';
+      return `<li data-ovmeet="${esc(a.id)}"><b>${esc(a.name)}</b><span class="badge ${v.answer ? 'brand' : 'warn'}">${v.answer ? CH[v.answer] : 'No answer'}</span><em class="num">${v.weeksLeft} wk${v.weeksLeft === 1 ? '' : 's'} left</em><small>${esc(v.answer ? v.text : v.unanswered)}</small></li>`;
+    }).join('')}</ul>`;
+    if (asks.length) out += `<p class="ov-sub">Client asks</p><ul class="ov-list">${asks.map(a => {
+      const v = tryr(() => A.askView(s, a), null); if (!v) return '';
+      return `<li data-ovask="${esc(a.id)}"><b>${esc(a.name)}</b>${v.type === 'cost' ? '' : `<span class="badge ${v.onTrack ? 'good' : 'warn'}">${v.onTrack ? 'On track' : 'Off track'}</span>`}${v.declinable ? '<span class="badge warn">Open</span>' : ''}<small>${P.askLine ? P.askLine(s, a) : esc(v.progressText)}</small></li>`;
+    }).join('')}</ul>`;
+    if (!mts.length && !asks.length) out += `<p class="ov-line">No renewal meeting or client ask open.</p>`;
+    if (P.strip) out += `<p class="ov-sub">Sectors</p>` + P.strip(s);
+    return out;
+  }
 
   O.open = function () {
     const s = FR.state; if (!s || !U.sheet) return;
@@ -103,6 +124,11 @@
       '.ov-alloc i{display:block;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--brand-bright) calc(var(--v)*1%),var(--sunken) 0)}.ov-alloc b{text-align:right}',
       '.ov-skills{display:grid;gap:6px}.ov-skills>div{display:grid;grid-template-columns:1fr 36px 36px auto;align-items:center;gap:8px;font-size:var(--text-md)}',
       '.ov-skills b{text-align:right;color:var(--brand-text)}.ov-skills .ov-safe,.ov-key .ov-safe{color:var(--good)}.ov-skills .badge{justify-self:end}',
+      '.ov-sub{margin:var(--sp-2) 0 4px;font-size:var(--text-xs);font-weight:var(--w-bold);letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}',
+      '.ov-list{margin:0 0 var(--sp-2);padding:0;list-style:none}.ov-list li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:6px 0;border-top:1px solid var(--line);font-size:var(--text-sm)}',
+      '.ov-list li>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ov-list li>em{margin-left:auto;font-style:normal;font-size:var(--text-xs);color:var(--ink-3)}',
+      '.ov-list li>small{flex-basis:100%;font-size:var(--text-xs);line-height:var(--lh-snug);color:var(--ink-2)}',
+      '.ov-field{color:var(--brand-text)}',
       '.ov-key{grid-template-columns:none!important;margin:2px 0 0;font-size:var(--text-xs);color:var(--ink-3)}.ov-key b{color:var(--brand-text)}'
     ].join('\n');
     document.head.appendChild(css);
