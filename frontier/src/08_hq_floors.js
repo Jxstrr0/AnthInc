@@ -428,9 +428,9 @@
     rect(x, 0, 0, w, h, HX.sunken);
     if (d.dark) {
       rect(x, 0, 0, w, 250, '#2a0d0c');
-      // the sim does not pull the model: serving and revenue continue while the incident is under review
+      // while an incident is under review, serving continues at half revenue (FR.money.incidentFactor)
       T(x, 'INCIDENT REVIEW', w / 2, 86, 84, HX.bad, 'center', 800, DISP, w - 80);
-      T(x, d.skill + ' incident · ' + d.when + ' · serving continues under review', w / 2, 164, 32, HX.ink2, 'center', 500, SANS, w - 80);
+      T(x, d.skill + ' incident · ' + d.when + ' · serving at half revenue under review', w / 2, 164, 32, HX.ink2, 'center', 500, SANS, w - 80);
       T(x, 'Review closes ' + d.until, w / 2, 210, 26, HX.ink3, 'center', 500, SANS, w - 80);
       rect(x, 0, 250, w, h - 250, '#140606'); T(x, 'REQUESTS · UNDER REVIEW', 24, 272, 20, HX.bad, 'left', 600, MONO); return;
     }
@@ -490,7 +490,7 @@
       { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: aim([2.6, 0.8, -2.0], 0, 45, 11) }
     ];
     let act = 0, dark = false, nWalk = 0, split0 = { walk: 0, sit: 0, stand: 0 }, scroll = 0;
-    const f = { group: g, elevator: ev, targets, get hint() { return dark ? 'An incident is under review. Serving continues. Tap the status wall for serving.' : 'Tap the status wall for the serving share, demand and rented compute.'; },
+    const f = { group: g, elevator: ev, targets, get hint() { return dark ? 'An incident is under review. Serving earns half for 3 weeks. Tap the status wall for serving.' : 'Tap the status wall for the serving share, demand and rented compute.'; },
       view: { pos: [3.1, 26.61, 14.57], look: [0, 0.8, 0], fov: 60, shift: -0.029, shiftX: 0.012 },
       light: { hemi: 0.62, sun: 0.5, bg: 0x070b10 },
       refresh(s) {
@@ -690,7 +690,7 @@
         const rank = { ok: 0, watch: 1, warning: 2, critical: 3 };
         FR.SKILLS.forEach((k, i) => {
           const sk = s && s.model ? s.model.skills[k] : { cap: 0, safe: 0, incidents: [] }, o = tryf(() => FR.model.outlook(s, k), null), gap = Math.max(0, sk.cap - sk.safe);
-          const level = o ? o.level : gap > 20 ? 'warning' : gap > 10 ? 'watch' : 'ok'; if (rank[level] > rank[worst]) worst = level;
+          const level = o ? o.level : gap > 20 ? 'warning' : gap > 5 ? 'watch' : 'ok'; if (rank[level] > rank[worst]) worst = level;
           paint(skillScr[i], { name: FR.SKILL_NAME[k], cap: FR.round(sk.cap, 1), safe: FR.round(sk.safe, 1), gap: FR.round(gap, 1), level,
             inc: s ? (sk.incidents || []).filter(t => t > s.turn - 52).length : 0, final: o ? o.turnsToFinal : null, run: p.pf > 0 }, drawSkill);
         });

@@ -70,7 +70,7 @@
   function outlook(s, k) {
     const o = tryr(() => FR.model.outlook(s, k), null); if (o) return o;
     const K = MK(), g = gapOf(s, k);
-    return { level: g > K.critGap ? 'critical' : g > K.incidentGap ? 'warning' : g > K.warnGap ? 'watch' : 'ok', gap: g, text: '', turnsToFinal: null };
+    return { level: g > K.critGap ? 'critical' : g > K.incidentGap ? 'warning' : g > (K.watchGap || 5) ? 'watch' : 'ok', gap: g, text: '', turnsToFinal: null };
   }
   const LEVEL = { ok: 'OK', watch: 'Watch', warning: 'Warning', critical: 'Critical' };
   // the gap badge's colour by outlook level; the look: warn above 10, bad above 20
@@ -227,7 +227,8 @@
       const v = s.sliders[k];
       return `<div class="fp-sl${k === own ? ' own' : ''}"><div class="fp-sl-h"><span class="fp-sl-n">${ico(k)}<b>${esc(AN(k))}</b></span><span class="fp-sl-u num">${unitText(al[k])}</span><b class="fp-sl-v num">${v}%</b></div>
         <input class="pl-range" type="range" min="0" max="100" step="1" value="${v}" data-fps="${k}" aria-label="${esc(AN(k))} share of compute and staff, percent" style="--p:${v / 100};--rc:${ACOL[k]}">
-        <p class="fp-sl-f">${fcText(k, s, nums[k])}</p></div>`;
+        <p class="fp-sl-f">${fcText(k, s, nums[k])}</p>
+        <div class="fp-nudge" role="group" aria-label="Adjust ${esc(AN(k))}">${[-5, -1, 1, 5].map(d => btn('nudge', k + ':' + d, (d > 0 ? '+' : '−') + Math.abs(d), 'quiet', !live(s) || (d < 0 ? v <= 0 : v >= 100))).join('')}</div></div>`;
     }).join('');
     return `<div class="card fp-sliders" id="fpSliders"><div class="fp-cardh"><span class="kicker">Allocation</span>${tip(TIPS.sliders, 'the allocation')}<span class="fp-sum num">Total 100%</span></div>${rows}<p class="fp-sl-foot" data-fpfoot>${footText(f, f)}</p></div>`;
   }
@@ -412,9 +413,10 @@
   VIEWS.serving = function (s) {
     const f = fc(s), al = (f && f.alloc) || {}, sv = al.serving || { pf: 0 }, dem = tryr(() => FR.money.demandPF(s), 0), fx = fxOf(s);
     const tm = tryr(() => FR.money.trustMult(s), 1), share = tryr(() => FR.compute.revShare(s), 0), zeta = tryr(() => FR.money.zetaFactor(s), 1);
-    const base = tryr(() => FR.money.pricePerPF(avgCap(s)), 0), eff = base * (fx.priceMult || 1) * tm * Math.max(0, 1 - share) * zeta;
+    const inc = tryr(() => FR.money.incidentFactor(s), 1), base = tryr(() => FR.money.pricePerPF(avgCap(s)), 0), eff = base * (fx.priceMult || 1) * tm * Math.max(0, 1 - share) * zeta * inc;
     let out = head('serving', `Floor ${esc(META('serving').n)} · serving <b class="num">${s.sliders.serving}%</b> · revenue next week <b class="num">${kmoney(f ? f.revenue : s.money.revenue)}</b>`);
     out += intro('Serving sells access to the model. Revenue is the PF served, up to customer demand, times the price per PF-week.');
+    if (inc < 1) out += banner('warn', 'incident', 'Serving under incident review', `Revenue earns ${Math.round(inc * 100)}% of normal for 3 weeks after any incident.`);
     out += sliders('serving', s, f);
     out += sec('coin', 'Revenue');
     out += `<div class="stats">${stat('Last week', kmoney(s.money.revenue))}${stat('Next week', kmoney(f ? f.revenue : 0), 'forecast')}${stat('Per PF-week', kmoney(eff), 'served')}</div>`;
@@ -594,6 +596,13 @@
     if (m.milestone && !(m.offer && m.offer.round === m.milestone.round)) out += milestoneCard(s);
     if (!m.offer && !m.milestone && !next) out += `<div class="pl-verdict good">${ico('check')}<div><b>${esc(roundName(m.roundsDone[m.roundsDone.length - 1] || 'a'))} closed</b><span>No further rounds are scheduled. Revenue funds the lab from here.</span></div></div>`;
     else if (!m.offer && !m.milestone && !locked) out += note('clock', 'Investors set the next milestone at End Turn.');
+    // close the lab: end the run now and take the score (owner call, V0.2)
+    if (live(s)) {
+      out += sec('boardroom', 'Close the lab', 'ends the run');
+      out += P.confirm === 'retire'
+        ? confirmBox(true, `Close ${esc(s.lab.name)}?`, `The run ends now, in ${esc(when(s.turn))}, and is scored as it stands: founder stake ${pctS(m.founderPct)} of ${kmoney(m.valuation)}. This cannot be undone.`, 'Keep operating', 'retireOk', '', 'Close the lab')
+        : `<p class="hint">The founders can close the lab at any time and take the score as it stands.</p>${btn('retire', '', 'Close the lab', 'danger')}`;
+    }
     return out;
   };
   // Hire 1 / 5 / all the room left this week, each clamped to FR.money.hireRoom; with no room the buttons stay, disabled,
@@ -899,6 +908,9 @@
       case 'hire': said(run({ type: 'hire', n: Math.max(1, Math.min(Math.round(+v) || 1, hireRoom(s))) })); return;
       case 'layoff': sfx('tap'); P.confirm = 'layoff:' + Math.max(1, Math.round(+v) || 1); render(true); return;
       case 'layoffOk': said(run({ type: 'layoff', n: Math.round(+v) })); return;
+      case 'nudge': { const [k, d] = String(v).split(':'); if (s.sliders[k] == null) return; sfx('tap'); run(Object.assign({ type: 'sliders' }, link(s.sliders, k, s.sliders[k] + (+d || 0)))); return; }
+      case 'retire': sfx('tap'); P.confirm = 'retire'; render(true); return;
+      case 'retireOk': run({ type: 'retire' }); return;
       case 'accept': { const r = run({ type: 'acceptRound' }, true); if (r.ok) sfx('good'); said(r); return; }
       case 'decline': sfx('tap'); P.confirm = 'decline'; render(true); return;
       case 'declineOk': said(run({ type: 'declineRound' })); return;
@@ -993,6 +1005,7 @@
       '.fp-sl .pl-range::-moz-range-thumb{pointer-events:auto;width:28px;height:28px;border:8px solid transparent;background-clip:padding-box;box-shadow:inset 0 0 0 3px var(--rc)}',
       '.fp-sl .pl-range:focus-visible::-webkit-slider-thumb{box-shadow:inset 0 0 0 3px var(--rc),0 0 0 3px var(--focus)}',
       '.fp-sl-f{margin:-8px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3)}',
+      '.fp-nudge{display:flex;gap:6px;margin:6px 0 0}.fp-nudge .btn{flex:1;width:auto;min-width:0;min-height:var(--tap);margin:0;padding:4px 6px;border-color:var(--line);font-variant-numeric:tabular-nums}',
       '.fp-sl-f b,.fp-sl-foot b{color:var(--ink)}',
       '.fp-sl-foot b.neg{color:var(--bad)}.fp-sl-foot b.pos{color:var(--good)}',
       '.fp-d{margin-left:6px;font-family:var(--font-num);font-size:var(--text-xs);font-weight:var(--w-medium)}',
