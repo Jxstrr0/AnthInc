@@ -83,7 +83,7 @@
     const st = document.createElement('style'); st.id = 'fr-elevator-style';
     st.textContent = '.floors .floor .s{font-variant-numeric:tabular-nums}.floors .floor .s .tn-good{color:var(--good,#5fcf9a)}' +
       '.floors .floor .s .tn-warn{color:var(--warn,#f0a24a)}.floors .floor .s .tn-bad{color:var(--bad,#ef6b5b)}' +
-      '#sheet .elev-h{position:sticky;top:calc(var(--sheet-head) - var(--sheet-pad-top));z-index:3;margin:0 calc(-1 * var(--sheet-pad-x)) 8px;padding:4px 52px 8px var(--sheet-pad-x);background:var(--surface)}' +
+      '#sheet .elev-h{position:sticky;top:0;z-index:2;margin:0 calc(-1 * var(--sheet-pad-x)) 8px;padding:10px 60px 10px var(--sheet-pad-x);background:var(--surface)}' +
       '#sheet.scrolled .elev-h{border-bottom:1px solid var(--line)}' +
       '.floors .floor.idle{background:transparent;border-style:dashed;box-shadow:none}.floors .floor.idle .n{background:transparent;color:var(--ink-3,#97a5b4)}';
     document.head.appendChild(st);

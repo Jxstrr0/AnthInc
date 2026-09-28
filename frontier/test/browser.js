@@ -153,6 +153,9 @@ class Run {
     assert(rows.length === 9, `elevator sheet lists ${rows.length} floors, expected 9`);
     const small = rows.filter(r => r.h < 44); if (small.length) this.note(`elevator rows under 44px: ${small.map(r => r.f + ' ' + r.h.toFixed(0)).join(', ')}`);
     if (opts.shot) await this.shot('elevator-sheet');
+    // a row half under the sticky "Elevator" heading takes a tap on its visible part; the test taps its centre, so bring it in
+    await this.ev((f) => { const el = document.querySelector(`#elevFloors [data-f="${f}"]`), b = document.getElementById('sheetBody'); if (el && b) b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top - b.clientHeight / 2; }, floor);
+    await sleep(100);
     await this.page.click(`#elevFloors [data-f="${floor}"]`);
     if (opts.checkEnd) {
       const st = await this.ev(() => ({ riding: FR.elevator.riding, disabled: document.getElementById('hEnd').disabled }));

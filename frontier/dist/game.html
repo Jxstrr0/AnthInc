@@ -984,7 +984,7 @@ body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + 
     <div class="car-code" id="carExport" hidden></div>
     <section class="set-group car-import" aria-labelledby="impH">
       <h3 class="set-h" id="impH"><i data-icon="import"></i>Import a save code</h3>
-      <div class="field"><label for="impCode">Save code</label><textarea id="impCode" rows="3" autocomplete="off" spellcheck="false" placeholder="Paste a save code (it starts with FR1.)"></textarea></div>
+      <div class="field"><label for="impCode">Save code</label><textarea id="impCode" rows="3" autocomplete="off" spellcheck="false" placeholder="Paste the whole code (FR1.…)"></textarea></div>
       <div class="field"><label>Import into</label></div>
       <div id="impSlots" class="slots"></div>
       <p class="hint warn car-err" id="impErr" role="alert" hidden></p>
@@ -5026,7 +5026,7 @@ window.FR_VERSION="0.1.0.0";
     const st = document.createElement('style'); st.id = 'fr-elevator-style';
     st.textContent = '.floors .floor .s{font-variant-numeric:tabular-nums}.floors .floor .s .tn-good{color:var(--good,#5fcf9a)}' +
       '.floors .floor .s .tn-warn{color:var(--warn,#f0a24a)}.floors .floor .s .tn-bad{color:var(--bad,#ef6b5b)}' +
-      '#sheet .elev-h{position:sticky;top:calc(var(--sheet-head) - var(--sheet-pad-top));z-index:3;margin:0 calc(-1 * var(--sheet-pad-x)) 8px;padding:4px 52px 8px var(--sheet-pad-x);background:var(--surface)}' +
+      '#sheet .elev-h{position:sticky;top:0;z-index:2;margin:0 calc(-1 * var(--sheet-pad-x)) 8px;padding:10px 60px 10px var(--sheet-pad-x);background:var(--surface)}' +
       '#sheet.scrolled .elev-h{border-bottom:1px solid var(--line)}' +
       '.floors .floor.idle{background:transparent;border-style:dashed;box-shadow:none}.floors .floor.idle .n{background:transparent;color:var(--ink-3,#97a5b4)}';
     document.head.appendChild(st);
