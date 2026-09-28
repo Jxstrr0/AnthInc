@@ -24,6 +24,10 @@ function check(s, was) {
   assert.ok(s.news.length <= S.K.newsKeep && s.history.length <= S.K.historyKeep);
   s.memo.lines.forEach(m => assert.ok(typeof m.text === 'string' && m.text.length && /^(change|flag|due|good)$/.test(m.kind), J(m)));
   assert.strictEqual(s.turn, s.status === 'playing' ? was.turn + 1 : was.turn);
+  // cash math: the week's change is net + project payouts − incident bills; money charges exactly the compute and project bills
+  const r = s.lastReport, f = r.flows;
+  assert.strictEqual(r.deltas.cash, f.money.net + (f.projectPayout || 0) - (f.incidentCost || 0), 'cash turn ' + r.turn);
+  assert.strictEqual(f.money.compute, f.compute.bill); assert.strictEqual(f.money.projects, f.projects.cash);
 }
 
 // random but valid-looking commands from the live board, drawn from a separate rng

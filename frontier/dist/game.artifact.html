@@ -3840,7 +3840,7 @@ window.FR_VERSION="0.1.0.0";
   // finish a floor object: shared fields, the first refresh
   function finish(f, id, scr) {
     f._fr = true; f._frScreens = scr; f.light = f.light || { hemi: 0.8, sun: 0.5, bg: 0x0a0e13 };
-    if (f.refresh) tryf(() => f.refresh(S()), null);
+    if (f.refresh) try { f.refresh(S()); } catch (e) { console.error('floor refresh failed', id, e); }
     return f;
   }
 
@@ -4380,9 +4380,10 @@ window.FR_VERSION="0.1.0.0";
           T(x, '+' + d.rate + ' research points a week', w / 2, h - 44, 26, '#2d6aa8', 'center', 600, SANS, w - 70);
         });
         sp = split(heads(p.staff), desks.n, stands.length, walk.length); sit.set(sp.sit); stand.set(sp.stand); nWalk = sp.walk; desks.set(Math.max(4, Math.min(desks.n, sp.sit + 2)));
-        desks.scrMat.color.setScalar(0.35 + 0.65 * act); lampMat.emissiveIntensity = 0.15 + 0.85 * act;
+        desks.scrMat.color.setScalar(0.35 + 0.65 * act);
       },
-      update(dt, t) { stepWalkers(walk, nWalk, t); rig(f, 0.74 + 0.26 * act, 0); },
+      // lamps dim in update, not refresh: look's glow bake (after the build) only gives a glow to a lamp that is lit then
+      update(dt, t) { stepWalkers(walk, nWalk, t); lampMat.emissiveIntensity = 0.15 + 0.85 * act; rig(f, 0.74 + 0.26 * act, 0); },
       debug() { return { activity: +act.toFixed(2), people: sp, desks: desks.count, lamps: +lampMat.emissiveIntensity.toFixed(2), targets: targets.map(t => t.id) }; }
     };
     return finish(f, id, scr);
@@ -4655,7 +4656,7 @@ window.FR_VERSION="0.1.0.0";
     const aide = walkers(g, [[-3.6, 4.6, 3.6, 4.6, 0.1, 0.5]], 7);
     const targets = [
       ev.target,
-      { id: 'boardroom.table', label: 'Board table', labelAt: [0.2, 1.1, 1.2], box: [-1.45, 0, -7, 1.85, 3.3, 2.75], focus: { pos: [0.2, 4.4, 5.8], look: [0.2, 1.5, -3.8], fov: 64 } },
+      { id: 'boardroom.table', label: 'Board table', labelAt: [0.2, 1.1, 1.2], box: [-1.45, 0, -7, 1.85, 3.3, 2.75], focus: aim([0.2, 2.0, -5.2], 0, 22, 10) },
       { id: 'boardroom.rivals', label: 'Rivals', box: [2.8, 1.0, -7, 7.4, 3.4, -6.8], focus: aim([5.1, 2.2, -6.9], 0, 14, fitD(4.6, 2.4)) },
       { id: 'boardroom.compute', label: 'Compute', box: [-7.95, 1.2, -2.7, -7.8, 3.2, 0.7], focus: aim([-7.9, 2.2, -1.0], 90, 18, fitD(3.4, 2.0)) },
       { id: 'boardroom.team', label: 'Team', box: [7.8, 1.2, -2.7, 7.95, 3.2, 0.7], focus: aim([7.9, 2.2, -1.0], -90, 18, fitD(3.4, 2.0)) }
