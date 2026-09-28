@@ -109,3 +109,21 @@ each floor gets its own light rig like Mogul's look.js. `<title>Frontier</title>
 `test/browser.js` (Playwright, Chromium at `/opt/pw-browsers`, never `playwright install`): sections by env var
 `SECTION=boot|flow|floors|save`; boot → new career → 10 End Turns → every floor via elevator → open each panel →
 save → reload → load → no console errors; screenshots at 390×844 into `test/shots/` combined into one contact sheet.
+
+## V0.3 additions (built 2026-09-28)
+
+- Serving floor: hotspot `serving.accounts` (client wall, one plaque per active account on one instanced mesh with one
+  canvas texture; a churned account's plaque is dark for the week after it leaves, then gone). `FR.r.debug().floorDebug`
+  reports `plaques`, `plaquesLit`, `plaquesDark`, `clients`.
+- Floor 1 panel: serving readout "Serving N PF · N reserved for accounts · N open market" (`[data-fpres]`, plus "N PF short
+  of the contracts" in red); Accounts section (`[data-focus="accounts"]`: Contracted / Reserved / Backlog, one `.fp-acc` row
+  per account with a mood bar), offer board (`.fp-aoff[data-acc]`, three requirement rows from `FR.accounts.qualifies`,
+  `[data-fp="sign"]`, `[data-fp="accNo"]` → confirm `[data-fp="accNoOk"]`), locked state with progress meters.
+- Allocation card: `[data-fp="slUndo"]` (back to the shares the week started with) and `[data-fp="slDefault"]`
+  (`FR.sim.K.startSliders`, 40/20/25/15), disabled when they would change nothing.
+- HUD: once the lab has an account, `#hudCashChip` opens `#hudSplit` (open market / contracts last week, next week's
+  forecast, `#hsMoney` → Boardroom Money); `FR.ui.splitOpen()`. A tap on the 3D view that closes it opens nothing.
+- Boardroom Money: Series B in the rounds list like the A; contracted revenue, backlog and a yearly figure; the B offer and
+  B milestone cards state the sector raise (`FR.market.K.raiseLift` / `raiseLag`) when it is on.
+- Commands `FR.cmd.signAccount(id)`, `FR.cmd.declineAccount(id)`. Browser section `SECTION=accounts` with its own contact
+  sheet `test/shots/contact-accounts.png`.

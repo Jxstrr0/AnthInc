@@ -165,7 +165,9 @@ s.turn += 26; assert.ok(!A.ready(s)); a.starts = 0; step(4); assert.strictEqual(
 // incidents: -25 for the lab, -10 for a rival, after the ladder
 a.mood = 70; let q = rep(s.turn); q.events.push({ type: 'model:incident', skill: 'agents', gap: 22 }); A.shock(s, q); assert.strictEqual(a.mood, 45);
 q = rep(s.turn); q.events.push({ type: 'market:rivalIncident', rivalId: 'opal', trust: 2 }); A.shock(s, q); assert.strictEqual(a.mood, 35);
-assert.ok(/^Account mood down 10 after the rival incident: Live Buyer 0 35\.$/.test(q.memo[0].text), q.memo[0].text);
+assert.ok(/^Account mood down 10 after the Opal AI incident: Live Buyer 0 35\.$/.test(q.memo[0].text), q.memo[0].text);
+a.mood = 70; q = rep(s.turn); q.events.push({ type: 'market:rivalIncident', rivalId: 'opal', trust: 2 }, { type: 'market:rivalIncident', rivalId: 'zeta', trust: 2 }); A.shock(s, q);
+assert.ok(/^Account mood down 20 after incidents at Opal AI and Zeta: Live Buyer 0 50\.$/.test(q.memo[0].text), q.memo[0].text);
 
 // ---- churn on an incident: below 30 the account leaves next turn, trust -2, memo and news, gone for the run ----
 s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = s.turn + 3; a = live(s, 2, { mood: 50, name: 'Halden Mutual' });
@@ -210,6 +212,12 @@ q = step(1000);
 assert.strictEqual(q.memo.length, K.memoMax); assert.ok(/has ended its contract/.test(q.memo[0].text));
 q.events.push({ type: 'model:incident', skill: 'coding', gap: 21 }); A.shock(s, q);
 assert.strictEqual(q.memo.length, K.memoMax, 'the week already used both lines');
+// two accounts leaving in the same week share one memo line (none is lost under the two-line cap)
+s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = s.turn + 50;
+live(s, 1, { mood: 10 }); live(s, 1, { mood: 12 }); live(s, 1, { mood: 11 });
+q = step(1000);
+assert.strictEqual(s.accounts.lost.length, 3);
+assert.strictEqual(q.memo.filter(m => /have ended their contracts, citing reliability concerns\. \$[\d.]+k a week and \d+ reserved PF released\. Public trust down 6\.$/.test(m.text) && /, .+ and /.test(m.text)).length, 1, JSON.stringify(q.memo));
 
 // ---- through endTurn: account lines come after the money lines ----
 s = game(); s.accounts.unlocked = false; setCap(s, 25);

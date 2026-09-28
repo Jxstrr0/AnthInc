@@ -15,7 +15,7 @@
       + (go ? `<button class="btn small quiet ov-go" data-ov="${esc(go)}" aria-label="Open ${esc(title)}"><span>Open</span>${ico('chevron')}</button>` : '')
       + `</div>${line ? `<p class="ov-line">${line}</p>` : ''}${body || ''}</section>`;
   }
-  const runwayText = (w) => w === Infinity || w == null ? 'Positive' : Math.max(0, Math.floor(w)) + ' wks';
+  const runwayText = (w) => w === Infinity || w == null ? 'Positive' : w >= 104 ? '2+ yrs' : Math.max(0, Math.floor(w)) + ' wks';
 
   O.html = function (s) {
     const f = tryr(() => FR.sim.forecast(s), null), m = s.money, avg = tryr(() => FR.sim.avgCap(s), 0);

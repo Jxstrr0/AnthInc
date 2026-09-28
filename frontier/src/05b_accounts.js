@@ -40,6 +40,7 @@
   const avg = (s) => s.model ? FR.sim.avgCap(s) : 0;
   const trust = (s) => s.market ? s.market.trust : 50;
   const wk = (n) => n + (n === 1 ? ' week' : ' weeks');
+  const list = (a) => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
   const n1 = (v) => String(FR.round(v, 1));
   const worstGap = (s) => s.model ? Math.max.apply(null, FR.SKILLS.map(k => Math.max(0, s.model.skills[k].cap - s.model.skills[k].safe))) : 0;
   const inStep = (s) => FR.sim && FR.sim.inStep ? FR.sim.inStep(s) : worstGap(s) <= 5;
@@ -173,15 +174,19 @@
       report.flows.accounts.active = 0;
       return flush(report, report.memo);
     }
-    // churn: an account below the line last week leaves now, gone for the run
-    st.active.slice().forEach(a => {
-      if (a.mood >= M.churn) return;
-      lose(s, a, 'churn', report);
-      const t = -nudge(s, -K.churnTrust, a.name + ' churned', report);
-      L.push({ p: 0, kind: 'flag', text: a.name + ' has ended its contract, citing reliability concerns. ' + money(a.feePerWeek) + ' a week and ' + a.pfPerWeek +
-        ' reserved PF released. Public trust down ' + n1(t) + '.' });
-      report.news.push({ kind: 'you', text: a.name + ' ends its contract with ' + s.lab.name + ' citing reliability concerns.' });
-    });
+    // churn: an account below the line last week leaves now, gone for the run. One memo line for all that leave this week.
+    const gone = st.active.filter(a => a.mood < M.churn);
+    if (gone.length) {
+      let t = 0;
+      gone.forEach(a => {
+        lose(s, a, 'churn', report);
+        t += -nudge(s, -K.churnTrust, a.name + ' churned', report);
+        report.news.push({ kind: 'you', text: a.name + ' ends its contract with ' + s.lab.name + ' citing reliability concerns.' });
+      });
+      const one = gone.length === 1;
+      L.push({ p: 0, kind: 'flag', text: list(gone.map(a => a.name)) + (one ? ' has ended its contract' : ' have ended their contracts') + ', citing reliability concerns. ' +
+        money(sum(gone, a => a.feePerWeek)) + ' a week and ' + sum(gone, a => a.pfPerWeek) + ' reserved PF released. Public trust down ' + n1(t) + '.' });
+    }
     // service and mood, contracts whose fee has started
     const served = {}; A.serve(s, alloc && alloc.serving ? alloc.serving.pf : 0).forEach(x => { served[x.id] = x.served; });
     const step = inStep(s), penalty = M.unserved * (A.ready(s) ? K.readyShare : 1);
@@ -233,9 +238,12 @@
     const hit = K.mood.incident * lab.length + K.mood.rival * rival.length; if (!hit) return;
     const leaving = [];
     st.active.forEach(a => { const was = a.mood; a.mood = FR.clamp(a.mood - hit, 0, 100); if (a.mood < K.mood.churn && was >= K.mood.churn) leaving.push(a.name); });
-    const what = lab.length ? 'the ' + FR.SKILL_NAME[lab[0].skill] + ' incident' : 'the rival incident';
+    const rivals = rival.map(e => { const r = s.market && s.market.rivals.find(x => x.id === e.rivalId); return r ? r.name : 'a rival'; });
+    const what = lab.length ? 'the ' + list(lab.map(e => FR.SKILL_NAME[e.skill])) + (lab.length === 1 ? ' incident' : ' incidents') +
+      (rival.length ? ' and ' + (rival.length === 1 ? 'a rival incident' : rival.length + ' rival incidents') : '')
+      : (rival.length === 1 ? 'the ' + rivals[0] + ' incident' : 'incidents at ' + list(rivals));
     lines(report).push({ p: leaving.length ? 0 : 3, kind: leaving.length ? 'flag' : 'change', text: 'Account mood down ' + hit + ' after ' + what + ': ' +
-      st.active.map(a => a.name + ' ' + Math.round(a.mood)).join(', ') + '.' + (leaving.length ? ' Below ' + K.mood.churn + ', ' + leaving.join(' and ') +
+      st.active.map(a => a.name + ' ' + Math.round(a.mood)).join(', ') + '.' + (leaving.length ? ' Below ' + K.mood.churn + ', ' + list(leaving) +
       (leaving.length === 1 ? ' ends its' : ' end their') + ' contract next week.' : '') });
     flush(report, report.memo);
   };

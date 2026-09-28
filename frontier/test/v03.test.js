@@ -48,7 +48,7 @@ assert.deepStrictEqual(ev(s, 'money:milestone'), [{ type: 'money:milestone', rou
 let o = s.money.offer;
 assert.ok(o.pct >= 0.10 && o.pct <= 0.20); assert.ok(Math.abs(o.amount / o.valuation - o.pct) < 1e-3); assert.ok(o.amount >= K.rounds.b.amount);
 assert.strictEqual(o.expires, s.turn + K.offerTurns - 1);
-assert.ok(memo(s, new RegExp('^Series B milestone met: weekly revenue \\$[\\d.]+[kM] against \\d+\\. Series B offer: \\$[\\d.]+[MB] for \\d+% at a \\$[\\d.]+[MB] valuation\\. Open until ' + DATE + '\\.$')),
+assert.ok(memo(s, new RegExp('^Series B milestone met: weekly revenue \\$[\\d.]+[kM] against \\$[\\d.]+[kM]\\. Series B offer: \\$[\\d.]+[MB] for \\d+% at a \\$[\\d.]+[MB] valuation\\. Open until ' + DATE + '\\.$')),
   s.lastReport.memo.map(m => m.text).join(' | '));
 const offered = FR.clone(s);
 

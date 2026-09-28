@@ -177,7 +177,7 @@
     const m = s.money, ms = m.milestone, T = s.turn;
     if (M.progress(s, ms).met) {
       report.events.push({ type: 'money:milestone', round: ms.round, hit: true });
-      return offer(s, ms.round, T + 1, report, RN(ms.round) + ' milestone met: ' + nowText(s, ms) + ' against ' + ms.value + '.');
+      return offer(s, ms.round, T + 1, report, RN(ms.round) + ' milestone met: ' + nowText(s, ms) + ' against ' + (ms.kind === 'revenue' ? money(ms.value) : ms.value) + '.');
     }
     if (T >= ms.due) {
       m.milestone = null; m.lockedUntil = T + 1 + K.lockTurns;

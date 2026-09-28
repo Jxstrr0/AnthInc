@@ -42,7 +42,7 @@
   let refTurn = null;
   const when = (t) => { const s = S(), ref = refTurn != null ? refTurn : s && s.turn;
     return (s && FR.year(t) === FR.year(ref) ? 'Week ' + FR.weekOfYear(t) : FR.dateLabel(t)).replace(/ /g, '\u00a0'); };
-  const runwayText = (w) => (w == null || w === Infinity) ? 'cash-positive' : wks(Math.max(0, w));
+  const runwayText = (w) => (w == null || w === Infinity) ? 'cash-positive' : w >= 104 ? 'over 2 years' : wks(Math.max(0, w));
   const META = (id) => (FR.HQ_FLOOR_META || {})[id] || { n: '?', name: String(id) };
   const ORD = ['first', 'second', 'third', 'fourth', 'fifth'];
 
@@ -265,8 +265,15 @@
         <p class="fp-sl-f">${fcText(k, s, nums[k])}</p>${k === 'serving' ? resLine(s, (al.serving || {}).pf) : ''}
         <div class="fp-nudge" role="group" aria-label="Adjust ${esc(AN(k))}">${[-5, -1, 1, 5].map(d => btn('nudge', k + ':' + d, (d > 0 ? '+' : '−') + Math.abs(d), 'quiet', !live(s) || (d < 0 ? v <= 0 : v >= 100))).join('')}</div></div>`;
     }).join('');
-    return `<div class="card fp-sliders" id="fpSliders"><div class="fp-cardh"><span class="kicker">Allocation</span>${tip(TIPS.sliders, 'the allocation')}<span class="fp-sum num">Total 100%</span></div>${rows}<p class="fp-sl-foot" data-fpfoot>${footText(f, f)}</p></div>`;
+    const w0 = weekStart(s), same = (a) => AL().every(k => a[k] === s.sliders[k]);
+    const resets = `<div class="fp-reset" role="group" aria-label="Reset the allocation">${btn('slUndo', '', 'Undo', 'quiet', !live(s) || same(w0))}${btn('slDefault', '', `Default ${AL().map(k => SDEF()[k]).join('/')}`, 'quiet', !live(s) || same(SDEF()))}</div>`;
+    return `<div class="card fp-sliders" id="fpSliders"><div class="fp-cardh"><span class="kicker">Allocation</span>${tip(TIPS.sliders, 'the allocation')}<span class="fp-sum num">Total 100%</span></div>${rows}${resets}<p class="fp-sl-foot" data-fpfoot>${footText(f, f)}</p></div>`;
   }
+  // slider resets (owner call, V0.3): Undo = back to the shares this week started with; Default = the new-lab split
+  const SDEF = () => (FR.sim && FR.sim.K && FR.sim.K.startSliders) || { training: 40, serving: 20, safety: 25, research: 15 };
+  let W0 = null;
+  const markWeek = () => { const s = S(); W0 = s ? { turn: s.turn, lab: s.lab && s.lab.name, sliders: Object.assign({}, s.sliders) } : null; };
+  function weekStart(s) { if (!W0 || W0.turn !== s.turn || W0.lab !== (s.lab && s.lab.name)) markWeek(); return (W0 && W0.sliders) || s.sliders; }
   // the serving readout once accounts reserve PF: "Serving 38 PF · 14 reserved for accounts · 24 open market"
   function resText(s, pf) {
     const need = reservedPF(s); pf = Math.max(0, +pf || 0); if (!(need > 0)) return '';
@@ -670,7 +677,14 @@
       ${kv('coin', `Cash after closing <b class="num">${kmoney(m.cash + o.amount)}</b>${pv.f ? `; runway <b class="num">${runwayText(pv.f.runway)}</b>` : ''}.`)}
       ${after ? kv('users', `Your stake falls from <b class="num">${pctS(m.founderPct)}</b> to <b class="num">${pctS(after.money.founderPct)}</b>.${tip(TIPS.stake, 'your stake')}`) : ''}
       ${kv('record', ms ? esc(ms.text) : 'No further rounds are scheduled after this one.')}
+      ${raiseNote(s, o.round)}
       ${actions}</div>`;
+  }
+  // the sector raise (06_market K.raiseLift): rivals raise in step with the lab's Series B and train faster from raiseLag weeks
+  // after it closes. Shown on the B offer and the B milestone, so the cost of taking the B is on the card before the decision.
+  function raiseNote(s, round) {
+    const MK = (FR.market && FR.market.K) || {}; if (round !== 'b' || !(MK.raiseLift > 0)) return '';
+    return kv('rival', `Rivals raise in step with a Series B: from ${wks(MK.raiseLag || 0)} after it closes, their training pace rises <b class="num">${Math.round(MK.raiseLift * 100)}%</b> for the rest of the run. Declining leaves their pace as it is.`);
   }
   function milestoneCard(s) {
     const ms = s.money.milestone, pr = tryr(() => FR.money.progress(s), null); if (!pr) return '';
@@ -682,7 +696,7 @@
     return `<div class="card" data-focus="milestone"><div class="card-head">${ico('record')}<b class="card-title">${esc(roundName(ms.round))} milestone</b>${pr.met ? badge('Met', 'good', 'check') : badge(pr.weeksLeft <= 0 ? 'Due now' : wks(pr.weeksLeft) + ' left', pr.weeksLeft <= 4 ? 'warn' : '', 'clock')}</div>
       <p class="card-meta">${esc(ms.text)}</p>
       <div class="pl-mrow-l"><span>${esc(label)}</span><span class="num"><b>${fmt(pr.current)}</b> of ${fmt(pr.value)}</span></div>${meter(pr.value > 0 ? pr.current / pr.value * 100 : 0, pr.met ? 'good' : 'gold')}
-      ${pr.met ? '' : paceNote(s, ms)}${ms.kind === 'revenue' && !pr.met && accOn() ? kv('building', `Weekly revenue counts open-market serving and account fees. ${unlocked(s) ? `The book holds ${(accOf(s).active || []).length} of ${maxActive(s)} accounts.` : 'Account offers open on the Serving floor at average capability ' + AK().unlockCap + ' and public trust ' + AK().unlockTrust + '.'}`) : ''}${note(pr.met ? 'check' : 'alert', said)}</div>`;
+      ${pr.met ? '' : paceNote(s, ms)}${ms.kind === 'revenue' && !pr.met && accOn() ? kv('building', `Weekly revenue counts open-market serving and account fees. ${unlocked(s) ? `The book holds ${(accOf(s).active || []).length} of ${maxActive(s)} accounts.` : 'Account offers open on the Serving floor at average capability ' + AK().unlockCap + ' and public trust ' + AK().unlockTrust + '.'}`) : ''}${raiseNote(s, ms.round)}${note(pr.met ? 'check' : 'alert', said)}</div>`;
   }
   // FR.money.pace: where today's settings leave a capability milestone by its due week
   const paceOf = (s, ms) => has('money', 'pace') ? tryr(() => FR.money.pace(s, ms), null) : null;
@@ -695,7 +709,7 @@
   BV.money = function (s, f) {
     const m = s.money, bp = tryr(() => FR.money.burnParts(s), { payroll: 0, ops: 0, compute: 0, projects: 0 }), rw = f ? f.runway : Infinity;
     const rcls = rw === Infinity ? 'pos' : rw < 6 ? 'neg' : rw < 13 ? 'tone-warn' : '';
-    let out = `<div class="stats">${stat('Cash', kmoney(m.cash))}${stat('Runway', rw === Infinity ? 'Positive' : Math.max(0, rw) + ' wks', rw === Infinity ? 'revenue covers burn' : 'forecast', { tip: tip(TIPS.runway, 'runway'), cls: rcls })}${stat('Valuation', kmoney(m.valuation), 'stake ' + pctS(m.founderPct), { tip: tip(TIPS.stake, 'your stake') })}</div>`;
+    let out = `<div class="stats">${stat('Cash', kmoney(m.cash))}${stat('Runway', rw === Infinity ? 'Positive' : rw >= 104 ? '2+ yrs' : Math.max(0, rw) + ' wks', rw === Infinity ? 'revenue covers burn' : 'forecast', { tip: tip(TIPS.runway, 'runway'), cls: rcls })}${stat('Valuation', kmoney(m.valuation), 'stake ' + pctS(m.founderPct), { tip: tip(TIPS.stake, 'your stake') })}</div>`;
     // contracted revenue and the backlog (V0.3): the cap table view carries the customer book beside the investors
     const act = accOf(s).active || [];
     if (act.length) {
@@ -1055,6 +1069,8 @@
       case 'hire': said(run({ type: 'hire', n: Math.max(1, Math.min(Math.round(+v) || 1, hireRoom(s))) })); return;
       case 'layoff': sfx('tap'); P.confirm = 'layoff:' + Math.max(1, Math.round(+v) || 1); render(true); return;
       case 'layoffOk': said(run({ type: 'layoff', n: Math.round(+v) })); return;
+      case 'slUndo': sfx('tap'); run(Object.assign({ type: 'sliders' }, weekStart(s))); return;
+      case 'slDefault': sfx('tap'); run(Object.assign({ type: 'sliders' }, SDEF())); return;
       case 'nudge': { const [k, d] = String(v).split(':'); if (s.sliders[k] == null) return; sfx('tap'); run(Object.assign({ type: 'sliders' }, link(s.sliders, k, s.sliders[k] + (+d || 0)))); return; }
       case 'retire': sfx('tap'); P.confirm = 'retire'; render(true); return;
       case 'retireOk': run({ type: 'retire' }); return;
@@ -1107,8 +1123,8 @@
     if (U.sheetId && U.sheetId.indexOf('fp:') === 0 && P.floor) render(true);
   };
   FR.on('state:changed', () => { if (!busy) P.refresh(); });
-  FR.on('turn:ended', () => { P.confirm = null; if (!busy) P.refresh(); });
-  ['game:new', 'game:loaded'].forEach(ev => FR.on(ev, () => { P.floor = P.tab = P.focus = P.confirm = P.hotspot = null; drag = null; SL = null; }));
+  FR.on('turn:ended', () => { P.confirm = null; markWeek(); if (!busy) P.refresh(); });
+  ['game:new', 'game:loaded'].forEach(ev => FR.on(ev, () => { P.floor = P.tab = P.focus = P.confirm = P.hotspot = null; drag = null; SL = null; markWeek(); }));
   FR.on('ui:sheet', d => { const id = d && d.id; if (!id || id.indexOf('fp:') !== 0) { drag = null; SL = null; P.confirm = null; } });
   P.debug = () => ({ floor: P.floor, tab: P.tab, focus: P.focus, confirm: P.confirm, hotspot: P.hotspot, sheet: U.sheetId, dragging: !!drag, sliders: !!SL });
 
@@ -1167,6 +1183,7 @@
       '.fp-sl .pl-range::-moz-range-thumb{pointer-events:auto;width:28px;height:28px;border:8px solid transparent;background-clip:padding-box;box-shadow:inset 0 0 0 3px var(--rc)}',
       '.fp-sl .pl-range:focus-visible::-webkit-slider-thumb{box-shadow:inset 0 0 0 3px var(--rc),0 0 0 3px var(--focus)}',
       '.fp-sl-f{margin:-8px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-3)}',
+      '.fp-reset{display:flex;gap:8px;margin:12px 0 0;padding-top:10px;border-top:1px solid var(--line)}.fp-reset .btn{flex:1;width:auto;min-width:0;min-height:var(--tap);margin:0;padding:4px 8px;font-variant-numeric:tabular-nums}',
       '.fp-nudge{display:flex;gap:6px;margin:6px 0 0}.fp-nudge .btn{flex:1;width:auto;min-width:0;min-height:var(--tap);margin:0;padding:4px 6px;border-color:var(--line);font-variant-numeric:tabular-nums}',
       '.fp-sl-f b,.fp-sl-foot b{color:var(--ink)}',
       '.fp-sl-foot b.neg{color:var(--bad)}.fp-sl-foot b.pos{color:var(--good)}',
