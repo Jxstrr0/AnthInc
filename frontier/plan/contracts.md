@@ -112,7 +112,12 @@ Derived helpers (pure, in `02_sim.js`): `FR.sim.avgCap(state)`, `FR.sim.avgSafe(
 
 All `step` functions mutate the (already cloned) state in place and push into `report`.
 
-`report = { turn, events: [ {type, ...} ], memo: [ {kind, text} ], news: [ {text, kind} ], flows: {} }`
+`report = { turn, events: [ {type, ...} ], memo: [ {kind, text} ], news: [ {text, kind} ], flows: {}, commands: [ {ok, why} ],
+deltas: { cash, trust, cap: {}, safe: {} } }` — `flows` holds each module's numbers for the week (alloc, model, projects,
+compute, money, trust, market, plus incidentCost and projectPayout when they happen); `deltas` is the week's change.
+
+Commands return `{ok, why}`; a module may add `event` (a bus event) and `memo` (a memo line). `02_sim` queues both
+(`pendingEvents`, `pendingMemo`); nothing in the sim emits on the bus.
 
 ### 01_core.js (lead, done)
 `FR.on/off/emit`, `FR.rng(seed)` → fn with `.int .range .pick .chance .normal .state()`, `FR.hash`, `FR.clamp`,
@@ -122,8 +127,10 @@ All `step` functions mutate the (already cloned) state in place and push into `r
 
 ### 02_sim.js (lead) — the turn resolver
 - `FR.sim.newGame({ seed, labName, slot }) → state` — calls each module's `init(state, rng)` in file order.
-- `FR.sim.applyCommands(state, commands) → { state, results: [ {ok, why} ] }` — pure, no time passes. Used by the UI for
-  immediate changes (sliders, rent, greenlight...) and by `endTurn`.
+- `FR.sim.applyCommands(state, commands) → { state, results: [ {ok, why, event?, memo?} ] }` — pure, no time passes. Used by
+  the UI for immediate changes (sliders, rent, greenlight...) and by `endTurn`. A successful command's `memo` goes to
+  `state.pendingMemo` and its `event` to `state.pendingEvents`; both come out with the next End Turn. `FR.cmd.do` must not
+  emit `results[i].event` itself (it would fire twice).
 - `FR.sim.endTurn(state, commands) → state'` — pure. `state'.lastReport` holds the report (events, memo, news, flows).
   `99_main.js` emits `report.events` on the bus after swapping `FR.state`.
 - `FR.sim.forecast(state) → { capacity, alloc, revenue, burn, net, runway, capGain:{}, safeGain:{} }` — next-turn projection
@@ -133,7 +140,9 @@ All `step` functions mutate the (already cloned) state in place and push into `r
 - `FR.sim.migrate(d)` — fill missing fields on old saves.
 - `FR.sim.avgCap(state)`, `FR.sim.avgSafe(state)`, `FR.sim.debug(state)`.
 - `FR.sim.output(base, pf, staff)` — the shared production curve every allocation uses (see §3).
-- `FR.sim.atFrontier(state)`, `FR.sim.safelyAtFrontier(state)`.
+- `FR.sim.atFrontier(state)` (average cap ≥ best rival's), `FR.sim.inStep(state)` (every safe ≥ cap − `K.safeMargin`),
+  `FR.sim.safelyAtFrontier(state)` (both). `inStep` also halves the trust hit from rival incidents (06_market).
+- `FR.sim.K`: `winTurns` 52, `safeMargin` 5, `allocExp`, `staffExp`, `startSliders`, `score` (end-of-run weights).
 
 ### 03_model.js — skills, drift, slow-burn ladder
 - `init(state, rng)` — `state.model` (all skills cap 8, safe 8 *first pass*), `state.target='coding'`.
@@ -141,17 +150,30 @@ All `step` functions mutate the (already cloned) state in place and push into `r
   `safe` a little on skills whose cap rose; safety output raises `safe` spread over skills by gap; research does nothing here.
 - `ladder(state, rng, report)` — per skill: warning / incident / final. May set `state.status='dead'` and `state.end`.
 - `boost(state, skill, {cap, safe})` — used by project payoffs (clamps 0..100, safe never above cap + K.safeLead).
-- `gap(state, skill)` = `max(0, cap - safe)`; `pressure(state)` = weighted gaps (agents weighted highest);
-  `outlook(state, skill) → { level: 'ok'|'watch'|'warning'|'critical', gap, turnsToFinal|null, text }` (UI + memo read this).
+- `gap(state, skill)` = `max(0, cap - safe)`.
+- Skill weights `K.weights = { coding: 1, reasoning: 1, agents: 1.5 }` (agents > reasoning = coding; this was `pressureW`
+  before 2026-09-28). `weight(skill)` reads it (1 for an unknown skill).
+- `pressure(state)` = Σ weight × gap. `pressureLevel(state) → { value, level: 'ok'|'watch'|'warning'|'critical', text }`
+  for the Safety floor gauge: `value` = pressure (1 decimal); level = the band of `value` against
+  `K.pressureBands = [15, 30, 45]` (above each: watch, warning, critical — the agents weight × the ladder's 10/20/30),
+  raised to the worst skill's `outlook` level if that is higher. Gauge scale: 0 to `K.pressureBands[2]` and beyond.
+  Text e.g. `"Pressure 19, watch. Agents carries the most: gap 10 at weight 1.5."`,
+  `"Pressure 0, in hand. Safety is at or above capability on every skill."`
+- `incidentChance(gap, skill?)` — weekly odds at a gap, × the skill's weight when a skill is given (the ladder always
+  passes it); `incidentTrust(skill)` = `K.incidentTrust × weight` (6 for coding and reasoning, 9 for agents).
+- `outlook(state, skill) → { level: 'ok'|'watch'|'warning'|'critical', gap, turnsToFinal|null, text, stand, incidents }`
+  (UI + memo read this; the text quotes the weighted incident risk).
 - `gains(state, alloc) → { cap:{}, safe:{} }` — deterministic expected gains for the forecast.
-- `debug(state)`.
+- `debug(state)` (includes `pressure` and `pressureLevel`).
 
 Ladder rules (from the handoff, binding):
 - gap > 10 for 2 consecutive turns → **Warning**: memo line (kind 'flag'), `stats.warnings++`, event `model:warning`. Once per
-  episode; re-arms when gap ≤ 10.
-- gap > 20 → roll each turn, chance `K.incidentBase + (gap-20)*K.incidentSlope` → **Incident**: costs cash
-  (`K.incidentCash + cash*K.incidentCashPct`) and trust (`K.incidentTrust`), headline in the news (kind 'incident'),
-  event `model:incident`, push turn to `skills[s].incidents`, `stats.incidents++`.
+  episode; re-arms when gap ≤ 10. A gap that jumps past 20 before it was warned is warned that week.
+- gap > 20 → roll each turn, **but only once the skill was warned in an earlier week** (the week a warning lands never
+  rolls), chance `(K.incidentBase + (gap-20)*K.incidentSlope) × weight` → **Incident**: costs cash
+  (`K.incidentCash + cash*K.incidentCashPct`) and trust (`K.incidentTrust × weight`), headline in the news (kind
+  'incident'), event `model:incident`, push turn to `skills[s].incidents`, `stats.incidents++`. The cash bill lands after
+  05_money's step, so 02_sim checks for bankruptcy again after the ladder.
 - gap > 30 sustained 4 turns (critStreak ≥ 4) **or** a third incident on the same skill within 52 turns → **Final**:
   `status='dead'`, `end={turn, cause:'final', skill, text}`, event `model:final`.
 - The player always sees it coming: memo flags when critStreak ≥ 1 ("final incident in N weeks unless the gap closes")
