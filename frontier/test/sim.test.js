@@ -145,7 +145,7 @@ assert.notStrictEqual(J(scripted(5, 3)[2]), J(A[2]), 'a different seed plays dif
 // 8. a win is possible: hold caps above the best rival with safety in step for 52 turns (a scripted cheat)
 { let s = S.applyCommands(game(11), [{ type: 'acceptRound' }]).state, first = 0;
   for (let t = 0; t < 80 && s.status === 'playing'; t++) {
-    const top = FR.market.best(s).avgCap + 2;
+    const top = FR.market.best(s).avgCap + 5;   // clear of a week of rival gains
     SK.forEach(k => { const x = s.model.skills[k]; x.cap = Math.min(100, Math.max(x.cap, top)); x.safe = x.cap; });
     s.money.cash = Math.max(s.money.cash, 20e6);
     s = S.endTurn(s, []);

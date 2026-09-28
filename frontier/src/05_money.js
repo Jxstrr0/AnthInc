@@ -109,9 +109,12 @@
     projects: FR.projects && FR.projects.cashDemand && s.projects ? FR.projects.cashDemand(s) : 0
   });
   M.burnEstimate = (s) => { const p = M.burnParts(s); return Math.round(p.payroll + p.ops + p.compute + p.projects); };
-  M.runway = (s) => weeksOf(s.money.cash, s.money.revenue - M.burnEstimate(s));   // weeks, Infinity when net ≥ 0
+  M.runway = (s) => weeksOf(s.money.cash, M.recurring(s) - M.burnEstimate(s));   // weeks, Infinity when net ≥ 0 (no one-off ask bonus)
   M.backlog = (s) => AC(s) ? AC(s).backlog(s) : 0;
-  M.valuation = (s) => Math.round((K.valBase + K.valCap * Math.pow(avg(s), K.valCapExp) + K.revMultiple * 52 * Math.max(0, s.money ? s.money.revenue : 0) +
+  // weekly revenue without a one-off ask bonus (V0.4): what valuation, revenue milestones and the history row read, so a
+  // single bonus week is not annualised as recurring revenue
+  M.recurring = (s) => s.money ? Math.max(0, (s.money.revenue || 0) - (s.money.askBonus || 0)) : 0;
+  M.valuation = (s) => Math.round((K.valBase + K.valCap * Math.pow(avg(s), K.valCapExp) + K.revMultiple * 52 * M.recurring(s) +
     K.backlogMultiple * M.backlog(s)) * M.trustMult(s));
 
   // ---- rounds and milestones ----
@@ -147,7 +150,7 @@
   // current value against a milestone, for the memo and the UI
   M.progress = function (s, m) {
     m = m || s.money.milestone; if (!m) return null;
-    const cur = m.kind === 'cap' ? s.model.skills[m.skill || best(s)].cap : m.kind === 'avgCap' ? avg(s) : m.kind === 'revenue' ? s.money.revenue : trust(s);
+    const cur = m.kind === 'cap' ? s.model.skills[m.skill || best(s)].cap : m.kind === 'avgCap' ? avg(s) : m.kind === 'revenue' ? M.recurring(s) : trust(s);
     const early = !!(m.opens && s.turn < m.opens);   // the window has not opened yet: reaching the value does not count
     return { current: cur, value: m.value, met: !early && cur >= m.value, early, opensIn: early ? m.opens - s.turn : 0, weeksLeft: m.due - s.turn };
   };
@@ -166,20 +169,20 @@
   function nowText(s, m) {
     if (m.kind === 'cap') { const k = m.skill || best(s); return FR.SKILL_NAME[k] + ' capability ' + Math.floor(s.model.skills[k].cap); }
     if (m.kind === 'avgCap') return 'average capability ' + Math.floor(avg(s) * 10) / 10;
-    if (m.kind === 'revenue') return 'weekly revenue ' + money(s.money.revenue);
+    if (m.kind === 'revenue') return 'weekly revenue ' + money(M.recurring(s));
     return 'public trust ' + Math.floor(trust(s));
   }
   // mean weekly revenue over the last K.ms.bRevWeeks weeks of history (this week's revenue when there is none)
   M.trailRevenue = function (s) {
-    const h = (s.history || []).slice(-K.ms.bRevWeeks).map(r => +r.revenue || 0);
-    return h.length ? h.reduce((a, b) => a + b, 0) / h.length : Math.max(0, s.money.revenue || 0);
+    const h = (s.history || []).slice(-K.ms.bRevWeeks).map(r => Math.max(0, (+r.revenue || 0) - (+r.askBonus || 0)));   // no one-off ask bonus
+    return h.length ? h.reduce((a, b) => a + b, 0) / h.length : M.recurring(s);
   };
   function setMilestone(s, round, kind, from, again) {
     const Q = K.ms; let value;
     if (kind === 'cap') { const c = s.model.skills[best(s)].cap; value = Math.min(100, ceil5(c + Q.capFrac * (100 - c))); }
     else if (kind === 'avgCap') { const a = avg(s); value = Math.min(100, ceil5(a + Q.avgFrac * (100 - a))); }
     else if (kind === 'revenue' && round === 'b') value = sig2(Math.max(Q.bRevMin, M.trailRevenue(s) * (again ? Q.bRevAgain : Q.bRevMult)));
-    else if (kind === 'revenue') value = sig2(Math.max(Q.revMin, s.money.revenue * Q.revMult));
+    else if (kind === 'revenue') value = sig2(Math.max(Q.revMin, M.recurring(s) * Q.revMult));
     else value = Math.min(Q.trustMax, ceil5(trust(s) + Q.trustAdd));
     const wait = round === 'b' && !again ? Q.bWait : 0;
     const m = { round, kind, skill: null, value, opens: wait ? from + wait : 0, due: from + wait + K.msTurns, text: '' };
@@ -342,7 +345,7 @@
     const servingPF = alloc && alloc.serving ? Math.max(0, alloc.serving.pf) : 0, demand = M.demandPF(s), sp = M.revenueSplit(s, servingPF), served = sp.open;
     const p = M.burnParts(s), burn = Math.round(p.payroll + p.ops + p.compute + p.projects), revenue = Math.round(sp.total);
     m.revenue = revenue; m.revMarket = Math.round(sp.market); m.revContracts = revenue - m.revMarket;
-    m.burn = burn; m.net = revenue - burn; m.cash += m.net;
+    m.burn = burn; m.net = revenue - burn; m.cash += m.net; m.askBonus = 0;
     const was = weeksOf(cash0, m.net);                  // runway coming into the week, on the week's own bills
     report.flows.money = { revenue, market: m.revMarket, contracts: m.revContracts, reservedPF: FR.round(sp.reserved, 1), burn, net: m.net,
       payroll: p.payroll, ops: p.ops, compute: Math.round(p.compute), projects: Math.round(p.projects),
@@ -356,6 +359,13 @@
     // accounts after revenue resolves (mood, churn, expiry and renewal, the offer board); their lines follow the money lines
     const acct = { turn: report.turn, events: report.events, memo: [], news: report.news, flows: report.flows, deferAccounts: report.deferAccounts };
     if (FR.accounts) FR.accounts.step(s, alloc, rng, acct);
+    // an account ask met this week pays its bonus now, in this week's revenue (the incident factor and DeepField share
+    // are already applied by FR.accounts)
+    const bonus = Math.round((report.flows.accounts && report.flows.accounts.bonus) || 0);
+    if (bonus > 0) {
+      m.revenue += bonus; m.revContracts += bonus; m.net += bonus; m.cash += bonus; m.askBonus = bonus;
+      Object.assign(report.flows.money, { revenue: m.revenue, contracts: m.revContracts, net: m.net, cash: m.cash, askBonus: bonus });
+    }
     arrivals(s, next, report);
     m.valuation = M.valuation(s);
     const tail = () => { report.memo.push.apply(report.memo, acct.memo); if (report.flows.accounts) report.flows.accounts.at = report.memo.length; };

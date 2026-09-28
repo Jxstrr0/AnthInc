@@ -49,6 +49,8 @@
     // V0.3: enterprise accounts and the revenue split (0.2 saves have neither)
     if (d.money && !d.accounts && FR.accounts) FR.accounts.init(d);
     if (d.accounts) ['active', 'offers', 'lost', 'used', 'cool'].forEach(k => { if (!d.accounts[k]) d.accounts[k] = []; });
+    // V0.4: meetings, asks and sector swings (a 0.3 save has none; swings roll from 13 weeks on)
+    if (d.accounts && FR.accounts.migrate) FR.accounts.migrate(d);
     if (d.money && d.money.revMarket == null) { d.money.revMarket = d.money.revenue || 0; d.money.revContracts = 0; }
     if (d.money && d.money.passes == null) d.money.passes = 0;
     // a 0.2 save past its Series A: the B opens on a revenue milestone set from the trailing revenue (not 'Investors are back')
@@ -106,6 +108,8 @@
       case 'greenlight': return FR.projects.greenlight(s, c.offerId);
       case 'signAccount': return FR.accounts.sign(s, c.id);
       case 'declineAccount': return FR.accounts.decline(s, c.id);
+      case 'renewAccount': return FR.accounts.renew(s, c.id, c.choice);
+      case 'answerAsk': return FR.accounts.answerAsk(s, c.id, !!c.accept);
       case 'cancel': return FR.projects.cancel(s, c.uid);
       case 'retire': {
         const text = s.lab.name + ' closed by its founders in ' + FR.dateLabel(s.turn) + '. The record stands as filed.';
@@ -188,6 +192,7 @@
     const b = FR.market.best(s);
     s.history.push({ turn: s.turn, cash: Math.round(s.money.cash), revenue: Math.round(s.money.revenue), burn: Math.round(s.money.burn),
       avgCap: FR.round(S.avgCap(s), 1), avgSafe: FR.round(S.avgSafe(s), 1), trust: FR.round(s.market.trust, 1), bestRival: FR.round(b.avgCap, 1) });
+    if (s.money.askBonus > 0) s.history[s.history.length - 1].askBonus = Math.round(s.money.askBonus);   // one-off (V0.4); trailRevenue leaves it out
     if (s.history.length > S.K.historyKeep) s.history.splice(0, s.history.length - S.K.historyKeep);
     if (s.status === 'playing') s.turn++;
     s.rngState = rng.state();
@@ -223,7 +228,8 @@
     const g = FR.model.gains(s, alloc);
     const net = revenue - burn;
     const split = FR.money.revenueSplit(s, alloc.serving.pf);
-    return { capacity: alloc.capacity, alloc, revenue, market: split.market, contracts: split.contracts, burn, net, runway: net >= 0 ? Infinity : Math.floor(s.money.cash / -net), capGain: g.cap, safeGain: g.safe };
+    return { capacity: alloc.capacity, alloc, revenue, market: split.market, contracts: split.contracts, burn, net, runway: net >= 0 ? Infinity : Math.floor(s.money.cash / -net),
+      capGain: g.cap, safeGain: g.safe, fieldGain: g.field || {}, fieldPF: FR.model.fieldPF ? FR.model.fieldPF(s) : {} };   // capGain includes fieldGain (client work)
   };
 
   // end-of-run sheet. Plain, explainable parts.

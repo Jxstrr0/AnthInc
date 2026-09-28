@@ -457,15 +457,20 @@
   // account's plaque stays up dark for the week after it leaves (state.accounts.lost), then goes.
   const PLQ = { cols: 2, rows: 4, cw: 512, ch: 256, w: 1.0, h: 0.5, x: -2.45, dx: 0.56, y0: 3.12, dy: 0.58, max: 8 };
   const TIER_COL = ['#4f93d9', '#4f93d9', '#9cc0ff', '#e6c15a'];
-  // mood: board blue at the renewal mark (60), amber below it, red under the watch line (45; the account leaves below 30)
-  const MOOD = () => Object.assign({ renew: 60, watch: 45 }, tryf(() => FR.accounts.K.mood, {}));
-  const moodCol = (m) => { const M = MOOD(); return m >= M.renew ? HX.brandB : m >= M.watch ? HX.warn : HX.bad; };
+  // mood (V0.4 K.meet): board blue where a push up is on (60), amber where Renew holds (45), red below it (the account
+  // leaves below 30); `add` = the cold-sector surcharge on each mark
+  const MEETK = () => Object.assign({ renewMood: 45, upMood: 60, coldAdd: 10 }, tryf(() => FR.accounts.K.meet, {}));
+  const moodCol = (m, add) => { const M = MEETK(), c = add || 0; return m >= M.upMood + c ? HX.brandB : m >= M.renewMood + c ? HX.warn : HX.bad; };
+  // plaque tints, drawn into the atlas cell's background and name only (a hot sector a shade warmer, a cold one a shade
+  // dimmer): the mood bar and the ask / meeting marker keep their colours, which carry meaning
+  const TINT = { hot: { bg: '#2a2620', top: '#4a3f2c', ink: '#fff4e0' }, cold: { bg: '#141920', top: '#232b35', ink: '#aeb8c4' } };
   const kfmt = (n) => (FR.ui && FR.ui.kmoney ? FR.ui.kmoney(n) : money(n));
   // a plaque is read from across the room: the buyer's name large, the tier stripe, and a thick mood bar (or ONBOARDING /
   // CONTRACT ENDED in its place). Sector, PF and fee live in the Serving panel's rows.
   function drawPlaque(x, cx, cy, p) {
     const W0 = PLQ.cw, H0 = PLQ.ch; x.save(); x.translate(cx, cy); x.clearRect(0, 0, W0, H0);
-    rect(x, 0, 0, W0, H0, p.dark ? '#10151b' : '#1a222c'); rect(x, 0, 0, W0, 4, p.dark ? '#1c232b' : '#2f3c4a');
+    const tn = !p.dark && TINT[p.sw];
+    rect(x, 0, 0, W0, H0, p.dark ? '#10151b' : tn ? tn.bg : '#1a222c'); rect(x, 0, 0, W0, 4, p.dark ? '#1c232b' : tn ? tn.top : '#2f3c4a');
     rect(x, 0, 0, 18, H0, p.dark ? '#5a2020' : p.empty ? '#2f3c4a' : TIER_COL[p.tier] || HX.brandB);
     if (p.empty) {
       T(x, 'NO ACCOUNTS YET', 44, 92, 50, HX.ink2, 'left', 700, DISP, W0 - 72);
@@ -473,7 +478,7 @@
       x.restore(); return;
     }
     // the buyer’s name: one line at 88 px, shrunk down to 64; a longer name takes two lines at 60 px (then an ellipsis)
-    const NW = W0 - 72, ink = p.dark ? HX.ink2 : HX.ink;
+    const NW = W0 - 72, ink = p.dark ? HX.ink2 : tn ? tn.ink : HX.ink;
     x.font = fnt(700, 88, DISP); const nw = x.measureText(p.name).width, ns = nw > NW ? Math.floor(88 * NW / nw) : 88;
     if (ns >= 64) { x.font = fnt(700, ns, DISP); T(x, p.name, 44, 86, ns, ink, 'left', 700, DISP, NW); }
     else {   // two lines: the largest size from 60 down to 40 that wraps into two
@@ -483,7 +488,11 @@
     }
     if (p.dark) { T(x, 'CONTRACT ENDED', 44, 190, 46, '#ff8a7a', 'left', 700, MONO, W0 - 72); x.restore(); return; }
     if (p.pending) { T(x, 'ONBOARDING', 44, 190, 46, HX.info, 'left', 700, MONO, W0 - 72); x.restore(); return; }
-    bar(x, 44, 170, W0 - 88, 40, clamp(p.mood / 100, 0, 1), moodCol(p.mood), 'rgba(255,255,255,.12)');
+    // V0.4: an amber marker at the bar's end while an ask or a renewal meeting is open: a symbol, not a word, so it
+    // reads at the size a plaque is seen from ('!' a meeting, '?' an ask, '!?' both)
+    const tw = p.tag ? (p.tag.length > 1 ? 116 : 76) : 0;
+    bar(x, 44, 170, W0 - 88 - (tw ? tw + 14 : 0), 40, clamp(p.mood / 100, 0, 1), moodCol(p.mood, p.add), 'rgba(255,255,255,.12)');
+    if (tw) { rrect(x, W0 - 44 - tw, 152, tw, 76, 12, HX.warn); T(x, p.tag, W0 - 44 - tw / 2, 191, 64, '#1a1206', 'center', 800, DISP, tw - 10); }
     x.restore();
   }
   function drawClients(x, w, h, d) {
@@ -508,11 +517,14 @@
     // the wall panel behind the grid and the name plate above it
     R.box(g, 2.44, 2.5, 0.04, 0x1d242c, PLQ.x, 2.25, -HD + 0.03);
     const head = csign(g, 2.3, 0.3, 768, 100, PLQ.x, 3.66, -HD + 0.11, 0, { bg: '#1b232c', glow: false });
-    return { plq, frm, cell, tex, cv, cx, head, sig: null, lit: 0, dark: 0, names: [] };
+    return { plq, frm, cell, tex, cv, cx, head, sig: null, lit: 0, dark: 0, names: [], hot: 0, cold: 0, tagged: 0, tints: [], meets: 0 };
   }
   function clientList(s) {
     const a = s && s.accounts; if (!a) return { locked: true, list: [], max: 4 };
-    const act = (a.active || []).map(x => ({ name: x.name, tier: x.tier, mood: Math.round(+x.mood || 0), pending: x.starts != null && x.starts > s.turn, at: x.signed || 0 }));
+    const sw = (x) => tryf(() => FR.accounts.swing(s, x.sector), null), coldAdd = MEETK().coldAdd;
+    const act = (a.active || []).map(x => { const k = sw(x);
+      return { name: x.name, tier: x.tier, mood: Math.floor(+x.mood || 0), pending: x.starts != null && x.starts > s.turn, at: x.signed || 0,
+        tag: x.leaving ? '' : x.ask && x.meeting ? '!?' : x.meeting ? '!' : x.ask ? '?' : '', sw: k || '', add: k === 'cold' ? coldAdd : 0 }; });
     // churned in the week just resolved: dark for this week (lost.turn is the week it left) in the place it hung (lost
     // carries the signing week), gone after the next End Turn
     const gone = (a.lost || []).filter(l => l && l.why === 'churn' && s.turn - l.turn <= 1 && !act.some(x => x.name === l.name))
@@ -523,6 +535,9 @@
     return { locked, list, max, n: act.length };
   }
   function paintClients(cw, s) {
+    // the tap target's badge: renewal meetings with no answer (checked every refresh; the plaques repaint only on change)
+    cw.meets = s && s.accounts ? (s.accounts.active || []).filter(x => x.meeting && x.meeting.answer == null && !x.leaving).length : 0;
+    if (cw.target && R.badge) R.badge(cw.target, cw.meets, cw.meets === 1 ? '1 renewal meeting unanswered' : cw.meets + ' renewal meetings unanswered');
     const d = clientList(s), sig = JSON.stringify(d); if (cw.sig === sig) return; cw.sig = sig;
     paint(cw.head, { locked: d.locked, n: d.n || 0, max: d.max }, drawClients);
     const x = cw.cx; x.textBaseline = 'middle'; x.clearRect(0, 0, cw.cv.width, cw.cv.height);
@@ -537,6 +552,8 @@
     cw.plq.count = cw.frm.count = d.list.length; cw.cell.needsUpdate = true;
     cw.plq.instanceMatrix.needsUpdate = cw.frm.instanceMatrix.needsUpdate = true; if (cw.plq.instanceColor) cw.plq.instanceColor.needsUpdate = true;
     cw.tex.needsUpdate = true;
+    cw.hot = d.list.filter(p => !p.dark && p.sw === 'hot').length; cw.cold = d.list.filter(p => !p.dark && p.sw === 'cold').length;
+    cw.tagged = d.list.filter(p => !p.dark && p.tag).length; cw.tints = d.list.filter(p => !p.empty).map(p => p.dark ? 'dark' : p.sw || 'plain');
     cw.lit = d.list.filter(p => !p.dark && !p.empty).length; cw.dark = d.list.filter(p => p.dark).length; cw.names = d.list.filter(p => !p.empty).map(p => (p.dark ? '(dark) ' : '') + p.name);
     if (cw.target) cw.target.focus = clientFocus(d.list.length);
   }
@@ -615,7 +632,8 @@
         else { beacon.emissiveIntensity = 0; washMat.opacity = 0; rig(f, 0.72 + 0.28 * act, 0); }
       },
       debug() { return { dark, activity: +act.toFixed(2), people: split0, racks: racks.vis, racksLit: racks.lit, desks: desks.count, beacon: +beacon.emissiveIntensity.toFixed(2), targets: targets.map(t => t.id),
-        plaques: cw.lit + cw.dark, placeholder: cw.plq.count - cw.lit - cw.dark, plaquesLit: cw.lit, plaquesDark: cw.dark, clients: cw.names.slice() }; }
+        plaques: cw.lit + cw.dark, placeholder: cw.plq.count - cw.lit - cw.dark, plaquesLit: cw.lit, plaquesDark: cw.dark, clients: cw.names.slice(),
+        plaquesHot: cw.hot, plaquesCold: cw.cold, plaquesTagged: cw.tagged, plaqueTints: cw.tints.slice(), meetBadge: cw.meets }; }
     };
     return finish(f, id, scr);
   } };

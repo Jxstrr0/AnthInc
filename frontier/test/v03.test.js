@@ -132,5 +132,6 @@ let reached = 0;
 for (let seed = 1; seed <= 8 && !reached; seed++) { const p = bal.play(noB, seed); assert.strictEqual(p.bAt, null); if (p.front != null) reached++; }
 assert.ok(reached > 0, 'a lab that declines the B reaches the frontier in some seeds');
 const withB = bal.play(bal.BOTS.balanced, 2);
-if (withB.rounds === 'seedab') assert.ok(withB.stake >= 45 && withB.stake <= 56, 'founder stake after seed, A and B: ' + withB.stake);
+// V0.4: client work lifts capability and the B-era valuation, so the B sells a little less (upper bound 56 -> 58)
+if (withB.rounds === 'seedab') assert.ok(withB.stake >= 45 && withB.stake <= 58, 'founder stake after seed, A and B: ' + withB.stake);
 console.log('v03 ok');

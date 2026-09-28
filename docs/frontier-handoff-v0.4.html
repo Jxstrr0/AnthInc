@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier - Cowork Handoff V0.4</title>
+<style>
+  :root{--ink:#1a1a1a;--mute:#666;--line:#ddd;--acc:#1f4e79;--bg:#fff}
+  body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);max-width:820px;margin:0 auto;padding:24px 18px}
+  h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:28px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px;color:var(--acc)}h3{font-size:16px;margin:18px 0 6px}
+  .meta{color:var(--mute);margin-bottom:18px}
+  table{border-collapse:collapse;width:100%;margin:8px 0;font-size:14px}th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}th{background:#f4f6f9}
+  .tw{overflow-x:auto}
+  code,pre{font-family:ui-monospace,Menlo,monospace;font-size:13px}pre{background:#f6f6f6;padding:10px;overflow-x:auto;border-radius:4px}
+  ul{padding-left:20px}li{margin:3px 0}
+  .lock{background:#f1f5fa;border-left:3px solid var(--acc);padding:8px 12px;margin:8px 0}
+  .warn{background:#fff7e6;border-left:3px solid #d08a00;padding:8px 12px;margin:8px 0}
+</style>
+</head>
+<body>
+
+<h1>Frontier — V0.4: the late-game book</h1>
+<div class="meta">Cowork handoff · V0.4 (feature batch on top of 0.3.0.0) · Prairie Blue Studio · designed Sep 28 2026 via popups in the Anthropology Inc. project · save in the repo as <code>docs/frontier-handoff-v0.4.html</code></div>
+
+<div class="lock"><b>Read <code>frontier/plan/status.md</code> first, then this.</b> Build under the cheap-game-build doctrine (the Red Skies build format: status doc first, small <code>src/*.js</code> modules, grep-and-patch edits, numbers over pictures, contract first for any subagents). The V0.1 and V0.3 handoffs and every locked decision in <code>status.md</code> still stand; nothing here re-opens them. Ask the owner with popups whenever a direction is unclear; make small calls alone when confident and say so plainly. Tone stays straight: board-memo language, no jokes.</div>
+
+<h2>1. Why this batch</h2>
+<p>V0.3 gave the run a customer era, and it goes quiet once the book is full: five or six accounts sign, renew themselves, and nothing asks the player to decide anything. The balance probe says the same thing from the other side. <b>customer-first wins 5% of seeds while 19 of 20 are alive past year 4</b>. It survives, but it never gets anywhere. The cause is structural. Serving clients spends the PF that training needs, and nothing flows back toward the frontier.</p>
+<p>This batch closes the open item in <code>status.md</code> ("the account era goes quiet once the book is full") and makes a big book a real route to the frontier. It does that with three systems: renewal meetings, client asks and sector swings. Client work also trains the model.</p>
+
+<h2>2. Owner's calls for V0.4 (locked — do not re-pitch)</h2>
+<div class="tw"><table>
+<tr><th>Area</th><th>Decision</th></tr>
+<tr><td>Contract end</td><td>A <b>renewal meeting</b>. The player chooses <b>Renew</b> (same tier), <b>Push up a tier</b> or <b>Let go</b>. This replaces the automatic renewal in <code>05b_accounts.step</code>.</td></tr>
+<tr><td>Full-book interest</td><td>Both of these: <b>client asks</b> (goals with deadlines that pay a bonus when met and cost mood when missed) and <b>sector swings</b> (a sector goes hot or cold for months).</td></tr>
+<tr><td>Clients → frontier</td><td><b>Client work trains a skill.</b> Each sector feeds one skill (e.g. Logistics feeds agents). The served PF of a live account adds training on its sector's skill.</td></tr>
+<tr><td>Not picked (back-burner)</td><td>Client-named renewal terms; dropping a client to make room; cheaper compute deals or better round terms for a big book; a plain rebalance with no new link. Do not add these.</td></tr>
+<tr><td>Scope guard</td><td>Rival deals, Series C/IPO, audio pack, founding presets, first-week memo: still back-burner.</td></tr>
+</table></div>
+
+<h2>3. Systems</h2>
+
+<h3>3.1 Client work trains a skill (05b_accounts.js reads, 03_model.js applies)</h3>
+<p>Each sector maps to one skill. The lead's first pass, balanced by name count over the 30 names:</p>
+<div class="tw"><table>
+<tr><th>Skill</th><th>Sectors</th><th>Names</th></tr>
+<tr><td>coding</td><td>Banking, Retail, Energy, Telecoms</td><td>11</td></tr>
+<tr><td>reasoning</td><td>Insurance, Pharma, Legal</td><td>9</td></tr>
+<tr><td>agents</td><td>Logistics, Public sector</td><td>10</td></tr>
+</table></div>
+<p>Put it in <code>FR.accounts.K.sectorSkill</code> as a plain map so it can be retuned.</p>
+<ul>
+<li><b>Field training:</b> each week, every live account adds training to its sector's skill. It equals the gain that <code>served × K.field.rate</code> PF would produce on that skill through the normal training path, with no spillover. First pass: <code>rate = 0.35</code>. It uses the same diminishing returns, the same noise and <b>the same safety drift</b>, so client work widens gaps like any training. The tension stays.</li>
+<li>If <code>sim.output</code> needs a staff term, use the lab's training staff per training PF so the rate means "a PF of client work is worth 0.35 of a training PF".</li>
+<li>Expose <code>FR.accounts.fieldPF(s)</code> → <code>{ coding, reasoning, agents }</code>. <code>FR.model.gains</code> must include it, so the frontier strip and every forecast show it.</li>
+<li>Serving readout gains one line: "Client work: +0.4 agents, +0.2 coding a week." The Company overview's model section shows the same figure.</li>
+<li>Only served PF counts. An underserved contract trains less, which is another reason to serve the book in full.</li>
+</ul>
+
+<h3>3.2 Renewal meetings (05b_accounts.js)</h3>
+<p>The meeting opens at <code>K.dueWarn</code> (8 weeks before <code>ends</code>) and replaces the "contract ends" memo line with a decision. It is state on the account, <code>a.meeting = { opens, answer: null }</code>, answered with <code>FR.cmd.renewAccount(id, choice)</code>. The choice can change any time until the last contract week, which resolves it.</p>
+<div class="tw"><table>
+<tr><th>Choice</th><th>Needs</th><th>Result</th></tr>
+<tr><td><b>Renew</b></td><td>mood ≥ <code>K.meet.renewMood</code> (45)</td><td>Same tier and length, fee repriced to the current year, PF unchanged.</td></tr>
+<tr><td><b>Push up a tier</b></td><td>tier &lt; 3, mood ≥ <code>K.meet.upMood</code> (60), the lab meets the next tier's minimums at the last week</td><td>Mood ≥ 70: next tier (fee, length, PF scaled with <code>scalePF</code> as today). Mood 60–69: 50% the client accepts; otherwise it renews at the same tier and the memo says so. A push up never loses the client.</td></tr>
+<tr><td><b>Let go</b></td><td>—</td><td>Leaves at <code>ends</code>, <code>why: 'let go'</code>, no trust cost. The name rests <code>K.cooldown</code> weeks like an expired one. The PF frees for the offer board.</td></tr>
+</table></div>
+<ul>
+<li>If the requirement fails on the last week (mood fell under 45, or the lab lost the tier minimums), the contract ends as <code>'expired'</code> with a memo line that says why. A failed push up falls back to Renew if Renew still qualifies.</li>
+<li>Show the odds plainly in the panel: "Push up to tier 2: accepts at mood 70+ (now 64: even odds; a refusal renews at tier 1)."</li>
+<li><b>Unanswered by the last week:</b> ask the owner (§7). The build default until answered: the contract <b>lapses</b> as 'expired'. The memo warns 8, 4 and 1 weeks out.</li>
+<li>Remove the automatic renewal branch. <code>K.mood.renew</code> is retired in favour of <code>K.meet</code>. Keep the <code>'due'</code> memo line kind for the meeting.</li>
+</ul>
+
+<h3>3.3 Client asks (05b_accounts.js)</h3>
+<p>A live account can put one goal to the lab with a deadline. <code>a.ask = { type, skill, target, from, due, weeks, progress, reward, answered }</code>. It is answered with <code>FR.cmd.answerAsk(id, accept)</code>. An unanswered ask counts as accepted, so it can't be dodged by ignoring it.</p>
+<ul>
+<li><b>When:</b> no sooner than 13 weeks after go-live. Every 13 weeks each live account without an ask rolls <code>K.ask.chance</code> (0.35). At most <code>K.ask.maxOpen</code> (2) asks open across the book, and no ask in an account's last 12 contract weeks, because the meeting is the decision then.</li>
+<li><b>Decline up front</b> (within 2 weeks of the ask arriving): mood −5.</li>
+<li><b>Met:</b> mood +10 and a one-off bonus of 4 × <code>feePerWeek</code>, paid that week (in revenue, after the incident factor and the DeepField share like any fee).</li>
+<li><b>Missed:</b> mood −15.</li>
+</ul>
+<div class="tw"><table>
+<tr><th>Type</th><th>Memo text (straight tone)</th><th>Target / check</th></tr>
+<tr><td><code>cap</code></td><td>"Coastline Freight asks for agents capability 38 by Nov 2."</td><td>Sector skill cap ≥ target by <code>due</code>. Target = current + 3..6 (by tier), due 8–16 weeks. Field training (§3.1) helps here, which is intended.</td></tr>
+<tr><td><code>inStep</code></td><td>"Halden Mutual asks that every safety stay within 3 of capability for 8 weeks, starting now."</td><td>Consecutive weeks with every gap ≤ 3 reach <code>weeks</code> before <code>due</code> (due = weeks + 4).</td></tr>
+<tr><td><code>peak</code></td><td>"Brightwell Stores asks for 6 more PF from Dec 7 for 8 weeks."</td><td>Reserved PF rises by the amount for those weeks. Any unserved week misses the ask (the normal unserved mood penalty still applies).</td></tr>
+<tr><td><code>clean</code></td><td>"Province Health Authority asks for no incident before Apr 1."</td><td>No lab incident until <code>due</code> (13–26 weeks).</td></tr>
+<tr><td><code>cost</code> (cold sector only, §3.4)</td><td>"Northgate Savings Bank asks for a 15% fee cut for the rest of its term."</td><td>Accept: fee × 0.85 for the rest of the term, mood +10, no bonus. Decline: mood −10.</td></tr>
+</table></div>
+<p>Weights: cap 35, inStep 25, peak 20, clean 20. Skip a type the lab can't possibly meet in time (e.g. a cap target above what the forecast reaches at full training). An ask the player can't win is noise.</p>
+
+<h3>3.4 Sector swings (05b_accounts.js owns them; 06_market.js only prints the news)</h3>
+<p><code>accounts.sectors = { hot: { name, until } | null, cold: { name, until } | null, nextAt }</code>.</p>
+<ul>
+<li>From the account unlock, roll every 26 weeks. 60%: a sector not already swinging turns <b>hot</b> for 13–26 weeks. 40%: one turns <b>cold</b> for 13–26 weeks. At most one hot and one cold at a time. A sector never flips hot to cold (or back) within 26 weeks of its last swing.</li>
+<li><b>Hot:</b> that sector is dealt at 3× weight, and offers dealt during the swing carry fees +25% for their whole term. Live accounts in it gain +1 extra mood a week (top 85 instead of 80 while hot). Through §3.1, a hot sector means more client work on its skill.</li>
+<li><b>Cold:</b> no offers from it. Live accounts in it lose 1 mood a week unless the lab is in step (<code>FR.sim.inStep</code>). Their asks are always <code>cost</code>. Their renewal meeting needs +10 mood on every threshold.</li>
+<li>News line on the turn: "Banking budgets tighten; lenders pause new AI contracts." / "Logistics firms race to automate dispatch; buyers want agents." The memo gets one line and the Serving panel gets a sector strip (hot in board blue, cold in grey, weeks left).</li>
+</ul>
+
+<h3>3.5 Serving floor and UI (08_hq_floors.js, 09_ui_panels.js, 09_ui_overview.js)</h3>
+<ul>
+<li><b>Accounts panel rows:</b> add the sector's skill tag (e.g. "Logistics · agents"). An open ask shows as a second line with the target, the progress ("35 / 38 · 6 weeks left") and Accept / Decline while declinable.</li>
+<li><b>Meeting card:</b> an account inside its meeting window shows three 48 px buttons (Renew / Push up / Let go), the current choice highlighted, and one line of odds and consequences. A meeting with no answer puts a badge on the Company dock button and on the Serving floor tap target.</li>
+<li><b>Sector strip</b> at the top of the Accounts section. It scrolls inside itself, never sideways on the page.</li>
+<li><b>Client wall:</b> a plaque with an open ask or meeting gets a small amber tag. Plaques in a hot sector are lit a shade warmer and in a cold sector a shade dimmer. Reuse the plaque material and textures, with no per-frame allocation.</li>
+<li><b>Company overview:</b> the Clients section lists open asks, meetings due and the sector strip. Its Open button rides to the Serving floor as today.</li>
+<li><b>Memo:</b> raise <code>K.memoMax</code> to 3. Priority: meeting due / unanswered → ask arrived / met / missed → sector swing → signed / churned / go-live.</li>
+</ul>
+
+<h2>4. Turn loop change (02_sim.js)</h2>
+<p>Step 1, training: add <code>FR.accounts.fieldPF</code> to each skill's training input before gains resolve. It uses last week's served PF, the value known at allocation time, so forecasts stay exact.</p>
+<p>Step 3, money: after fees resolve, <code>FR.accounts.step</code> runs in this order: sector swing roll → mood (including the hot/cold drift) → ask checks (met/missed, bonus into this week's revenue) → meetings resolved at <code>ends</code> → churn → offers → new asks. <code>shock()</code> after the ladder also fails any open <code>clean</code> ask.</p>
+
+<h2>5. Contracts to add (plan/contracts.md)</h2>
+<ul>
+<li><b>State:</b> <code>a.meeting</code>, <code>a.ask</code>, <code>a.field</code> (last week's field PF, for the readout), <code>accounts.sectors</code>; <code>lost[].why</code> may be <code>'let go'</code>.</li>
+<li><b>Commands:</b> <code>FR.cmd.renewAccount(id, 'renew'|'up'|'go')</code>, <code>FR.cmd.answerAsk(id, true|false)</code>.</li>
+<li><b>Events:</b> <code>account:meeting {id,name,ends}</code>, <code>account:renewed {id,name,tier,up}</code>, <code>account:ask {id,name,type}</code>, <code>account:askMet {id,name,bonus}</code>, <code>account:askMissed {id,name}</code>, <code>account:sector {name,kind,until}</code>.</li>
+<li><b>Debug:</b> <code>FR.accounts.debug(s)</code> adds <code>{ field, asksOpen, meetingsOpen, sectors }</code>.</li>
+<li><b>Save migration:</b> a 0.3 save loads with no meetings, asks or sectors, <code>nextAt</code> = the current turn + 13. A 0.3 account already inside 8 weeks of its end gets its meeting opened on load.</li>
+</ul>
+
+<h2>6. Verify before publish</h2>
+<ul>
+<li><b>Node:</b> new <code>test/v04.test.js</code> covering the field PF mapping and drift, each meeting choice at mood 44 / 64 / 72, a push up failing on tier minimums, the unanswered default, each ask type met and missed, the decline window, the cold <code>cost</code> ask, swing exclusivity and cooldown, and the 0.3 save migration. Extend <code>test/accounts.test.js</code> where the old auto-renewal was asserted.</li>
+<li><b>Bots</b> (<code>tools/balance.js</code>): the bots answer meetings (Push up when allowed, Renew otherwise, Let go below 45 mood only if the board holds a better offer). They accept asks the forecast says they can meet and decline the rest. <b>Targets over 20 seeds:</b>
+  <ul>
+    <li>balanced still wins 20–33%;</li>
+    <li>customer-first wins <b>15–25%</b> and reaches the frontier later than balanced (a slower, safer route, not a faster one);</li>
+    <li>balanced-noB ≥ 15%;</li>
+    <li>race still dies of the final incident near week 67–76.</li>
+  </ul>
+  If customer-first overshoots, lower <code>K.field.rate</code> before touching anything else.</li>
+<li><b>Browser:</b> extend <code>SECTION=accounts</code>. Play to a meeting, choose Push up, end turns to <code>ends</code> and assert the tier. Force an ask via a debug hook and accept it. Force a hot sector and assert the strip and plaque tint. Save → load → no console errors.</li>
+<li>Bump <code>VERSION</code> to <code>0.4.0.0</code>. Republish to the same artifact URL with the version as the label, copy <code>dist/game.html</code> to <code>/index.html</code> for Pages, update <code>status.md</code> (build log, decisions, the open item closed, back-burner) and open one PR.</li>
+</ul>
+
+<h2>7. Ask the owner (popups, batched) during the build</h2>
+<ul>
+<li>An unanswered renewal meeting at the last week: <b>lapses</b> (default; the book needs attention) or renews at the same tier if mood allows.</li>
+<li>The sector → skill map in §3.1: keep it or move a sector.</li>
+<li>After the first balance pass, if customer-first lands outside 15–25%: tune <code>field.rate</code> (default) or the ask bonus.</li>
+</ul>
+
+<div class="warn"><b>Build size:</b> this is mostly one sim file (<code>05b_accounts.js</code>) plus a small <code>03_model.js</code> hook and UI wiring. Use at most two subagents: the sim first (accounts, model hook, tests, bots), then the lead wires the UI against the real APIs. Doing the whole batch as lead is fine too. Patches never use subagents.</div>
+
+</body>
+</html>

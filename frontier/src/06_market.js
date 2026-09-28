@@ -9,7 +9,7 @@
     // 0.44 since 2026-09-28: the balance bots accept the DeepField share when it is cheap, as a reading player does;
     // 0.48 for V0.3: enterprise account fees carry a lab that never raises past the A (balanced-noB wins ~13%)
     // a `steady` share arrives every week, the rest in releases (chance `ship` a week) so the expected pace is the same
-    gainBase: 0.48, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
+    gainBase: 0.52, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
     startJitter: 1.5, safeJitter: 2, speedJitter: 0.12,  // start cap ± points, start safe ± points, base speed ± fraction
     speedMin: 0.85, speedMax: 1.15,                     // speed bounds, multiples of the rival's base speed
     raiseLift: 0.48, raiseLag: 13,                      // V0.3 sector raise: once the lab's Series B closes (market.raised = that
@@ -298,10 +298,43 @@
       '% from ' + FR.dateLabel(s.turn + K.raiseLag) + ' for the rest of the run.' });
   }
 
+  // V0.4 sector swings (05b_accounts rolls them; the wire carries the line the week one starts)
+  M.SECTOR_NEWS = {
+    hot: {
+      Banking: 'Banks widen AI budgets for risk and compliance work; lenders want coding capacity.',
+      Retail: 'Retailers fund AI for pricing and supply planning; buyers want coding capacity.',
+      Energy: 'Energy firms step up grid software spending; buyers want coding capacity.',
+      Telecoms: 'Telecom operators commit to AI network tooling; buyers want coding capacity.',
+      Insurance: 'Insurers move claims and underwriting review to AI; buyers want reasoning.',
+      Pharma: 'Drug makers widen AI programs in trial design; buyers want reasoning.',
+      Legal: 'Law firms move document review to AI; buyers want reasoning.',
+      Logistics: 'Logistics firms race to automate dispatch; buyers want agents.',
+      'Public sector': 'Governments fund AI for case handling; agencies want agents.'
+    },
+    cold: {
+      Banking: 'Banking budgets tighten; lenders pause new AI contracts.',
+      Retail: 'Retail budgets tighten after a weak season; stores pause new AI contracts.',
+      Energy: 'Energy firms cut discretionary spending; utilities pause new AI contracts.',
+      Telecoms: 'Telecom operators freeze capital budgets; new AI contracts on hold.',
+      Insurance: 'Insurers pause AI rollouts pending regulator guidance.',
+      Pharma: 'Drug makers cut research budgets; new AI contracts on hold.',
+      Legal: 'Bar associations issue AI guidance; law firms pause new contracts.',
+      Logistics: 'Freight volumes fall; logistics firms pause new AI contracts.',
+      'Public sector': 'Public budgets frozen for the fiscal year; agencies pause new AI contracts.'
+    }
+  };
+  function sectorNews(report) {
+    report.events.filter(e => e.type === 'account:sector').forEach(e => {
+      const t = (M.SECTOR_NEWS[e.kind] || {})[e.name];
+      if (t) report.news.push({ kind: 'market', text: t });
+    });
+  }
+
   M.step = function (s, rng, report) {
     const m = s.market;
     M.nudgeTrust(s, (K.trustMid - m.trust) * K.trustRevert, 'drift', report);
     raised(s, report);
+    sectorNews(report);
     m.rivals.forEach(r => advance(s, r, rng, report));
     m.rivals.forEach(r => incident(s, r, rng, report));
     records(s, report);
