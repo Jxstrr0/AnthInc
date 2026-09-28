@@ -71,7 +71,8 @@
       let r;
       try { r = FR.sim.applyCommands(s, [command]); } catch (e) { console.error('command failed', command, e); r = null; }
       const res = (r && r.results && r.results[0]) || { ok: false, why: 'The command could not be applied' };
-      if (res.ok) { FR.state = r.state; FR.emit('state:changed', { command }); saveSoon(); }
+      if (res.ok) { FR.state = r.state; FR.emit('state:changed', { command }); saveSoon();
+        if (FR.state.status !== 'playing') { FR.cmd.save(); if (U.sheetId) U.sheet(null); setTimeout(() => { if (FR.state && FR.state.status !== 'playing') FR.menu.end(); }, 300); } }
       else { U.sfx('error'); U.toast('Not done: ' + String(res.why || 'unknown reason').replace(/\.$/, '') + '.', 3200, 'bad'); }
       return res;
     },

@@ -95,6 +95,11 @@
       case 'declineRound': return FR.money.declineRound(s);
       case 'greenlight': return FR.projects.greenlight(s, c.offerId);
       case 'cancel': return FR.projects.cancel(s, c.uid);
+      case 'retire': {
+        const text = s.lab.name + ' closed by its founders in ' + FR.dateLabel(s.turn) + '. The record stands as filed.';
+        s.status = 'exited'; s.end = { turn: s.turn, cause: 'retired', text };
+        return { ok: true, event: { type: 'run:retired' }, memo: text };
+      }
     }
     return { ok: false, why: 'Unknown command ' + c.type };
   }
@@ -218,7 +223,7 @@
       { label: 'Longest safe frontier hold (weeks)', value: (s.win.best || 0) * Q.holdPer }
     ];
     if (s.status === 'won') parts.push({ label: 'Held the frontier safely for a year', value: Q.win + Q.winFast * Math.max(0, Q.horizon - s.turn) });
-    if (s.status === 'exited') parts.push({ label: 'Acquired', value: Q.exit });
+    if (s.status === 'exited' && !(s.end && s.end.cause === 'retired')) parts.push({ label: 'Acquired', value: Q.exit });
     return { total: parts.reduce((t, p) => t + p.value, 0), parts };
   };
 

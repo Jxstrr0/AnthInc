@@ -12,6 +12,7 @@
     safeBase: 0.36,        // safety output = sim.output(safeBase, pf, staff), spread over skills
     safeLead: 3,           // safe never above cap + safeLead
     spreadFloor: 2,        // safety spread weight per skill = gap + spreadFloor
+    watchGap: 5,            // gaps above this show as 'watch' (the safe-hold line; owner call V0.2)
     warnGap: 10, warnTurns: 2,
     incidentGap: 20, incidentBase: 0.08, incidentSlope: 0.02,   // incident chance = (base + (gap − 20) × slope) × weight
     incidentCash: 500000, incidentCashPct: 0.05, incidentTrust: 6,  // trust lost = incidentTrust × weight
@@ -111,7 +112,7 @@
     const sk = state.model.skills[skill], g = M.gap(state, skill), rec = recent(sk, at);
     const lastStand = rec.length >= K.finalIncidents - 1;
     const level = (g > K.critGap || (lastStand && g > K.incidentGap)) ? 'critical'
-      : (g > K.incidentGap || (g > K.warnGap && sk.warned)) ? 'warning' : g > K.warnGap ? 'watch' : 'ok';
+      : (g > K.incidentGap || (g > K.warnGap && sk.warned)) ? 'warning' : g > K.watchGap ? 'watch' : 'ok';
     const turnsToFinal = g > K.critGap ? Math.max(1, K.critTurns - sk.critStreak) : null;
     let text = NAME(skill) + ': capability ' + Math.round(sk.cap) + ', safety ' + Math.round(sk.safe) + '. Gap ' + fmtGap(g);
     if (g > K.critGap && sk.critStreak >= 1) text += ', ' + ordinal(sk.critStreak) + ' week above ' + K.critGap;
@@ -161,7 +162,7 @@
     const n = recent(sk, state.turn).length, rule = n < K.finalIncidents - 1
       ? ' A ' + ordinal(K.finalIncidents) + ' ' + NAME(k) + ' incident within ' + K.incidentWindow + ' weeks ends the lab.'
       : ' Incident odds fall to zero once the gap is ' + K.incidentGap + ' or below.';
-    report.memo.push({ kind: 'flag', text: NAME(k) + ' incident at gap ' + fmtGap(g) + '. Cost ' + FR.fmtMoney(cost) + ' and ' + trust + ' points of public trust.' + rule });
+    report.memo.push({ kind: 'flag', text: NAME(k) + ' incident at gap ' + fmtGap(g) + '. Cost ' + FR.fmtMoney(cost) + ' and ' + trust + ' points of public trust. Serving revenue is halved for 3 weeks while the model is under review.' + rule });
   }
 
   function final(state, k, g, why, report) {

@@ -75,7 +75,7 @@
   // what the slot picker shows, without loading the career
   save.info = function (slot) {
     const d = save.read(slot); if (!d) return null;
-    return { lab: d.lab && d.lab.name, turn: d.turn, cash: d.money && d.money.cash, status: d.status, savedAt: d.savedAt };
+    return { lab: d.lab && d.lab.name, turn: d.turn, cash: d.money && d.money.cash, status: d.status, cause: d.end && d.end.cause, savedAt: d.savedAt };
   };
   function checksum(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h.toString(36); }
   function b64(s) { return typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(s))) : Buffer.from(s, 'utf8').toString('base64'); }

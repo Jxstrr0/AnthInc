@@ -3,6 +3,7 @@
 (function (FR) {
   const M = FR.money = {};
   const K = M.K = {
+    incidentRevenue: 0.5, incidentWeeks: 3,   // serving earns this fraction for this many weeks after any incident
     startCash: 5000000, startHead: 10,       // about 47 weeks of runway at the starting burn, before any round
     minHead: 2, maxHire: 20, maxHead: 1000,  // maxHire: most recruits in one week
     wage: 5000,                              // $ per head per week, fully loaded
@@ -69,9 +70,12 @@
     return 1 - FR.clamp(ahead * K.zetaDrag, 0, K.zetaMax);
   };
   const share = (s) => FR.compute && FR.compute.revShare && s.compute ? FR.compute.revShare(s) : 0;
+  // an incident in the last K.incidentWeeks turns puts serving under review: revenue earns K.incidentRevenue of normal
+  M.underReview = (s) => !!(s.model && FR.SKILLS.some(k => ((s.model.skills[k] || {}).incidents || []).some(t => t >= s.turn - K.incidentWeeks)));
+  M.incidentFactor = (s) => M.underReview(s) ? K.incidentRevenue : 1;
   M.revenue = function (s, servingPF) {
     const pf = Math.min(Math.max(0, +servingPF || 0), M.demandPF(s));
-    return pf * M.pricePerPF(avg(s)) * fx(s).priceMult * M.trustMult(s) * Math.max(0, 1 - share(s)) * M.zetaFactor(s);
+    return pf * M.pricePerPF(avg(s)) * fx(s).priceMult * M.trustMult(s) * Math.max(0, 1 - share(s)) * M.zetaFactor(s) * M.incidentFactor(s);
   };
 
   // ---- costs ----

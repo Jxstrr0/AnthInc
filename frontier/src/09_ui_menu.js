@@ -34,7 +34,7 @@
     const when = FR.dateLabel(inf.turn || 1);
     if (inf.status === 'won') return 'Held the frontier · ' + when;
     if (inf.status === 'dead') return 'Closed · ' + when;
-    if (inf.status === 'exited') return 'Acquired · ' + when;
+    if (inf.status === 'exited') return (inf.cause === 'retired' ? 'Closed · ' : 'Acquired · ') + when;
     return when + (inf.cash != null ? ' · ' + U.kmoney(inf.cash) : '');
   }
   const where = (inf) => `${inf.lab || 'Unnamed lab'} · ${status(inf)}`;
@@ -203,6 +203,7 @@
   function outcome(s) {
     const e = s.end || {}, sk = e.skill && FR.SKILL_NAME[e.skill];
     if (s.status === 'won') return { k: 'Run complete · Frontier held', tone: 'good', text: e.text || `${s.lab.name} held the frontier safely for 52 weeks.` };
+    if (s.status === 'exited' && e.cause === 'retired') return { k: 'Run complete · Lab closed', tone: 'gold', text: e.text || `${s.lab.name} was closed by its founders.` };
     if (s.status === 'exited') return { k: 'Run complete · Acquired', tone: 'gold', text: e.text || `${s.lab.name} was acquired.` };
     if (e.cause === 'cash') return { k: 'Lab closed · Out of cash', tone: 'bad', text: e.text || `${s.lab.name} ran out of cash.` };
     if (e.cause === 'final') return { k: 'Lab closed · Final incident' + (sk ? ' (' + sk + ')' : ''), tone: 'bad', text: e.text || `${s.lab.name} closed after a final incident${sk ? ' on ' + sk : ''}.` };

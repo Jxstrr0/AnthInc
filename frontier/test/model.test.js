@@ -97,7 +97,8 @@ const turn = (s, rng) => { const r = rep(); M.ladder(s, rng, r); if (s.status ==
   assert.deepStrictEqual(P(), { value: 8.5, level: 'ok', text: 'Pressure 9, in hand. Agents carries the most: gap 3 at weight 1.5.' });
   set(s, 'agents', 18, 8); assert.strictEqual(P().value, 4 + 15); assert.strictEqual(P().level, 'watch');   // agents gap 10 → 15 alone
   assert.strictEqual(P().text, 'Pressure 19, watch. Agents carries the most: gap 10 at weight 1.5.');
-  set(s, 'coding', 8, 8); set(s, 'agents', 18, 8); assert.strictEqual(P().value, B[0]); assert.strictEqual(P().level, 'ok', 'at the band is not above it');
+  set(s, 'coding', 13, 8); set(s, 'reasoning', 13, 8); set(s, 'agents', 8 + 10 / 3, 8); assert.strictEqual(P().value, B[0]); assert.strictEqual(P().level, 'ok', 'at the band is not above it (every gap at or below the watch line)');
+  set(s, 'coding', 8, 8); set(s, 'reasoning', 8, 8); set(s, 'agents', 18, 8); assert.strictEqual(P().level, 'watch', 'a skill gap above 5 shows watch');
   set(s, 'agents', 30.1, 8); assert.strictEqual(P().level, 'warning'); set(s, 'agents', 40, 8); assert.strictEqual(P().level, 'critical');
   set(s, 'agents', 8, 8); set(s, 'coding', 29, 8); assert.strictEqual(P().value, 21); assert.strictEqual(P().level, 'warning', 'coding gap 21 alone is past the incident line');
   set(s, 'coding', 40, 8); assert.strictEqual(P().level, 'critical'); assert.strictEqual(P().value, 32);
