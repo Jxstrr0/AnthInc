@@ -31,7 +31,7 @@ Build ORDER: 01_core, 02_sim, 03..07, 08_hq_world, 08_hq_floors, 08_hq_elevator,
 | id | n | name | what it shows | panel |
 |---|---|---|---|---|
 | `lobby` | G | Lobby / Press | reception, news wall (latest wire lines on a screen), trust board, the street; press pack outside the glass after an incident | news feed, public trust, frontier record |
-| `serving` | 1 | Serving | the product ops room: status wall, request graphs, rack row; dark + red strobe for 3 turns after any incident ("model pulled") | Serving slider, revenue, demand vs serving PF, rent stepper |
+| `serving` | 1 | Serving | the product ops room: status wall, request graphs, rack row; dark + red strobe for 3 turns after any incident ("INCIDENT REVIEW": the sim does not pull the model, so the wall says serving continues under review) | Serving slider, revenue, demand vs serving PF, rent stepper |
 | `training` | 2 | Training | the cluster hall: GPU racks whose lights scale with training PF, a run board showing the target skill | Training slider, target skill picker, per-skill capability bars, forecast gain |
 | `safety` | 3 | Safety | evals lab: three skill screens (cap vs safe bars, gap colour), red-team corner | Safety slider, per-skill cap/safe/gap + outlook, incident history |
 | `research` | 4 | Research | whiteboards, reading room, tier plaque | Research slider, points to next tier, the project offer board (greenlight here) |
@@ -43,16 +43,27 @@ Every floor: `R.elevatorBank`, people as instanced/cheap figures scaled by the s
 `FR.state` only; they rebuild or `refresh()` on `turn:ended` and `state:changed`.
 
 Floor builder contract (same as Mogul): `FR.r.floors[id] = { build() → { group, elevator, light, update?(dt), refresh?(),
-debug?(), view:{pos,look,fov}, targets:[Target], hint? } }`. Target ids route through `hq:hotspot` → `FR.ui.panel(id)`.
+debug?(), view:{pos,look,fov}, targets:[Target], hint?, fitExtra?() } }`. `fitExtra()` returns extra world points a fitted room
+view keeps on screen (the lobby's press pack while it is there; the floor calls `FR.r.refit()` when they change).
+Room views: landscape fits the room into the HUD-safe rect; portrait keeps the hand-framed view unless a live target's box
+falls off a side edge, then a lens shift (or a wider fov) brings every box in with room for its tag. Focus poses are
+lowered until the object's top edge clears the chips and the frontier strip (at most 16% of the screen).
+No renderer (three.js blocked, or `R.init` throws for want of WebGL): `FR.rStub(FR.r)` turns FR.r into the stub in place;
+the elevator sheet then arrives at once and opens the floor's panel. Target ids route through `hq:hotspot` → `FR.ui.panel(id)`.
 Hotspot ids: `<floorId>.<thing>` e.g. `training.board`, `boardroom.table`, `lobby.news`; `elevator` opens the elevator sheet.
 
 ## UI APIs (FR.ui)
 
-- chrome: `FR.ui.sheet(html|null, id)`, `FR.ui.toast(text, ms)`, `FR.ui.led(text)`, `FR.ui.show(screenId|null)`,
+- chrome: `FR.ui.sheet(html|null, id)` (modal: focus moves to the sheet body, the HUD is inert while it is up, focus returns
+  on close), `FR.ui.toast(text, ms)`, `FR.ui.led(text)`, `FR.ui.show(screenId|null)`,
   `FR.ui.hud(on)`, `FR.ui.icon(name)` → inline SVG string, `FR.ui.kmoney(n)`, `FR.ui.refresh()` (HUD chips),
   `FR.ui.debug()`.
 - panels (09_ui_panels.js): `FR.ui.panel(hotspotId)` opens the right sheet; `FR.ui.memo()` opens the weekly memo sheet;
   `FR.ui.panels.refresh()` re-renders the open sheet in place after `state:changed` (keep scroll position).
+  `FR.ui.pressure(state) → { value, level, label, hue, text, pct, bands }` — the Safety gauge reading (levels
+  ok | watch | warning | critical from `FR.model.pressureLevel`; the meter runs to the top band × 4/3). The Safety panel and
+  the safety floor's incident-log screen both draw it. `FR.compute.maxRent(s)` must depend only on `s.turn` (the rent box
+  asks it for next year's first week).
   Sliders: four linked sliders that always sum to 100 (moving one rebalances the others proportionally), shown on each
   allocation floor but it is the same `sliders` command. Show the forecast delta (`FR.sim.forecast`) next to each control.
 - menu (09_ui_menu.js): `FR.menu.open()`, boot screen, main menu (Continue, New career, Careers, How to play, Settings,
@@ -62,7 +73,9 @@ Hotspot ids: `<floorId>.<thing>` e.g. `training.board`, `boardroom.table`, `lobb
 ## HUD (09_ui_hud.js)
 
 Top chips: **Week** (`Year 2 · Week 14`), **Cash** (with runway in weeks under it, warn colour < 13), **Trust**.
-A thin **frontier strip** under the chips: your avg cap vs best rival avg cap, and the safe-hold streak `n / 52` once > 0.
+A thin **frontier strip** under the chips: your avg cap vs best rival avg cap, and the safe-hold streak `n / 52` once > 0;
+when you lead with no hold running because a gap is above 5, "Blocked Agents 7" in the warn colour.
+Chips and strip are taps: Week opens the memo, Cash the Boardroom Money tab, Trust the lobby trust board, the strip Rivals.
 Bottom dock: **Elevator**, **Memo** (dot when unread), **End Turn** (primary, `FR.cmd.endTurn()`; disabled while riding).
 A game menu button (top right): how to play, sound on/off, save and quit.
 
@@ -73,7 +86,8 @@ newCareer({ labName, slot })   load(slot)   save()   quit()   exportCode()   imp
 do(command) → {ok, why}        // FR.sim.applyCommands on FR.state now, emit 'state:changed', toast on failure
 endTurn()                      // FR.state = FR.sim.endTurn(FR.state, []); emit report.events, 'turn:ended'; autosave;
                                // open the memo sheet; on status won/dead → end-of-run sheet
-goFloor(floorId)               // elevator ride
+goFloor(floorId)               // elevator ride (FR.elevator.cancel() stops one under way: menu, end screen and enterWorld
+                               //   call it, so a ride never lands behind the menu or in the next lab)
 ```
 
 ## Look (re-theme from Mogul's espresso/red to Frontier's)

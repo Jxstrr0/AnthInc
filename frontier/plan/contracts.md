@@ -95,11 +95,14 @@ constants: they live in each module's `K` object so `tools/balance.js` tuning to
   memo: { turn, lines: [ { kind, text } ] },   // the weekly memo of the turn just resolved. kind: 'change'|'flag'|'due'|'good'
   history: [ { turn, cash, revenue, burn, avgCap, avgSafe, trust, bestRival } ],  // one row per turn, keep last 312
   stats: { incidents, warnings, firstsWon, firstsLost, projectsDone, peakValuation },
-  pendingMemo: [ { kind, text } ],   // memo lines from commands applied since the last End Turn (FR.cmd.do); the next
-                                     //   End Turn puts them at the top of its memo, then empties the list
+  pendingMemo: [ { kind, text, key? } ],   // memo lines from commands applied since the last End Turn (FR.cmd.do); the next
+                                     //   End Turn puts them at the top of its memo, then empties the list. A line with a
+                                     //   `key` replaces the pending line with the same key (the week's hires: one line
+                                     //   'Hiring 8: recruiting fees $160k, joining Year 1, Week 6.')
   pendingEvents: [ { type, ... } ],  // bus events from those commands (e.g. money:round); the next End Turn puts them at the
                                      //   front of report.events, then empties the list
-  lastReport                         // the report of the last End Turn (§2), null before the first. Not in save codes.
+  lastReport,                        // the report of the last End Turn (§2), null before the first. Not in save codes.
+  hq: { floor }                      // UI-owned (99_main): the HQ floor last ridden to; the sim carries it through untouched
 }
 ```
 
@@ -121,7 +124,7 @@ Commands return `{ok, why}`; a module may add `event` (a bus event) and `memo` (
 
 ### 01_core.js (lead, done)
 `FR.on/off/emit`, `FR.rng(seed)` → fn with `.int .range .pick .chance .normal .state()`, `FR.hash`, `FR.clamp`,
-`FR.round`, `FR.clone`, `FR.fmtMoney`, `FR.fmtPct`, `FR.SKILLS`, `FR.SKILL_NAME`, `FR.ALLOCS`, `FR.ALLOC_NAME`,
+`FR.round`, `FR.clone`, `FR.fmtMoney` (negative amounts with a true minus sign, U+2212: "−$102k"), `FR.fmtPct`, `FR.SKILLS`, `FR.SKILL_NAME`, `FR.ALLOCS`, `FR.ALLOC_NAME`,
 `FR.year(turn)`, `FR.weekOfYear(turn)`, `FR.dateLabel(turn)`,
 `FR.save.{write(slot,state), read(slot), clear(slot), info(slot), exportCode(state), importCode(code), useStore(s), SLOTS}`.
 
@@ -136,7 +139,14 @@ Commands return `{ok, why}`; a module may add `event` (a bus event) and `memo` (
 - `FR.sim.forecast(state) → { capacity, alloc, revenue, burn, net, runway, capGain:{}, safeGain:{} }` — next-turn projection
   with no randomness (for UI previews).
 - `FR.sim.allocate(state) → alloc` — see §3.
-- `FR.sim.score(state) → { total, parts: [ {label, value} ] }` — end-of-run sheet.
+- `FR.sim.score(state) → { total, parts: [ {label, value} ] }` — end-of-run sheet. "Founder stake at the end" scores the
+  stake's value then (valuation × founderPct), log-compressed and capped; a lab wound up for want of cash (`end.cause
+  === 'cash'`) scores 0 for it (2026-09-28).
+- `FR.sim.holdBlocked(state) → string | null` — at the frontier with a skill out of step: the memo flag
+  "At the frontier, but Agents safety is 7 below capability. The 52-week hold starts when every gap is 5 or less." The
+  win check pushes it each week the lab leads the best rival with no hold running.
+- The founding memo has a second line: "Training output grows with compute and staff. Rent PF on Serving or in the
+  Boardroom; hire in Boardroom > Team."
 - `FR.sim.migrate(d)` — fill missing fields on old saves.
 - `FR.sim.avgCap(state)`, `FR.sim.avgSafe(state)`, `FR.sim.debug(state)`.
 - `FR.sim.output(base, pf, staff)` — the shared production curve every allocation uses (see §3).
@@ -163,6 +173,9 @@ Commands return `{ok, why}`; a module may add `event` (a bus event) and `memo` (
   passes it); `incidentTrust(skill)` = `K.incidentTrust × weight` (6 for coding and reasoning, 9 for agents).
 - `outlook(state, skill) → { level: 'ok'|'watch'|'warning'|'critical', gap, turnsToFinal|null, text, stand, incidents }`
   (UI + memo read this; the text quotes the weighted incident risk).
+- Memo lines: the training line gives capability to one decimal ("Training on Coding: capability 19.7, up 0.9."). An
+  incident line names the rule that ends the lab: with the first incident on a skill in the window, "A third Agents
+  incident within 52 weeks ends the lab."; from the second, "Incident odds fall to zero once the gap is 20 or below."
 - `gains(state, alloc) → { cap:{}, safe:{} }` — deterministic expected gains for the forecast.
 - `debug(state)` (includes `pressure` and `pressureLevel`).
 
@@ -215,14 +228,20 @@ Ladder rules (from the handoff, binding):
   (`10e6 + 1.25e6 × avgCap² + 20 × annual revenue`): $90M at the start, so the seed prices at 20%, and about $300-370M
   where a lab meets the Series A milestone (one skill at 20, average near 14, ~$50k a week of revenue), so the Series A
   ($75M) prices near 20-25% (lead's call), not at the 35% cap;
-- `progress(state, milestone?) → { current, value, met, weeksLeft }`; `nextRound(state)`; `pricePerPF(avgCap)`,
+- `progress(state, milestone?) → { current, value, met, weeksLeft }`; `pace(state, milestone?) → { projected, short, skill,
+  weeksLeft } | null` (capability milestones only: today's `FR.sim.forecast` gains held flat to the due week; null for
+  revenue and trust milestones). The milestone's due lines (8/4/1 weeks) add "At this pace: Coding 18.2 by Year 1,
+  Week 37, short by 1.8."; at `K.msPaceAt` (30, 24, 18, 12 weeks left) an off-pace milestone gets a flag line
+  "Series A milestone off pace: ... Training output grows with compute and staff: ...". `nextRound(state)`; `pricePerPF(avgCap)`,
   `demandPF(state)`, `trustMult(state)`, `zetaFactor(state)`, `payroll(state)`, `ops(state)`;
+- memo flag when revenue falls and serving leaves more than `K.unservedFlag` (10%) of demand: "Serving covers 75.4 of
+  106.3 PF of demand: about $1.0M a week unserved. Revenue $2.41M, down from $3.35M.";
 - commands: `acceptRound(state)` (result carries the `money:round` event), `declineRound(state)`, `hire(state, n)`,
   `layoff(state, n)`;
 - hiring: at most `K.maxHire` (20) recruits ordered per week. `hiredThisWeek(state)` = recruits already ordered this week
   (they all join on turn + `K.hireTurns`); `hireRoom(state)` = `K.maxHire − hiredThisWeek`. `hire` accepts a whole n in
   1..`hireRoom(state)` (and within `K.maxHead`, with the fee `n × K.hireFee` in cash); the UI's hire stepper tops out at
-  `hireRoom`;
+  `hireRoom`; the memo line (keyed 'hire:<arrival turn>') carries the week's running total;
 - rounds v1: `seed` then `a`. Closing a round adds cash, dilutes `founderPct` by `pct`, sets the milestone that unlocks
   the next round. Missing a milestone locks rounds for 52 turns (`lockedUntil`), then a fresh milestone is set.
   After `a`, `milestone=null` and no further rounds (B/C are back-burner);
@@ -240,8 +259,10 @@ Ladder rules (from the handoff, binding):
 - `frontierCap(state, skill)` — highest cap in the market on that skill (player included);
 - `trustMult(state)`, `nudgeTrust(state, delta, why, report)` → the applied delta; `priceDrag(state)` (Zeta's price cut);
 - `ORDER`, `DEALS`, `NEWS` (wire templates); `debug(state)`.
-- Rival pace: weekly gain per skill = `K.gainBase × speed × (1 + ramp × years) × weight × (1 − cap/100)`; `K.gainBase` 0.43
-  (nudged from 0.42 on 2026-09-28 so the race stays tight once the compute ceiling grows).
+- Rival pace: weekly gain per skill = `K.gainBase × speed × (1 + ramp × years) × weight × (1 − cap/100)`; `K.gainBase` 0.44
+  (0.42 → 0.43 on 2026-09-28 so the race stays tight once the compute ceiling grows; → 0.44 the same day once the
+  balance bots accept the DeepField share when its revenue cut costs under half of renting the PF, as a reading player does).
+- Wire templates may carry a third field: `calm` lines ("Spot GPU rental rates steady") never run while `compute.scarcity > 0`.
 - Rivals (binding names, fictional rhymes):
 
 | id | name | style | nod | deal (v1) |
@@ -356,7 +377,7 @@ Week 37"). Example memo lines (current text, as the sim writes them):
 "Agents: capability 46, safety 31. Gap 15, second week above 10. Safety review requested."
 "Seed round closed: $18.0M for 20%. Series A opens if any skill reaches capability 20 by Year 1, Week 37."
 "Series A milestone met: Coding capability 20 against 20. Series A offer: $75.0M for 23% at a $326M valuation. Open until Year 1, Week 24."
-"Agents incident at gap 22. Cost $1.1M and 9 points of public trust."
+"Agents incident at gap 22. Cost $1.1M and 9 points of public trust. A third Agents incident within 52 weeks ends the lab."
 "Public trust 48 after the Opal AI agents incident, which cost AI labs 3 points. Our evaluations are current; trust impact limited to 1.5."
 "Compute ceiling for Year 2: the spot market rents up to 1350 PF, up from 1000. Cluster offers grow in step."
 Gauge text (`FR.model.pressureLevel`): "Pressure 19, watch. Agents carries the most: gap 10 at weight 1.5."

@@ -83,6 +83,8 @@
     const st = document.createElement('style'); st.id = 'fr-elevator-style';
     st.textContent = '.floors .floor .s{font-variant-numeric:tabular-nums}.floors .floor .s .tn-good{color:var(--good,#5fcf9a)}' +
       '.floors .floor .s .tn-warn{color:var(--warn,#f0a24a)}.floors .floor .s .tn-bad{color:var(--bad,#ef6b5b)}' +
+      '#sheet .elev-h{position:sticky;top:0;z-index:2;margin:0 calc(-1 * var(--sheet-pad-x)) 8px;padding:10px 60px 10px var(--sheet-pad-x);background:var(--surface)}' +
+      '#sheet.scrolled .elev-h{border-bottom:1px solid var(--line)}' +
       '.floors .floor.idle{background:transparent;border-style:dashed;box-shadow:none}.floors .floor.idle .n{background:transparent;color:var(--ink-3,#97a5b4)}';
     document.head.appendChild(st);
   }
@@ -106,12 +108,15 @@
   E.openPanel = function () {
     if (!FR.ui || !FR.ui.sheet || E.riding) return;
     style();
-    FR.ui.sheet(`<h3>Elevator</h3><div class="floors" id="elevFloors">${rowsHtml()}</div>`, 'elevator');
+    FR.ui.sheet(`<h3 class="elev-h">Elevator</h3><div class="floors" id="elevFloors">${rowsHtml()}</div>`, 'elevator');
     const box = document.getElementById('elevFloors'); if (!box) return; bindRows(box);
     // nine rows outgrow a phone sheet: bring the current floor into view (the sheet body scrolls)
     // (set scrollTop on the body itself: scrollIntoView would also scroll the overflow:hidden sheet frame)
     const h = box.querySelector('.here'), sc = document.getElementById('sheetBody') || box.parentElement;
-    if (h && sc) { const r = h.getBoundingClientRect(), cr = sc.getBoundingClientRect(); if (r.bottom > cr.bottom) sc.scrollTop += r.bottom - cr.bottom + 12; }
+    // (only when more of the row is hidden than the heading is tall: a lobby row cut by a few px stays put, and the
+    // "Elevator" heading stays clear of the grab handle)
+    if (h && sc) { const r = h.getBoundingClientRect(), cr = sc.getBoundingClientRect(), hd = box.previousElementSibling, hh = hd ? hd.getBoundingClientRect().height + 12 : 40;
+      if (r.bottom - cr.bottom > hh) sc.scrollTop += r.bottom - cr.bottom + 12; }
   };
   // the open elevator sheet re-renders its rows in place after a command or End Turn (no reopen, no sound)
   function refreshOpen() {

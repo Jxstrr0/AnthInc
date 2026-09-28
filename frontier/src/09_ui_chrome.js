@@ -138,7 +138,8 @@
     if (hud) hud.inert = true;
     if (!was || !sh.contains(document.activeElement)) {
       if (!was) U._sheetFrom = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
-      const c = $('sheetClose'); try { if (c) c.focus({ preventScroll: true }); } catch (e) { /* old engines */ }
+      // the sheet body takes focus (Space and the arrows scroll it; Enter does nothing), not a button in it
+      const c = $('sheetBody'); try { if (c) { c.tabIndex = -1; c.focus({ preventScroll: true }); } } catch (e) { /* old engines */ }
     }
     if (FR.r) FR.r.paused = true; FR.emit('ui:sheet', { id: U.sheetId });
   };

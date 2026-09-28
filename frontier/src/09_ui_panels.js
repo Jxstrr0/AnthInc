@@ -307,6 +307,13 @@
   const KIND = { training: ['Training', 'training'], safety: ['Safety', 'safety'], research: ['Research', 'research'], product: ['Product', 'serving'], business: ['Business', 'coin'], compute: ['Compute', 'compute'] };
   const kindOf = (k) => KIND[k] || [String(k || 'Project').charAt(0).toUpperCase() + String(k || 'project').slice(1), 'project'];
   const skillOf = (x) => x.skill === 'all' ? 'All skills' : x.skill ? SN(x.skill) : '';
+  // weeks of cash when a project spends `per` a week for `turns` weeks on top of a weekly net `net` (Infinity: never out)
+  function runwayWith(cash, net, per, turns) {
+    const during = net - per;
+    if (during < 0 && cash + turns * during < 0) return Math.max(0, Math.floor(cash / -during));
+    if (net >= 0) return Infinity;
+    return turns + Math.floor((cash + turns * during) / -net);
+  }
   function offerCard(s, o, f0, free) {
     const k = kindOf(o.kind), locked = o.tier > s.research.tier, risk = Math.round((o.risk || 0) * 100);
     let dis = '', pv = null;
@@ -319,7 +326,7 @@
       const pr = pv.f.alloc.projects || { need: 0, pf: 0 }, cap = pv.f.capacity;
       // the project costs its budget once, spread over its weeks: runway after = (cash − cost) over next week's net without it
       const without = pv.f.net + tryr(() => FR.money.burnParts(pv.state).projects - FR.money.burnParts(s).projects, 0);
-      const after = without >= 0 ? (s.money.cash >= o.cost ? Infinity : 0) : Math.floor(Math.max(0, s.money.cash - o.cost) / -without);
+      const after = runwayWith(s.money.cash, without, o.cost / Math.max(1, o.turns), Math.max(1, o.turns));
       effect = kv('coin', `Adds <b class="num">${kmoney(o.cost / Math.max(1, o.turns))}</b> a week to burn for ${wks(o.turns)}, <b class="num">${kmoney(o.cost)}</b> in all. Runway ${runwayText(f0.runway)} → <b class="num">${runwayText(after)}</b>.`)
         + (pr.need > cap + 0.01 ? why(`Projects would need ${n1(pr.need)} PF of ${n1(cap)} PF capacity. Project work slows to ${pct0(cap / pr.need)}.`)
           : o.pfPerTurn > 0 ? kv('compute', `Holds <b class="num">${o.pfPerTurn} PF</b> a week. The sliders share <b class="num">${n1(Math.max(0, cap - pr.need))} PF</b>.`) : '');

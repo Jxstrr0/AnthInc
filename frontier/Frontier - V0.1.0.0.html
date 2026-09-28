@@ -183,7 +183,7 @@ body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{an
 .btn.slot{justify-content:flex-start;gap:var(--sp-3);min-height:56px;margin:0;padding:8px 14px;text-align:left}
 .slot .slot-t{flex:1;min-width:0;display:flex;flex-direction:column}
 .slot .slot-t b{font-size:var(--text-md)}
-.slot .meta{font-size:var(--text-sm);font-weight:var(--w-regular);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot .meta{font-size:var(--text-sm);font-weight:var(--w-regular);color:var(--ink-3);white-space:normal;overflow-wrap:break-word}   /* wraps: the cash at the end tells same-named labs apart */
 .slot .tick{width:24px;height:24px;border-radius:50%;border:2px solid var(--line-strong);flex:none;display:grid;place-items:center;color:transparent}
 .slot .tick .ico{width:14px;height:14px}
 .btn.slot.sel{background:var(--brand-tint);border-color:var(--brand-bright)}
@@ -485,6 +485,7 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #hud .strip .st-hold{flex:none;margin-left:auto;display:flex;align-items:center;gap:5px;color:var(--good)}
 #hud .strip .st-hold b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--good)}
 #hud .strip .st-hold i{display:none;width:40px;height:4px;border-radius:2px;background:var(--sunken);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+#hud .strip.blocked .st-k{display:none}   /* room for the blocked-hold chip */
 #hud .strip .st-block{color:var(--warn)}#hud .strip .st-block b{color:var(--warn)}
 #hud .strip .st-hold i::before{content:"";display:block;height:100%;width:calc(var(--v,0) * 1%);background:var(--good)}
 /* the hold count takes the label's room; the hold bar shows only where it fits */
@@ -525,6 +526,7 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #sheet .close{position:absolute;top:6px;right:10px;z-index:3;display:grid;place-items:center;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:50%;background:var(--raised);color:var(--ink-2);transition:background-color var(--dur-1)}
 #sheet .close .ico{width:20px;height:20px}
 #sheet .close:active{background:var(--raised-2);color:var(--ink)}
+#sheetBody:focus{outline:none}
 #dim{position:fixed;inset:0;z-index:var(--z-dim);display:none;background:var(--scrim)}
 #dim.on{display:block;animation:screen-in var(--dur-2) var(--ease-out)}
 /* read-only lists some sheets reuse the floor row for (the lobby news): no chevron, no press */
@@ -982,7 +984,7 @@ body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + 
     <div class="car-code" id="carExport" hidden></div>
     <section class="set-group car-import" aria-labelledby="impH">
       <h3 class="set-h" id="impH"><i data-icon="import"></i>Import a save code</h3>
-      <div class="field"><label for="impCode">Save code</label><textarea id="impCode" rows="3" autocomplete="off" spellcheck="false" placeholder="Paste a code that starts with FR1."></textarea></div>
+      <div class="field"><label for="impCode">Save code</label><textarea id="impCode" rows="3" autocomplete="off" spellcheck="false" placeholder="Paste the whole code (FR1.…)"></textarea></div>
       <div class="field"><label>Import into</label></div>
       <div id="impSlots" class="slots"></div>
       <p class="hint warn car-err" id="impErr" role="alert" hidden></p>
@@ -3151,7 +3153,24 @@ window.FR_VERSION="0.1.0.0";
   R.live = function (id) { const t = byId[id]; return !!t && live(t); };
   R.targets = function () { return targets.slice(); };
   // a target's focus pose (shift defaults to FOCUS_SHIFT); null when the target is missing or has no focus
-  R.poseOf = function (id) { const t = byId[id]; return t && t.focus ? norm(t.focus, R.FOCUS_SHIFT) : null; };
+  // The pose is lowered (less lens shift) until the object's top edge clears the top chips and the frontier strip, at
+  // most 16% of the screen: a screen's heading (the wire, the incident log, the rival wall) stays readable over the sheet.
+  R.poseOf = function (id) { const t = byId[id]; return t && t.focus ? clearHud(t, norm(t.focus, R.FOCUS_SHIFT)) : null; };
+  function clearHud(t, p) {
+    if (!p || t.id === 'elevator' || !t.box) return p;
+    if (!fitCam) fitCam = new THREE.PerspectiveCamera();
+    fitCam.fov = effFov(p.fov); fitCam.aspect = W() / H(); fitCam.near = 0.1; fitCam.far = 1000;
+    fitCam.position.set(p.pos[0], p.pos[1], p.pos[2]); fitCam.lookAt(p.look[0], p.look[1], p.look[2]); fitCam.updateMatrixWorld(true);
+    fitCam.setViewOffset(W(), H(), (p.shiftX || 0) * W(), p.shift * H(), W(), H());
+    const b = t.box; let y0 = Infinity;
+    for (let i = 0; i < 8; i++) {
+      _v.set(i & 1 ? b[3] : b[0], i & 2 ? b[4] : b[1], i & 4 ? b[5] : b[2]).applyMatrix4(fitCam.matrixWorldInverse); if (_v.z > -0.1) continue;
+      _v.applyMatrix4(fitCam.projectionMatrix); const y = (1 - _v.y) / 2 * H(); if (y < y0) y0 = y;
+    }
+    fitCam.clearViewOffset();
+    const need = R.SAFE_TOP + 8 - y0;
+    return need > 0 && isFinite(need) ? Object.assign({}, p, { shift: p.shift - Math.min(need, 0.16 * H()) / H() }) : p;
+  }
 
   // ---------- picking ----------
   function toScreen(x, y, z, out) {
@@ -5007,6 +5026,8 @@ window.FR_VERSION="0.1.0.0";
     const st = document.createElement('style'); st.id = 'fr-elevator-style';
     st.textContent = '.floors .floor .s{font-variant-numeric:tabular-nums}.floors .floor .s .tn-good{color:var(--good,#5fcf9a)}' +
       '.floors .floor .s .tn-warn{color:var(--warn,#f0a24a)}.floors .floor .s .tn-bad{color:var(--bad,#ef6b5b)}' +
+      '#sheet .elev-h{position:sticky;top:0;z-index:2;margin:0 calc(-1 * var(--sheet-pad-x)) 8px;padding:10px 60px 10px var(--sheet-pad-x);background:var(--surface)}' +
+      '#sheet.scrolled .elev-h{border-bottom:1px solid var(--line)}' +
       '.floors .floor.idle{background:transparent;border-style:dashed;box-shadow:none}.floors .floor.idle .n{background:transparent;color:var(--ink-3,#97a5b4)}';
     document.head.appendChild(st);
   }
@@ -5030,12 +5051,15 @@ window.FR_VERSION="0.1.0.0";
   E.openPanel = function () {
     if (!FR.ui || !FR.ui.sheet || E.riding) return;
     style();
-    FR.ui.sheet(`<h3>Elevator</h3><div class="floors" id="elevFloors">${rowsHtml()}</div>`, 'elevator');
+    FR.ui.sheet(`<h3 class="elev-h">Elevator</h3><div class="floors" id="elevFloors">${rowsHtml()}</div>`, 'elevator');
     const box = document.getElementById('elevFloors'); if (!box) return; bindRows(box);
     // nine rows outgrow a phone sheet: bring the current floor into view (the sheet body scrolls)
     // (set scrollTop on the body itself: scrollIntoView would also scroll the overflow:hidden sheet frame)
     const h = box.querySelector('.here'), sc = document.getElementById('sheetBody') || box.parentElement;
-    if (h && sc) { const r = h.getBoundingClientRect(), cr = sc.getBoundingClientRect(); if (r.bottom > cr.bottom) sc.scrollTop += r.bottom - cr.bottom + 12; }
+    // (only when more of the row is hidden than the heading is tall: a lobby row cut by a few px stays put, and the
+    // "Elevator" heading stays clear of the grab handle)
+    if (h && sc) { const r = h.getBoundingClientRect(), cr = sc.getBoundingClientRect(), hd = box.previousElementSibling, hh = hd ? hd.getBoundingClientRect().height + 12 : 40;
+      if (r.bottom - cr.bottom > hh) sc.scrollTop += r.bottom - cr.bottom + 12; }
   };
   // the open elevator sheet re-renders its rows in place after a command or End Turn (no reopen, no sound)
   function refreshOpen() {
@@ -5224,7 +5248,7 @@ window.FR_VERSION="0.1.0.0";
     T.towerWins = W.length;
     // city blocks
     // near blocks a shade lighter than the sky, so their lit windows read as windows in a building, not floating squares
-    const bm = R.mat(0x0b0e13), bmNear = R.mat(0x1b222c); let blocks = 0;
+    const bm = R.mat(0x0b0e13), bmNear = R.mat(0x1d2530, { emissive: 0x141b25, emissiveIntensity: 1 }); let blocks = 0;
     for (let i = 0; i < 34 && blocks < 30; i++) {
       const ang = rng() * Math.PI * 2, rad = 26 + rng() * 70, x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
       if (x > 6 && z > 6 && rad < 60) continue; // keep the camera corridor clear
@@ -5430,7 +5454,8 @@ window.FR_VERSION="0.1.0.0";
     if (hud) hud.inert = true;
     if (!was || !sh.contains(document.activeElement)) {
       if (!was) U._sheetFrom = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
-      const c = $('sheetClose'); try { if (c) c.focus({ preventScroll: true }); } catch (e) { /* old engines */ }
+      // the sheet body takes focus (Space and the arrows scroll it; Enter does nothing), not a button in it
+      const c = $('sheetBody'); try { if (c) { c.tabIndex = -1; c.focus({ preventScroll: true }); } } catch (e) { /* old engines */ }
     }
     if (FR.r) FR.r.paused = true; FR.emit('ui:sheet', { id: U.sheetId });
   };
@@ -5560,11 +5585,11 @@ window.FR_VERSION="0.1.0.0";
         + `<span class="st-v st-riv"><span class="nm">${esc(rname)}</span> <b>${(+b.avgCap).toFixed(1)}</b></span>`
         + `<span class="st-gap ${d >= 0 ? 'good' : 'warn'}">${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}</span>`
         + (hold > 0 ? `<span class="st-hold">Hold <b>${hold}/${WIN}</b><i style="--v:${Math.min(100, Math.round(hold / WIN * 100))}"></i></span>`
-          : blocked ? `<span class="st-hold st-block">Hold blocked <b>${esc(FR.SKILL_NAME[blocked])} gap ${Math.round(gapOf(s, blocked) * 10) / 10}</b></span>` : '');
+          : blocked ? `<span class="st-hold st-block">Blocked <b>${esc(FR.SKILL_NAME[blocked])} ${Math.round(gapOf(s, blocked) * 10) / 10}</b></span>` : '');
       label = `Average capability: yours ${you.toFixed(1)}, ${rname} ${(+b.avgCap).toFixed(1)}.` + (hold > 0 ? ` Safe frontier hold ${hold} of ${WIN} weeks.`
         : blocked ? ` The safe hold has not started: ${FR.SKILL_NAME[blocked]} safety is more than ${M} below capability.` : '') + ' Opens the Rivals tab.';
     } catch (e) { html = ''; }
-    if (html !== last.strip) { last.strip = html; el.innerHTML = html; el.classList.toggle('holding', /st-hold/.test(html)); if (label) el.setAttribute('aria-label', label); }
+    if (html !== last.strip) { last.strip = html; el.innerHTML = html; el.classList.toggle('holding', /st-hold/.test(html)); el.classList.toggle('blocked', /st-block/.test(html)); if (label) el.setAttribute('aria-label', label); }
   };
 
   const gapOf = (s, k) => Math.max(0, s.model.skills[k].cap - s.model.skills[k].safe);
@@ -6017,6 +6042,13 @@ window.FR_VERSION="0.1.0.0";
   const KIND = { training: ['Training', 'training'], safety: ['Safety', 'safety'], research: ['Research', 'research'], product: ['Product', 'serving'], business: ['Business', 'coin'], compute: ['Compute', 'compute'] };
   const kindOf = (k) => KIND[k] || [String(k || 'Project').charAt(0).toUpperCase() + String(k || 'project').slice(1), 'project'];
   const skillOf = (x) => x.skill === 'all' ? 'All skills' : x.skill ? SN(x.skill) : '';
+  // weeks of cash when a project spends `per` a week for `turns` weeks on top of a weekly net `net` (Infinity: never out)
+  function runwayWith(cash, net, per, turns) {
+    const during = net - per;
+    if (during < 0 && cash + turns * during < 0) return Math.max(0, Math.floor(cash / -during));
+    if (net >= 0) return Infinity;
+    return turns + Math.floor((cash + turns * during) / -net);
+  }
   function offerCard(s, o, f0, free) {
     const k = kindOf(o.kind), locked = o.tier > s.research.tier, risk = Math.round((o.risk || 0) * 100);
     let dis = '', pv = null;
@@ -6029,7 +6061,7 @@ window.FR_VERSION="0.1.0.0";
       const pr = pv.f.alloc.projects || { need: 0, pf: 0 }, cap = pv.f.capacity;
       // the project costs its budget once, spread over its weeks: runway after = (cash − cost) over next week's net without it
       const without = pv.f.net + tryr(() => FR.money.burnParts(pv.state).projects - FR.money.burnParts(s).projects, 0);
-      const after = without >= 0 ? (s.money.cash >= o.cost ? Infinity : 0) : Math.floor(Math.max(0, s.money.cash - o.cost) / -without);
+      const after = runwayWith(s.money.cash, without, o.cost / Math.max(1, o.turns), Math.max(1, o.turns));
       effect = kv('coin', `Adds <b class="num">${kmoney(o.cost / Math.max(1, o.turns))}</b> a week to burn for ${wks(o.turns)}, <b class="num">${kmoney(o.cost)}</b> in all. Runway ${runwayText(f0.runway)} → <b class="num">${runwayText(after)}</b>.`)
         + (pr.need > cap + 0.01 ? why(`Projects would need ${n1(pr.need)} PF of ${n1(cap)} PF capacity. Project work slows to ${pct0(cap / pr.need)}.`)
           : o.pfPerTurn > 0 ? kv('compute', `Holds <b class="num">${o.pfPerTurn} PF</b> a week. The sliders share <b class="num">${n1(Math.max(0, cap - pr.need))} PF</b>.`) : '');

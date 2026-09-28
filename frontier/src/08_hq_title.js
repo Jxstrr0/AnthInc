@@ -112,7 +112,7 @@
     T.towerWins = W.length;
     // city blocks
     // near blocks a shade lighter than the sky, so their lit windows read as windows in a building, not floating squares
-    const bm = R.mat(0x0b0e13), bmNear = R.mat(0x1b222c); let blocks = 0;
+    const bm = R.mat(0x0b0e13), bmNear = R.mat(0x1d2530, { emissive: 0x141b25, emissiveIntensity: 1 }); let blocks = 0;
     for (let i = 0; i < 34 && blocks < 30; i++) {
       const ang = rng() * Math.PI * 2, rad = 26 + rng() * 70, x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
       if (x > 6 && z > 6 && rad < 60) continue; // keep the camera corridor clear

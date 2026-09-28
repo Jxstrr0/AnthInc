@@ -18,6 +18,9 @@
 //   save    save → reload → Continue (same turn, cash, floor); Careers code → import into slot 2 → Continue slot 2
 //   end     out of cash and a final incident (crafted state, resolved by End Turn), a crafted win; end screen, score
 //           parts, the record; Careers shows the closed lab and its Result
+//   review  regressions from the 2026-09-28 review: no three.js / no WebGL still plays (elevator opens panels), a ride
+//           never lands after quitting, keys under the memo never end a week, chips route, typed lab name, careers at
+//           412 wide, portrait tags on screen, focus clears the HUD, rent jumps, GPU buffers freed on floor changes
 // Output: one line per section, 'ok <section>' or 'FAIL <section>: <reason>', then 'ALL PASS' or the failure count.
 // Screenshots: test/shots/<n>-<section>-<nn>-<name>.png, combined into test/shots/contact.png (python3 + PIL).
 'use strict';
@@ -37,7 +40,7 @@ const SKIP_SHOTS = process.env.SKIP_SHOTS === '1';
 const VERBOSE = process.env.VERBOSE === '1';
 const ORIGIN = 'http://frontier.test';
 const URL = ORIGIN + '/game.html';
-const ALL = ['boot', 'flow', 'floors', 'save', 'end'];
+const ALL = ['boot', 'flow', 'floors', 'save', 'end', 'review'];
 const SECTION_MS = 420000; // a section fails rather than hang; the whole section stays inside `timeout 500`
 const PHONE = { width: 390, height: 844 }, SMALL = { width: 360, height: 740 };
 const FLOORS = ['lobby', 'serving', 'training', 'safety', 'research', 'proj1', 'proj2', 'proj3', 'boardroom'];
@@ -59,12 +62,13 @@ class Run {
   constructor(name, idx, ctx, page, src) {
     Object.assign(this, { name, idx, ctx, page, src, errors: [], notes: [], warnings: {}, shotN: 0, fontFails: 0 });
   }
-  static async open(browser, name, idx, src) {
-    const ctx = await browser.newContext({ viewport: PHONE, deviceScaleFactor: 1 });
+  static async open(browser, name, idx, src, opt) {
+    opt = opt || {};
+    const ctx = await browser.newContext({ viewport: opt.viewport || PHONE, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
     page.setDefaultTimeout(10000);
     const T = new Run(name, idx, ctx, page, src);
-    await ctx.route('**/three.min.js', r => r.fulfill({ status: 200, contentType: 'application/javascript; charset=utf-8', body: src.three }));
+    await ctx.route('**/three.min.js', r => opt.noThree ? r.abort() : r.fulfill({ status: 200, contentType: 'application/javascript; charset=utf-8', body: src.three }));
     await ctx.route(NOISE, r => { T.fontFails++; return r.abort(); });
     await ctx.route(ORIGIN + '/**', r => {
       const u = r.request().url();
@@ -76,11 +80,12 @@ class Run {
       if (m.type() !== 'error') return;
       const url = (m.location() && m.location().url) || '', text = m.text();
       if (NOISE.test(url) || NOISE.test(text)) return;
+      if (opt.noThree && (/three\.js did not load/.test(text) || /three\.min\.js/.test(url) || /^Failed to load resource/.test(text))) return;   // expected there
       if (/^Failed to load resource/.test(text) && T.fontFails > 0 && !url) return; // the aborted font request, unattributed
       T.errors.push('console.error: ' + text.slice(0, 300) + (url && !/frontier\.test/.test(url) ? ' @ ' + url : ''));
     });
     page.on('pageerror', e => T.errors.push('pageerror: ' + String((e && (e.stack || e.message)) || e).split('\n').slice(0, 3).join(' | ')));
-    page.on('requestfailed', r => { if (!NOISE.test(r.url())) T.errors.push('request failed: ' + r.url() + ' ' + ((r.failure() || {}).errorText || '')); });
+    page.on('requestfailed', r => { if (!NOISE.test(r.url()) && !(opt.noThree && /three\.min\.js/.test(r.url()))) T.errors.push('request failed: ' + r.url() + ' ' + ((r.failure() || {}).errorText || '')); });
     return T;
   }
   note(s) { this.notes.push(s); log('note: ' + s); }
@@ -148,6 +153,9 @@ class Run {
     assert(rows.length === 9, `elevator sheet lists ${rows.length} floors, expected 9`);
     const small = rows.filter(r => r.h < 44); if (small.length) this.note(`elevator rows under 44px: ${small.map(r => r.f + ' ' + r.h.toFixed(0)).join(', ')}`);
     if (opts.shot) await this.shot('elevator-sheet');
+    // a row half under the sticky "Elevator" heading takes a tap on its visible part; the test taps its centre, so bring it in
+    await this.ev((f) => { const el = document.querySelector(`#elevFloors [data-f="${f}"]`), b = document.getElementById('sheetBody'); if (el && b) b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top - b.clientHeight / 2; }, floor);
+    await sleep(100);
     await this.page.click(`#elevFloors [data-f="${floor}"]`);
     if (opts.checkEnd) {
       const st = await this.ev(() => ({ riding: FR.elevator.riding, disabled: document.getElementById('hEnd').disabled }));
@@ -579,6 +587,103 @@ const SECTIONS = {
     await T.until(() => document.getElementById('end').classList.contains('on'), null, 5000, 'the end screen from Careers');
     const again = await T.ev(() => ({ kicker: document.getElementById('endKicker').textContent, rows: document.querySelectorAll('#endParts tr').length }));
     assert(/Final incident/.test(again.kicker) && again.rows > 1, 'the result from Careers reads ' + JSON.stringify(again));
+    T.noErrors();
+  },
+
+  async review(T) {
+    const browser = T.ctx.browser();
+    // 1. three.js blocked: the one-script build still boots, a lab starts, the elevator sheet opens floor panels
+    {
+      const X = await Run.open(browser, 'review-nothree', 6, T.src, { noThree: true });
+      try {
+        await X.load(); await X.toMenu();
+        const st = await X.ev(() => ({ stub: !!FR.r.stub, cmd: !!FR.cmd, ui: typeof FR.ui.panel }));
+        assert(st.stub && st.cmd && st.ui === 'function', 'no three.js: the build did not come up: ' + JSON.stringify(st));
+        await X.ev(() => FR.cmd.newCareer({ labName: 'Stub Labs', slot: 0 }));
+        await X.until(() => FR.inWorld(), null, 5000, 'the world without three.js');
+        await X.page.click('#hElev');
+        await X.until(() => FR.ui.sheetId === 'elevator', null, 5000, 'the elevator sheet without three.js');
+        await X.page.click('#elevFloors [data-f="boardroom"]');
+        await X.until(() => FR.ui.sheetId === 'fp:boardroom' && FR.elevator.floor === 'boardroom', null, 5000, 'the boardroom panel from the elevator sheet (no three.js)');
+        await X.ev(() => FR.ui.sheet(null)); await X.endTurn();
+        X.noErrors('no three.js');
+      } finally { await X.ctx.close(); }
+    }
+    // 2. the rest at 390x844 with WebGL
+    await T.load(); await T.toMenu();
+    // the lab name field starts empty: a tap and typing gives exactly the typed name
+    await T.page.click('#mNew');
+    await T.until(() => document.getElementById('newCareer').classList.contains('on'), null, 5000, 'the new career screen');
+    await T.page.click('#labName'); await T.page.keyboard.type('Northwind Labs'); await T.page.click('#ncStart');
+    await T.until(() => !!(FR.state && FR.inWorld() && FR.r.current && FR.r.current.id === 'lobby'), null, 12000, 'the typed-name career');
+    const nm = await T.ev(() => FR.state.lab.name);
+    assert(nm === 'Northwind Labs', 'typed lab name came out as "' + nm + '"');
+    await T.settle();
+    // chips route: Cash to the Money tab, the frontier strip to Rivals, Trust to the lobby trust board
+    for (const [sel, want] of [['#hudCashChip', 'fp:boardroom money'], ['#hudStrip', 'fp:boardroom rivals'], ['#hudTrustChip', 'fp:lobby trust']]) {
+      await T.page.click(sel);
+      await T.until((w) => FR.ui.sheetId + ' ' + FR.ui.panels.debug().tab === w, want, 4000, sel + ' → ' + want);
+      await T.closeSheet(); await T.settle();
+    }
+    // keys under the memo: End Turn by mouse, then Space and Enter with the memo up never resolve another week
+    const t0 = await T.ev(() => FR.state.turn);
+    await T.page.click('#hEnd');
+    await T.until((t) => FR.state.turn === t + 1 && FR.ui.sheetId === 'memo', t0, 5000, 'the memo after End Turn');
+    await sleep(400);
+    await T.page.keyboard.press('Space'); await sleep(250); await T.page.keyboard.press('Enter'); await sleep(600);
+    const t2 = await T.ev(() => ({ turn: FR.state.turn, sheet: FR.ui.sheetId }));
+    assert(t2.turn === t0 + 1 && t2.sheet === 'memo', 'a key press under the memo resolved a week: ' + JSON.stringify(t2));
+    await T.closeSheet(); await T.settle();
+    // rent jumps: +250 PF from the Serving panel
+    await T.ev(() => FR.ui.panel('serving.wall')); await sleep(300);
+    const r0 = await T.ev(() => FR.state.compute.rentPF);
+    const jump = T.page.locator('#sheetBody .fp-jump [data-fp="rent"]', { hasText: '+250 PF' });
+    assert(await jump.count(), 'no +250 PF rent button');
+    await jump.scrollIntoViewIfNeeded(); await jump.click();
+    await T.until((r) => FR.state.compute.rentPF === r + 250, r0, 3000, 'rent +250 PF');
+    await T.closeSheet(); await T.settle();
+    // portrait framing: every boardroom target (compute and team on the side walls included) has its tag on screen
+    await T.ride('boardroom');
+    const off = await T.ev(() => FR.r.targets().filter(t => FR.r.live(t.id)).map(t => { const g = document.querySelector(`#tags .tag[data-t="${t.id}"]`); const s = FR.r.screenOf(t.id); return { id: t.id, off: !g || g.classList.contains('off'), x0: s.x0, x1: s.x1 }; })
+      .filter(o => o.off || o.x0 < 0 || o.x1 > innerWidth));
+    assert(!off.length, 'boardroom targets off screen at 390x844: ' + JSON.stringify(off));
+    // a focused screen's heading clears the chips and the frontier strip with its panel open
+    await T.ev(() => FR.r.focus('boardroom.rivals'));
+    await T.until(() => FR.ui.sheetId === 'fp:boardroom' && !FR.r.debug().gliding, null, 6000, 'the rival wall focus');
+    await sleep(300);
+    const clr = await T.ev(() => ({ top: FR.r.screenOf('boardroom.rivals').y0, strip: document.getElementById('hudStrip').getBoundingClientRect().bottom }));
+    assert(clr.top >= clr.strip - 1, 'the rival wall sits under the frontier strip: ' + JSON.stringify(clr));
+    await T.shot('rivals-focus');
+    await T.closeSheet(); await T.settle();
+    // GPU buffers: two tours of the nine floors free what they build (InstancedMesh buffers included)
+    const bufs = await T.ev(async () => {
+      const gl = FR.r.renderer.getContext(); let n = 0; const c = gl.createBuffer.bind(gl), d = gl.deleteBuffer.bind(gl);
+      gl.createBuffer = () => { n++; return c(); }; gl.deleteBuffer = (b) => { if (b) n--; return d(b); };
+      const out = [];
+      for (let k = 0; k < 2; k++) { for (const f of FR.HQ_FLOORS) { FR.r.loadFloor(f); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); } out.push(n); }
+      gl.createBuffer = c; gl.deleteBuffer = d; FR.r.loadFloor('boardroom');
+      return out;
+    });
+    assert(bufs[1] - bufs[0] <= 4, 'GPU buffers grow on floor changes: ' + JSON.stringify(bufs));
+    // a ride under way never lands after Save and quit; the next lab starts clean in its lobby
+    await T.ev(() => FR.ui.goFloor('lobby', () => FR.ui.panel('lobby.news')));
+    await sleep(150);
+    await T.ev(() => FR.cmd.quit());
+    await sleep(3000);
+    const q = await T.ev(() => ({ sheet: FR.ui.sheetId, riding: FR.elevator.riding, paused: FR.r.paused, menu: document.getElementById('menu').classList.contains('on') }));
+    assert(!q.sheet && !q.riding && q.paused && q.menu, 'the ride landed behind the menu: ' + JSON.stringify(q));
+    await T.ev(() => FR.cmd.newCareer({ labName: 'Clean Labs', slot: 1 }));
+    await sleep(2500);
+    const c = await T.ev(() => ({ sheet: FR.ui.sheetId, floor: FR.r.current.id, end: FR.ui.endWhy(), hq: FR.state.hq.floor }));
+    assert(!c.sheet && c.floor === 'lobby' && !c.end && c.hq === 'lobby', 'the new lab inherited the old ride: ' + JSON.stringify(c));
+    // careers at 412 wide: each row shows its lab name
+    await T.ev(() => FR.cmd.quit());
+    await T.page.setViewportSize({ width: 412, height: 915 });
+    await T.page.click('#mCareers');
+    await T.until(() => document.getElementById('careers').classList.contains('on'), null, 5000, 'the careers screen');
+    const widths = await T.ev(() => Array.from(document.querySelectorAll('.car-slot:not(.empty) .set-save-t')).map(e => Math.round(e.getBoundingClientRect().width)));
+    assert(widths.length && widths.every(w => w > 200), 'careers rows hide the lab name at 412 wide: ' + JSON.stringify(widths));
+    await T.shot('careers-412');
     T.noErrors();
   }
 };
