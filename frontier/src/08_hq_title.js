@@ -162,7 +162,7 @@
       if (w && GLASS.indexOf(w.base) < 0) { w.col = w.col === DIM ? w.base : (Math.random() < 0.3 ? DIM : w.base); T.inst.setColorAt(i, _c.setHex(w.col)); T.inst.instanceColor.needsUpdate = true; } }
     R.renderer.render(T.scene, cam);
   };
-  const still = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const still = () => !!((FR.settings && FR.settings.reduceMotion) || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches));
   T.start = function () {
     if (T.active || !R.renderer) return; if (!T.scene) T.build();
     T.t = still() ? CRANE : 0; T.shift = -1; T.active = true; R.cinematic = T.update; document.body.classList.add('title-on');

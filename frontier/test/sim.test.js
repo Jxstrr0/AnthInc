@@ -49,7 +49,7 @@ function randomCmds(s, r) {
 }
 // keeps a random run alive to 400 turns: tops up cash, pins gaps under the incident line, never lets the hold reach a win
 function rescue(s) {
-  if (s.money.cash < 3e6) s.money.cash += 40e6;
+  if (s.money.cash < 15e6 + Math.max(0, ...s.compute.offers.map(o => o.cost))) s.money.cash += 40e6;   // room for a cluster buy and a costly week
   SK.forEach(k => { const x = s.model.skills[k]; if (x.cap - x.safe > 15) x.safe = x.cap - 8; });
   s.win.streak = 0;
   return s;
