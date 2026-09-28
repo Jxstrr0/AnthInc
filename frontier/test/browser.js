@@ -3,12 +3,21 @@
 //   node test/browser.js                      every section: boot, flow, floors, save, end
 //   SECTION=flow node test/browser.js         one section (or a list: SECTION=boot,save); each fits in `timeout 500`
 //   SKIP_SHOTS=1                              no screenshots and no contact sheet
-//   VERBOSE=1                                 print each step and the notes (how panels opened, small touch targets)
+//   VERBOSE=1                                 print steps, timings, notes (how panels opened, targets under 44px), warnings
 //   FILE=path/to/game.html                    page under test (default dist/game.html; run `node build.js` first)
 //   BUILD=1                                   run build.js before the check
 // The page is served from a fake origin (http://frontier.test/) so localStorage behaves as on the web; the three.js CDN
 // script is routed to tools/vendor/three.r128.min.js and the Google Fonts requests are aborted (their console noise is
 // ignored). Every section starts from fresh storage at 390x844 and asserts no console errors or page errors.
+// Sections:
+//   boot    title screen (three.js + WebGL up), menu, How to play / Settings / Credits / Careers / New career, 360x740 fit
+//   flow    New career form → Research by elevator → drag two slider thumbs → Greenlight → Boardroom → accept the seed
+//           → 10 End Turns on #hEnd (the first memo's next-step button, then Noted) → turn +10, cash moved; 360x740 HUD
+//   floors  elevator sheet to all nine floors, each floor's panel by a tap on its tag (else the 3D target, else
+//           FR.ui.panel), title and content checked; dense panels and the boardroom tabs at 360x740
+//   save    save → reload → Continue (same turn, cash, floor); Careers code → import into slot 2 → Continue slot 2
+//   end     out of cash and a final incident (crafted state, resolved by End Turn), a crafted win; end screen, score
+//           parts, the record; Careers shows the closed lab and its Result
 // Output: one line per section, 'ok <section>' or 'FAIL <section>: <reason>', then 'ALL PASS' or the failure count.
 // Screenshots: test/shots/<n>-<section>-<nn>-<name>.png, combined into test/shots/contact.png (python3 + PIL).
 'use strict';
@@ -48,7 +57,7 @@ function pwWhy(e) {
 // ---------- one section: a fresh context, the routes, the error watch, the helpers ----------
 class Run {
   constructor(name, idx, ctx, page, src) {
-    Object.assign(this, { name, idx, ctx, page, src, errors: [], notes: [], shotN: 0, fontFails: 0 });
+    Object.assign(this, { name, idx, ctx, page, src, errors: [], notes: [], warnings: {}, shotN: 0, fontFails: 0 });
   }
   static async open(browser, name, idx, src) {
     const ctx = await browser.newContext({ viewport: PHONE, deviceScaleFactor: 1 });
@@ -63,6 +72,7 @@ class Run {
       return r.fulfill({ status: 204, body: '' });
     });
     page.on('console', m => {
+      if (m.type() === 'warning') { const k = m.text().slice(0, 140); T.warnings[k] = (T.warnings[k] || 0) + 1; }
       if (m.type() !== 'error') return;
       const url = (m.location() && m.location().url) || '', text = m.text();
       if (NOISE.test(url) || NOISE.test(text)) return;
@@ -635,6 +645,7 @@ async function main() {
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
     if (why) { fails++; console.log(`FAIL ${name}: ${why}`); } else console.log(`ok ${name}` + (VERBOSE ? ` (${secs}s)` : ''));
     if (VERBOSE && T && T.notes.length) T.notes.forEach(n => console.log(`    note ${name}: ${n}`));
+    if (VERBOSE && T) Object.keys(T.warnings).forEach(k => console.log(`    console.warn ×${T.warnings[k]} ${name}: ${k}`));
   }
   await browser.close();
   if (!SKIP_SHOTS) contactSheet();
