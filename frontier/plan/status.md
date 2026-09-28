@@ -39,9 +39,9 @@
   sector swings, client work trains the sector's skill (map kept: coding = Banking, Retail, Energy, Telecoms; reasoning =
   Insurance, Pharma, Legal; agents = Logistics, Public sector). **An unanswered meeting renews at the same tier if mood
   allows (≥ 45, +10 in a cold sector), otherwise lapses.**
-- Open after V0.4 (fixer's owner questions): push up is nearly always sure at resting mood 80 (upSure 70) — move
-  upSure or resting mood?; a hot sector with a full book changes little; the cold fee-cut trade (−10 mood vs ~$0.5M).
-  Not fixed: landscape close-up framing of the client wall.
+- After-V0.4 owner calls (2026-09-28): push up stays as is (near-sure at resting mood 80 is the reward for a happy
+  client); **a hot sector raises renewal fees +25%** for renewals signed during the swing (for V0.5); the cold fee-cut trade
+  stays as is. Landscape close-up framing of the client wall: fix with V0.5.
 - PR flow: one PR per milestone; the owner merges once the game builds, passes tests and is published.
 
 ## Build log
