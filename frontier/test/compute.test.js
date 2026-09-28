@@ -28,7 +28,8 @@ s.compute.offers.forEach((o, i, a) => {
   if (i) assert.ok(o.pf > a[i - 1].pf && o.name !== a[i - 1].name);
 });
 
-// setRent validation
+// setRent validation (year 1: the ceiling is K.maxRent)
+assert.strictEqual(C.maxRent(s), K.maxRent);
 [-1, K.maxRent + 1, 2.5, NaN, Infinity, 'abc', '', null, undefined, {}].forEach(v => assert.strictEqual(C.setRent(s, v).ok, false, String(v)));
 assert.strictEqual(s.compute.rentPF, K.startRent);
 assert.ok(C.setRent(s, 0).ok && s.compute.rentPF === 0);
@@ -36,6 +37,36 @@ assert.ok(C.setRent(s, K.maxRent).ok && s.compute.rentPF === K.maxRent);
 assert.ok(C.setRent(s, '40').ok && s.compute.rentPF === 40);
 let r = FR.sim.applyCommands(s, [{ type: 'rent', pf: 60 }]);
 assert.ok(r.results[0].ok); assert.strictEqual(r.state.compute.rentPF, 60); assert.strictEqual(s.compute.rentPF, 40);
+
+// the compute ceiling grows each year (rent cap and cluster sizes), capped at ceilMax
+{ const y = (n) => (n - 1) * 52 + 1, t = FR.clone(s);
+  assert.strictEqual(C.ceiling(52), 1); assert.strictEqual(C.ceiling(53), K.ceilGrowth);
+  near(C.ceiling(y(3)), K.ceilGrowth * K.ceilGrowth); assert.strictEqual(C.ceiling(y(40)), K.ceilMax);
+  let last = 0;
+  for (let n = 1; n <= 8; n++) {
+    t.turn = y(n); const max = C.maxRent(t);
+    assert.strictEqual(max, Math.round(K.maxRent * Math.min(K.ceilMax, Math.pow(K.ceilGrowth, n - 1)) / 10) * 10);
+    assert.ok(max >= last && max % 10 === 0 && max <= K.maxRent * K.ceilMax); last = max;
+    assert.ok(C.setRent(t, max).ok && t.compute.rentPF === max, 'year ' + n + ' rents ' + max);
+    assert.ok(!C.setRent(t, max + 1).ok && /from 0 to \d+$/.test(C.setRent(t, max + 1).why) && t.compute.rentPF === max);
+  }
+  assert.ok(C.maxRent({ turn: y(3) }) > K.maxRent * 1.8 && C.maxRent({ turn: y(20) }) === K.maxRent * K.ceilMax);
+  // the new year's memo names the new ceiling
+  t.turn = 52; const rp0 = rep(52); C.step(t, FR.rng(3), rp0);
+  assert.ok(rp0.memo.some(m => m.text === 'Compute ceiling for Year 2: the spot market rents up to ' + C.maxRent({ turn: 53 }) + ' PF, up from ' + K.maxRent + '. Cluster offers grow in step.'));
+  t.turn = 60; const rp1 = rep(60); C.step(t, FR.rng(3), rp1); assert.ok(!rp1.memo.some(m => /Compute ceiling/.test(m.text)));
+  // late clusters are bigger: every offer's PF sits in its tier's range × the year's ceiling, and cost follows PF
+  const pfLo = K.tiers[0].pf[0], pfHi = K.tiers[K.tiers.length - 1].pf[1];
+  [1, 3, 6].forEach(n => {
+    const u = game(n); u.turn = y(n) + 12 - (y(n) + 12) % K.quarter; const g = C.ceiling(u.turn + 1); C.step(u, FR.rng(n), rep());
+    u.compute.offers.forEach(o => {
+      assert.ok(o.pf >= Math.round(pfLo * g) && o.pf <= Math.round(pfHi * g), 'year ' + n + ' offer ' + o.pf + ' PF');
+      const per = o.cost / o.pf / (u.compute.rentPrice / base);
+      assert.ok(per > K.buyPerPF * 0.8 && per < K.buyPerPF * 1.25, 'cost per PF ' + per);
+    });
+  });
+  const big = (n) => { const u = game(9); u.turn = n * 52 - 52 + 13; C.step(u, FR.rng(9), rep()); return Math.max(...u.compute.offers.map(o => o.pf)); };
+  assert.ok(big(5) > 2.5 * big(1), 'year-5 clusters are much bigger: ' + big(5) + ' vs ' + big(1)); }
 
 // capacity and cost math: one cluster 2 years old, one new, a deal, some rent
 s = game(); s.turn = 105; s.compute.rentPF = 30; s.compute.rentPrice = 2100;
@@ -94,7 +125,9 @@ assert.strictEqual(s.money.share, 0.12, 'the last week the deal PF is used still
 assert.ok(s.lastReport.memo.some(m => /DeepField compute share ended: 80 PF/.test(m.text)));
 s.market.dealOffer = { rivalId: 'deepfield', kind: 'compute', pf: 50, revShare: 0.1, turns: 52, expires: 99 };
 assert.ok(C.acceptDeal(s).ok); assert.strictEqual(C.endDeal(s, 'opal').ok, false);
-assert.ok(C.endDeal(s, 'deepfield').ok); assert.strictEqual(s.compute.deals.length, 0);
+{ const cash = s.money.cash, trust = s.market.trust, r = C.endDeal(s, 'deepfield');   // free to end: no fee, no trust cost
+  assert.ok(r.ok); assert.strictEqual(s.compute.deals.length, 0); assert.strictEqual(s.money.cash, cash); assert.strictEqual(s.market.trust, trust);
+  assert.strictEqual(r.memo.text, 'DeepField compute share ended early: 50 PF withdrawn, revenue share stops.'); }
 
 // price drift and scarcity shocks
 s = game(); s.compute.rentPF = 10;
@@ -136,7 +169,7 @@ assert.ok(pbLo >= 78 && pbHi <= 130, 'payback ' + pbLo + '..' + pbHi);
 // determinism and purity
 const a = run(game(3), 40, [{ type: 'rent', pf: 90 }]), b = run(game(3), 40, [{ type: 'rent', pf: 90 }]);
 assert.strictEqual(JSON.stringify(a.compute), JSON.stringify(b.compute));
-assert.deepStrictEqual(Object.keys(C.debug(a)).length, 12);
+assert.deepStrictEqual(Object.keys(C.debug(a)).length, 13);
 const src = fs.readFileSync(path.join(__dirname, '..', 'src', '04_compute.js'), 'utf8');
 assert.ok(!/Math\.random|Date\.now|document\.|localStorage|performance\.|FR\.emit/.test(src), 'impure source');
 

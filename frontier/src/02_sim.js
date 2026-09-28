@@ -109,11 +109,10 @@
     return alloc;
   };
 
-  // frontier: your average cap >= the best rival's; safely: also every safe >= cap - safeMargin
+  // frontier: your average cap >= the best rival's; in step: every safe >= cap - safeMargin; safely: both
   S.atFrontier = function (s) { const b = FR.market.best(s); return S.avgCap(s) >= b.avgCap; };
-  S.safelyAtFrontier = function (s) {
-    return S.atFrontier(s) && FR.SKILLS.every(k => s.model.skills[k].safe >= s.model.skills[k].cap - S.K.safeMargin);
-  };
+  S.inStep = (s) => !!(s.model && s.model.skills) && FR.SKILLS.every(k => s.model.skills[k].safe >= s.model.skills[k].cap - S.K.safeMargin);
+  S.safelyAtFrontier = (s) => S.atFrontier(s) && S.inStep(s);
 
   S.endTurn = function (state, commands) {
     if (state.status !== 'playing') return state;

@@ -6,12 +6,16 @@
 //                                        on won/dead/exited → the end-of-run screen
 //   FR.cmd.goFloor(floorId)              elevator ride
 //   FR.enterWorld(floorId)  FR.inWorld()  FR.debug()
+// The HQ floor the player last rode to is kept in the save as state.hq = { floor } (written on 'elevator:arrived', read on
+// load; an older save without it opens in the lobby). The sim carries the field through clone untouched.
 // Events emitted here: 'game:new' {state}, 'game:loaded' {state}, 'state:changed' {command}, 'turn:ended' {turn, report},
 // and every report.events item as its own type (model:*, money:*, compute:*, project:*, research:*, market:*, run:*).
 (function (FR) {
   const U = FR.ui;
   const DEFAULT_LAB = 'Prairie Blue Labs';
   const clampSlot = (n) => Math.max(0, Math.min(((FR.save && FR.save.SLOTS) || 3) - 1, Math.round(+n) || 0));
+  // the saved HQ floor if it is a floor this build knows, else the lobby
+  const savedFloor = (s) => { const f = s && s.hq && s.hq.floor; return f && FR.HQ_FLOOR_META && FR.HQ_FLOOR_META[f] ? f : 'lobby'; };
   let busy = false, saveTimer = 0;
   // a slider drag or a run of taps writes once, 1.5 s after the last change (End Turn and page hide save at once)
   function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(() => { if (FR.inWorld()) FR.cmd.save(); }, 1500); }
@@ -23,6 +27,7 @@
       // the seed is the one place the UI picks randomness; the sim itself stays pure and replays from state.rngState
       const seed = ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0) || 1;
       FR.state = FR.sim.newGame({ seed, labName, slot });
+      if (!FR.state.hq) FR.state.hq = { floor: 'lobby' };
       FR.cmd.save();
       FR.emit('game:new', { state: FR.state });
       FR.enterWorld('lobby');
@@ -34,7 +39,7 @@
       s.slot = n; FR.state = s;
       FR.emit('game:loaded', { state: s });
       if (s.status !== 'playing') { FR.menu.end(); return true; } // an ended run is a record: its result, then a new lab
-      FR.enterWorld('lobby');
+      FR.enterWorld(savedFloor(s));
       U.toast(`${s.lab.name}. ${FR.dateLabel(s.turn)}.`, 2400);
       return true;
     },
@@ -59,6 +64,8 @@
       return { ok: true, slot: n, lab: s.lab.name };
     },
     // apply one command at once (no time passes). Failure: a toast with the sim's reason, state unchanged.
+    // The result's `event` is not emitted here: the sim queues it in state.pendingEvents and End Turn emits it with the
+    // week's report.events (its `memo` line likewise waits in state.pendingMemo for the next memo).
     do(command) {
       const s = FR.state; if (!s) return { ok: false, why: 'No lab is loaded' };
       let r;
@@ -103,6 +110,11 @@
   };
   // autosave only while playing: after Save and quit the menu may import into or delete the slot FR.state came from
   FR.inWorld = () => !!(FR.state && FR.state.status === 'playing' && document.getElementById('hud') && document.getElementById('hud').classList.contains('on'));
+  // remember the floor in the save (the next load opens there); the ride's own save waits for the usual debounce
+  FR.on('elevator:arrived', (d) => {
+    const f = d && d.floorId, s = FR.state; if (!f || !s || !FR.inWorld() || (s.hq && s.hq.floor === f)) return;
+    s.hq = { floor: f }; saveSoon();
+  });
   document.addEventListener('visibilitychange', () => { if (document.hidden && FR.inWorld()) FR.cmd.save(); });
   window.addEventListener('pagehide', () => { if (FR.inWorld()) FR.cmd.save(); });
 

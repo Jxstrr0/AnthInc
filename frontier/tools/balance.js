@@ -40,14 +40,15 @@ function manage(bot, s, cash, cmds) {
   let pj = s.projects;
   const at = (rent) => { const t = view(s, { rent, head: hc }); t.projects = pj; t.sliders = bot.quick(s, t); return t; };
   // rent enough for the projects' PF, or cancel the costliest project when the runway cannot carry it
-  const floor = () => Math.min(CK.maxRent, round5(Math.max(0, FR.projects.pfDemand(at(0)) - cp.owned - cp.deals)));
+  const max = FR.compute.maxRent(s);   // the compute ceiling grows each year
+  const floor = () => Math.min(max, round5(Math.max(0, FR.projects.pfDemand(at(0)) - cp.owned - cp.deals)));
   while (pj.active.length && net(at(floor())) < allow) {
     const p = pj.active.slice().sort((a, b) => b.cost / b.turns - a.cost / a.turns)[0];
     cmds.push({ type: 'cancel', uid: p.uid }); pj = Object.assign({}, pj, { active: pj.active.filter(x => x !== p) });
   }
   // the most rent the runway allows (weekly loss no worse than cash / horizon); failing that, the rent with the best net
   let fit = -1, top = -Infinity, arg = 0;
-  for (let r = floor(); r <= CK.maxRent; r += M.rentStep) { const n = net(at(r)); if (n >= allow) fit = r; if (n > top) { top = n; arg = r; } }
+  for (let r = floor(); r <= max; r += M.rentStep) { const n = net(at(r)); if (n >= allow) fit = r; if (n > top) { top = n; arg = r; } }
   const rent = fit >= 0 ? fit : arg, t = at(rent), loss = Math.max(0, -net(t));
   if (rent !== s.compute.rentPF) cmds.push({ type: 'rent', pf: rent });
   // staff: trade rent for heads until PF per head is near the cost-optimal ratio; cut heads when short

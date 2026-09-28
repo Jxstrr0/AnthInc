@@ -3,7 +3,8 @@
 (function (FR) {
   const C = FR.compute = {};
   const K = C.K = {
-    startRent: 20, maxRent: 1000,             // PF rented at the start; the most the spot market will rent you
+    startRent: 20, maxRent: 1000,             // PF rented at the start; the most the spot market rents you in year 1
+    ceilGrowth: 1.35, ceilMax: 4,             // the compute ceiling: rent cap and cluster sizes × 1.35 a year, at most × 4
     basePrice: 2000,                          // $ per PF-week the spot price reverts to
     priceVol: 0.02, priceRevert: 0.1,         // weekly noise (fraction of base); pull back toward base per week
     priceMin: 0.75, priceMax: 1.9,            // spot price bounds, multiples of base
@@ -17,8 +18,7 @@
       { pf: [40, 80], mult: 1.00, install: [5, 8] },
       { pf: [100, 200], mult: 0.93, install: [8, 12] }
     ],
-    sizeGrowth: 0.2,                          // offer sizes grow 20% per year of game time
-    buyPerPF: 130000, costJitter: 0.08,       // $ per PF upfront × tier mult × jitter × (spot / base)
+    buyPerPF: 130000, costJitter: 0.08,       // $ per PF upfront × tier mult × jitter × (spot / base); offer PF × ceiling(year)
     decayPerYear: 0.08,                       // capacity lost per year of age, linear
     power: 400, powerRise: 0.15,              // $ per nominal PF-week at age 0; +15% per year of age
     retireTurns: 208, retireWarn: 4, dealWarn: 2,
@@ -39,6 +39,10 @@
   }
 
   // ---- reads ----
+  // the compute ceiling for a turn: 1 in year 1, × ceilGrowth each year after, at most ceilMax
+  C.ceiling = (turn) => Math.min(K.ceilMax, Math.pow(K.ceilGrowth, FR.year(turn) - 1));
+  // the most PF the spot market rents you this turn, a multiple of 10
+  C.maxRent = (s) => Math.round(K.maxRent * C.ceiling(s.turn) / 10) * 10;
   function capAt(s, t) {
     const c = s.compute, owned = FR.round(sum(c.clusters, x => x.pf * fac(age(t, x))), 1);
     const rented = c.rentPF, deals = sum(c.deals, d => d.pf);
@@ -78,7 +82,7 @@
   function makeOffers(s, rng, turn) {
     const c = s.compute, tiers = K.tiers.slice(), n = rng.int(K.offers[0], K.offers[1]);
     while (tiers.length > n) tiers.splice(rng.int(0, tiers.length - 1), 1);
-    const grow = 1 + K.sizeGrowth * (FR.year(turn) - 1), idx = c.rentPrice / K.basePrice;
+    const grow = C.ceiling(turn), idx = c.rentPrice / K.basePrice;
     c.offers = [];
     tiers.forEach((t, i) => {
       const pf = Math.round(rng.int(t.pf[0], t.pf[1]) * grow);
@@ -95,7 +99,8 @@
   // ---- commands ----
   C.setRent = function (s, pf) {
     const n = typeof pf === 'string' && /^\s*\d+\s*$/.test(pf) ? +pf : pf;
-    if (!Number.isInteger(n) || n < 0 || n > K.maxRent) return no('Rent must be a whole number of PF from 0 to ' + K.maxRent);
+    const max = C.maxRent(s);
+    if (!Number.isInteger(n) || n < 0 || n > max) return no('Rent must be a whole number of PF from 0 to ' + max);
     s.compute.rentPF = n; return { ok: true };
   };
   C.buy = function (s, offerId) {
@@ -186,6 +191,10 @@
     installs(s, next, report);
     retirements(s, next, report);
     deals(s, next, report);
+    if (C.ceiling(next) > C.ceiling(s.turn)) {
+      const was = C.maxRent(s), now = C.maxRent({ turn: next });
+      report.memo.push({ kind: 'change', text: 'Compute ceiling for Year ' + FR.year(next) + ': the spot market rents up to ' + now + ' PF, up from ' + was + '. Cluster offers grow in step.' });
+    }
     if (s.turn % K.quarter === 0) {
       makeOffers(s, rng, next);
       report.memo.push({ kind: 'change', text: 'Cluster offers this quarter: ' + c.offers.map(o => o.name + ' ' + o.pf + ' PF for ' + money(o.cost)).join(', ') + '.' });
@@ -195,7 +204,7 @@
 
   C.debug = function (s) {
     const c = s.compute, cap = C.capacity(s);
-    return { rentPF: c.rentPF, rentPrice: c.rentPrice, scarcity: c.scarcity, total: cap.total, owned: cap.owned, rented: cap.rented,
+    return { rentPF: c.rentPF, maxRent: C.maxRent(s), rentPrice: c.rentPrice, scarcity: c.scarcity, total: cap.total, owned: cap.owned, rented: cap.rented,
       deals: cap.deals, cost: C.cost(s), revShare: C.revShare(s), clusters: c.clusters.length, installing: c.installing.length, offers: c.offers.length };
   };
 })(typeof window !== 'undefined' ? window.FR : globalThis.FR);

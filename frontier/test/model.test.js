@@ -78,7 +78,31 @@ const turn = (s, rng) => { const r = rep(); M.ladder(s, rng, r); if (s.status ==
 { const s = fresh(40); set(s, 'reasoning', 30, 21); s.model.skills.reasoning.incidents = [30, 35];
   const r = turn(s, NO); assert.ok(r.memo.some(m => m.kind === 'flag' && m.text === 'Reasoning: 2 incidents in the past 52 weeks. One more by ' + FR.dateLabel(81) + ' ends the lab.')); }
 // pressure is the weighted sum of the gaps
-{ const s = fresh(); FR.SKILLS.forEach(k => set(s, k, 20, 10)); assert.strictEqual(M.pressure(s), 10 * (K.pressureW.coding + K.pressureW.reasoning + K.pressureW.agents)); }
+{ const s = fresh(); FR.SKILLS.forEach(k => set(s, k, 20, 10)); assert.strictEqual(M.pressure(s), 10 * (K.weights.coding + K.weights.reasoning + K.weights.agents)); }
+// weights: agents > reasoning = coding; incident odds and trust cost scale with the weight
+{ const W = K.weights; assert.ok(W.agents > W.reasoning && W.reasoning === W.coding);
+  assert.ok(Math.abs(M.incidentChance(25, 'agents') - W.agents * M.incidentChance(25)) < 1e-12);
+  assert.strictEqual(M.incidentChance(25, 'coding'), M.incidentChance(25)); assert.strictEqual(M.incidentChance(20, 'agents'), 0);
+  assert.strictEqual(M.incidentChance(80, 'agents'), 1);
+  assert.strictEqual(M.incidentTrust('agents'), K.incidentTrust * W.agents); assert.strictEqual(M.incidentTrust('coding'), K.incidentTrust);
+  const s = fresh(); set(s, 'agents', 40, 19.5); s.model.skills.agents.warned = true; trustLog = [];
+  const r = turn(s, YES), t = K.incidentTrust * W.agents;
+  assert.deepStrictEqual(trustLog, [-t]); assert.strictEqual(r.events.find(e => e.type === 'model:incident').trust, t);
+  assert.ok(r.memo.some(m => m.text.endsWith(' and ' + t + ' points of public trust.')));
+  assert.ok(M.outlook(s, 'agents').text.includes('incident risk ' + Math.round(M.incidentChance(20.5, 'agents') * 100) + '% a week')); }
+// the pressure gauge: bands on the weighted sum, never calmer than the worst skill's outlook
+{ const s = fresh(), P = () => M.pressureLevel(s), B = K.pressureBands;
+  assert.deepStrictEqual(P(), { value: 0, level: 'ok', text: 'Pressure 0, in hand. Safety is at or above capability on every skill.' });
+  set(s, 'coding', 12, 8); set(s, 'agents', 12, 9);   // 4 + 3 × 1.5
+  assert.deepStrictEqual(P(), { value: 8.5, level: 'ok', text: 'Pressure 9, in hand. Agents carries the most: gap 3 at weight 1.5.' });
+  set(s, 'agents', 18, 8); assert.strictEqual(P().value, 4 + 15); assert.strictEqual(P().level, 'watch');   // agents gap 10 → 15 alone
+  assert.strictEqual(P().text, 'Pressure 19, watch. Agents carries the most: gap 10 at weight 1.5.');
+  set(s, 'coding', 8, 8); set(s, 'agents', 18, 8); assert.strictEqual(P().value, B[0]); assert.strictEqual(P().level, 'ok', 'at the band is not above it');
+  set(s, 'agents', 30.1, 8); assert.strictEqual(P().level, 'warning'); set(s, 'agents', 40, 8); assert.strictEqual(P().level, 'critical');
+  set(s, 'agents', 8, 8); set(s, 'coding', 29, 8); assert.strictEqual(P().value, 21); assert.strictEqual(P().level, 'warning', 'coding gap 21 alone is past the incident line');
+  set(s, 'coding', 40, 8); assert.strictEqual(P().level, 'critical'); assert.strictEqual(P().value, 32);
+  set(s, 'coding', 23.4, 8); assert.ok(/^Pressure 15\.4, watch\./.test(P().text), P().text);   // a decimal when rounding would cross a band
+  assert.strictEqual(M.debug(s).pressureLevel, P().level); }
 
 // safety: spread toward the biggest gap, never above cap + safeLead (training, spread and boost)
 { const s = fresh(); set(s, 'coding', 30, 10); set(s, 'reasoning', 30, 28); set(s, 'agents', 30, 28);
