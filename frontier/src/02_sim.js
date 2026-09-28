@@ -192,6 +192,7 @@
     const b = FR.market.best(s);
     s.history.push({ turn: s.turn, cash: Math.round(s.money.cash), revenue: Math.round(s.money.revenue), burn: Math.round(s.money.burn),
       avgCap: FR.round(S.avgCap(s), 1), avgSafe: FR.round(S.avgSafe(s), 1), trust: FR.round(s.market.trust, 1), bestRival: FR.round(b.avgCap, 1) });
+    if (s.money.askBonus > 0) s.history[s.history.length - 1].askBonus = Math.round(s.money.askBonus);   // one-off (V0.4); trailRevenue leaves it out
     if (s.history.length > S.K.historyKeep) s.history.splice(0, s.history.length - S.K.historyKeep);
     if (s.status === 'playing') s.turn++;
     s.rngState = rng.state();

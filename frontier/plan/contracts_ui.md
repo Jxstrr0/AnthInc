@@ -155,3 +155,25 @@ save → reload → load → no console errors; screenshots at 390×844 into `te
 - HUD split card: sits under the Cash chip (clamped on screen), hides the room tags while open; its header figure is not
   uppercased. Overview Accounts section turns warn (border, amber/red Avg mood, one line) when an account is under 45.
 - Frontier strip at < 375 px while holding or blocked: the gap chip hides and the rival name keeps at least 4.5em.
+
+### V0.4 review round (2026-09-28)
+- Mood is shown floored everywhere (rows, plaques, meeting card, memo): the readiness penalty can leave a half point, and
+  "now 44" must never read as meeting "needs 45". Meeting card: the weeks left sit in the answer badge ("No answer · 6
+  wks"); the odds line carries the terms ("Tier 2: $132k a week from Week 8, 19 PF (+9), 104 weeks."). Sim dates inside
+  UI-composed lines are shortened like `when()` (this year: "Week 8"); `FR.ui.accounts.sd(text)` for the overview.
+- Account rows: PF reads "12 + 6 PF" while a peak ask runs (`FR.accounts.pfOf`); the short-week warning, `book().lastShort`
+  and `received()` compare `served` with `a.pfLast` (the PF it was due, peak included). Cost ask: one "Accept" button
+  (the card says what is accepted); its terms line no longer repeats the decline cost. Peak ask before its window:
+  progress "Starts in 3 weeks".
+- Sector strip: chips wrap (flex-wrap; no chip cut mid-word; still `overflow-x:auto`); the rule line wraps; the skill tag
+  is `--text-xs`. Hot chip: "Offers 3× as often · fees +25% · mood +1/wk" (+ " · book full"); cold chip: "No offers · −1
+  mood/wk out of step · asks are fee cuts · renewals +10".
+- Memo: the Due ask row carries the stakes ("Met: $528k and mood +10; missed: mood −15.") and, while declinable, counts
+  to the decline date ("Decide by Week 4: declining costs 5 mood; …"); the answered meeting row reads "Renewal meeting:
+  <v.text>". Flagged renders 'change' lines neutral (not green). "fee cut applied" and "Also this week:" take the building
+  icon. `nextStep` for a meeting reads "Serving: renewal meeting, N weeks left"; meeting, ask and at-risk steps go to
+  `serving.accounts:<id>`: `goTo` keeps the id in `P.row` and `focusTo('accounts')` scrolls that account's row into view.
+- Overview clients: the meeting badge carries the weeks ("No answer · 7 wks"); no separate right-aligned em.
+- Client wall: the hot / cold tint is drawn into the plaque's atlas cell (background, top edge, name ink); the instance
+  colour is 1 (0.8 dark), so the mood bar and the marker keep their colours. The ask / meeting marker is a symbol at bar
+  height ('!' meeting, '?' ask, '!?' both; 64 px on the cell), not a word.

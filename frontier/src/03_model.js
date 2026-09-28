@@ -70,12 +70,16 @@
   }
   // mutates `skills`; returns { cap:{}, safe:{} } deltas plus totals for the memo
   // field: training PF from client work by skill (FR.accounts.fieldPF, V0.4 §3.1). Each skill's field PF trains it as that
-  // many training PF would (staff = the lab's training staff per training PF), with no spillover, the same noise,
+  // many training PF would (staff = the lab's staff per free PF, floored by the client-work PF), with no spillover, the same noise,
   // diminishing returns and drift. d.field = the capability it added by skill.
   function run(skills, target, alloc, noise, field) {
     const before = {}, d = { cap: {}, safe: {}, drift: 0, field: {} };
     FR.SKILLS.forEach(k => { before[k] = { cap: skills[k].cap, safe: skills[k].safe }; });
-    const tr = part(alloc, 'training'), tOut = out(K.trainBase, tr) * noise, spp = tr.pf > 0 ? (tr.staff || 0) / tr.pf : 0;
+    const tr = part(alloc, 'training'), tOut = out(K.trainBase, tr) * noise;
+    // client work's staff term: the lab's staff per free PF (= training staff per training PF while Training > 0), with
+    // the PF that did the client work as a floor so a small-capacity week or Training at 0 does not move it
+    const fsum = FR.SKILLS.reduce((t, k) => t + ((field && field[k]) || 0), 0), rate = FR.accounts && FR.accounts.K ? FR.accounts.K.field.rate : 1;
+    const spp = FR.ALLOCS.reduce((t, k) => t + (part(alloc, k).staff || 0), 0) / Math.max(1, FR.ALLOCS.reduce((t, k) => t + (part(alloc, k).pf || 0), 0), rate > 0 ? fsum / rate : 0);
     FR.SKILLS.forEach(k => {
       const sk = skills[k], g = Math.min(100 - sk.cap, tOut * (k === target ? 1 : K.spill) * dim(sk.cap));
       sk.cap += g; const dr = Math.min(sk.safe, g * K.drift); sk.safe -= dr; d.drift += dr;

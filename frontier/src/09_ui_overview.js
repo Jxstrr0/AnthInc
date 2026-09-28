@@ -86,12 +86,12 @@
 
   // V0.4 clients: meetings due (the answer or what happens unanswered), open asks with progress, the sector strip
   function clients(s) {
-    const A = FR.accounts, P = U.accounts || {}, CH = { renew: 'Renew', up: 'Push up', go: 'Let go' };
+    const A = FR.accounts, P = U.accounts || {}, CH = { renew: 'Renew', up: 'Push up', go: 'Let go' }, sd = P.sd || ((x) => x);
     const mts = tryr(() => A.meetings(s), []).slice().sort((a, b) => a.ends - b.ends), asks = tryr(() => A.asks(s), []);
     let out = '';
     if (mts.length) out += `<p class="ov-sub">Renewal meetings</p><ul class="ov-list">${mts.map(a => {
       const v = tryr(() => A.meetingView(s, a), null); if (!v) return '';
-      return `<li data-ovmeet="${esc(a.id)}"><b>${esc(a.name)}</b><span class="badge ${v.answer ? 'brand' : 'warn'}">${v.answer ? CH[v.answer] : 'No answer'}</span><em class="num">${v.weeksLeft} wk${v.weeksLeft === 1 ? '' : 's'} left</em><small>${esc(v.answer ? v.text : v.unanswered)}</small></li>`;
+      return `<li data-ovmeet="${esc(a.id)}"><b>${esc(a.name)}</b><span class="badge ${v.answer ? 'brand' : 'warn'}">${v.answer ? CH[v.answer] : 'No answer'} · <span class="num">${v.weeksLeft} wk${v.weeksLeft === 1 ? '' : 's'}</span></span><small>${esc(sd(v.answer ? v.text : v.unanswered))}</small></li>`;
     }).join('')}</ul>`;
     if (asks.length) out += `<p class="ov-sub">Client asks</p><ul class="ov-list">${asks.map(a => {
       const v = tryr(() => A.askView(s, a), null); if (!v) return '';

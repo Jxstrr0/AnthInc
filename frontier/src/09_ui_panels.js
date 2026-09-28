@@ -42,6 +42,9 @@
   let refTurn = null;
   const when = (t) => { const s = S(), ref = refTurn != null ? refTurn : s && s.turn;
     return (s && FR.year(t) === FR.year(ref) ? 'Week ' + FR.weekOfYear(t) : FR.dateLabel(t)).replace(/ /g, '\u00a0'); };
+  // sim text dates ('Year 2, Week 5') in the same style as when(): this year's weeks read 'Week 5'
+  const sd = (txt) => { const s = S(), ref = refTurn != null ? refTurn : s && s.turn;
+    return String(txt || '').replace(/Year (\d+), Week (\d+)/g, (m, y, w) => s && +y === FR.year(ref) ? 'Week ' + w : m); };
   const runwayText = (w) => (w == null || w === Infinity) ? 'cash-positive' : w >= 104 ? 'over 2 years' : wks(Math.max(0, w));
   const META = (id) => (FR.HQ_FLOOR_META || {})[id] || { n: '?', name: String(id) };
   const ORD = ['first', 'second', 'third', 'fourth', 'fifth'];
@@ -116,6 +119,8 @@
   const askV = (s, a) => a && a.ask && has('accounts', 'askView') ? tryr(() => FR.accounts.askView(s, a), null) : null;
   const strip = (s) => has('accounts', 'sectorStrip') ? tryr(() => FR.accounts.sectorStrip(s), []) || [] : [];
   const meetingsOpen = (s) => has('accounts', 'meetings') ? tryr(() => FR.accounts.meetings(s), []) || [] : [];
+  const pfDue = (a) => a.pfLast != null ? +a.pfLast : +a.pfPerWeek || 0;   // PF the account was due last week (a peak ask included)
+  const pfNow = (s, a) => has('accounts', 'pfOf') ? +tryr(() => FR.accounts.pfOf(s, a), a.pfPerWeek) || 0 : +a.pfPerWeek || 0;
   const asksOpen = (s) => has('accounts', 'asks') ? tryr(() => FR.accounts.asks(s), []) || [] : [];
   // revenue split at `pf` served (default: next week's forecast serving PF): { market, contracts, total, reserved, open, pf }
   function revSplit(s, pf) {
@@ -138,7 +143,7 @@
   function book(s, pf) {
     if (pf == null) { const f = fc(s); pf = f && f.alloc && f.alloc.serving ? f.alloc.serving.pf : 0; }
     const res = reservedPF(s), pend = pendingPF(s), next = (accOf(s).active || []).filter(a => a.starts > s.turn).reduce((m, a) => Math.min(m, a.starts), Infinity);
-    const lastShort = (accOf(s).active || []).some(a => a.starts < s.turn && !a.leaving && a.served != null && a.served < a.pfPerWeek - 0.05);
+    const lastShort = (accOf(s).active || []).some(a => a.starts < s.turn && !a.leaving && a.served != null && a.served < pfDue(a) - 0.05);
     return { pf: Math.max(0, +pf || 0), res, pend, next: next === Infinity ? null : next, short: Math.max(0, res + pend - Math.max(0, +pf || 0)), lastShort };
   }
   // the contract money actually received last week against the gross book, and why they differ
@@ -148,8 +153,8 @@
     const share = has('compute', 'revShare') ? tryr(() => FR.compute.revShare(s), 0) : 0;
     if (share > 0) why.push(`the ${pct0(share)} DeepField share`);
     if (has('money', 'underReview') && tryr(() => FR.money.underReview(s), false)) why.push('half while under incident review');
-    const short = (accOf(s).active || []).filter(x => x.starts < s.turn && !x.leaving && x.served != null && x.served < x.pfPerWeek - 0.05);
-    if (short.length) why.push(`${short.reduce((t, x) => t + x.pfPerWeek - x.served, 0).toFixed(0)} PF short`);
+    const short = (accOf(s).active || []).filter(x => x.starts < s.turn && !x.leaving && x.served != null && x.served < pfDue(x) - 0.05);
+    if (short.length) why.push(`${short.reduce((t, x) => t + pfDue(x) - x.served, 0).toFixed(0)} PF short`);
     return { gross, got, why, gap: gross - got > 500 };
   }
   U.revSplit = (s, pf) => { s = s || S(); return s && s.money ? revSplit(s, pf) : null; };
@@ -411,7 +416,7 @@
     if (q.type === 'cap') return `${esc(SN(q.skill))} capability <b class="num">${q.target}</b> by ${d(q.due)}`;
     if (q.type === 'inStep') return `Every safety within <b class="num">${q.target}</b> of capability for <b class="num">${wks(q.weeks)}</b> by ${d(q.due)}`;
     if (q.type === 'peak') return `<b class="num">${q.target} PF</b> more from ${d(q.from)} for <b class="num">${wks(q.weeks)}</b>`;
-    if (q.type === 'clean') return `No incident at the lab before ${d(q.due + 1)}`;
+    if (q.type === 'clean') return `No incident at the lab through ${d(q.due)}`;
     return `A <b class="num">${Math.round(q.target * 100)}%</b> fee cut for the rest of the term`;
   }
   function askBlock(s, a) {
@@ -419,14 +424,14 @@
     const q = a.ask, K = AK(), dead = !live(s), cost = v.type === 'cost', dm = cost ? K.ask.costDecline : K.ask.declineMood;
     const state = v.answered === true ? badge('Accepted', 'good', 'check') : v.declinable ? badge('Open', 'warn', 'clock') : '';
     const track = cost ? '' : badge(v.onTrack ? 'On track' : 'Off track', v.onTrack ? 'good' : 'warn');
-    const terms = cost ? `Accepting lifts mood ${K.ask.costMood || 10}; declining costs ${dm} mood.`
+    const terms = cost ? `Accepting lifts mood ${K.ask.costMood || 10}.`
       : `Met: <b class="num">${kmoney(v.reward)}</b> bonus and mood +${K.ask.metMood}. Missed: mood −${K.ask.missMood}.`;
     const acts = v.declinable
-      ? `<div class="card-actions fp-ask-a">${btn('askNo', a.id, 'Decline', 'quiet', dead)}${btn('askOk', a.id, cost ? 'Accept the cut' : 'Accept', 'primary', dead, 'check')}</div>
+      ? `<div class="card-actions fp-ask-a">${btn('askNo', a.id, 'Decline', 'quiet', dead)}${btn('askOk', a.id, 'Accept', 'primary', dead, 'check')}</div>
         <p class="fp-ask-n">Declining costs ${dm} mood, until ${esc(when(v.declineBy))}. Unanswered, the ask counts as accepted.</p>` : '';
     return `<div class="fp-ask" data-ask="${esc(a.id)}"><p class="fp-ask-h">${ico('star')}<b>Ask</b>${state}${track}</p>
       <p class="fp-ask-t">${askLabel(s, a, v)}.</p>
-      <p class="fp-ask-p num">${esc(v.progressText)}</p>
+      <p class="fp-ask-p num">${esc(sd(v.progressText))}</p>
       <p class="fp-ask-n">${terms}</p>${acts}</div>`;
   }
   // V0.4 renewal meeting card: Renew / Push up / Let go (48 px), the pick highlighted, the odds line, the unanswered default
@@ -434,36 +439,38 @@
   function meetBlock(s, a) {
     const v = meetView(s, a); if (!v) return '';
     const dead = !live(s), pick = v.answer;
-    const odds = pick ? v.text : a.tier < 3 ? v.up.text : v.renew.text;
+    const odds = sd(pick ? v.text : a.tier < 3 ? v.up.text : v.renew.text);
     const seg = `<div class="seg fp-meet-seg" role="group" aria-label="Renewal meeting: ${esc(a.name)}">${MEET.map(([k, l]) =>
       `<button class="btn${pick === k ? ' sel' : ''}" data-fp="meet" data-v="${esc(a.id)}:${k}" aria-pressed="${pick === k}"${dead || (k === 'up' && a.tier >= 3) ? ' disabled' : ''}><span>${l}</span></button>`).join('')}</div>`;
-    return `<div class="fp-meet" data-meet="${esc(a.id)}"><p class="fp-ask-h">${ico('clock')}<b>Renewal meeting</b>${pick ? badge(MEET.find(m => m[0] === pick)[1], 'brand', 'check') : badge('No answer', 'warn', 'alert')}<em class="num">${wks(v.weeksLeft)} left</em></p>
+    return `<div class="fp-meet" data-meet="${esc(a.id)}"><p class="fp-ask-h">${ico('clock')}<b>Renewal meeting</b>${pick ? badge(MEET.find(m => m[0] === pick)[1] + ' · ' + wkS(v.weeksLeft), 'brand', 'check') : badge('No answer · ' + wkS(v.weeksLeft), 'warn', 'alert')}</p>
       ${seg}<p class="fp-meet-t">${esc(odds)}</p>
-      <p class="fp-ask-n${pick ? '' : ' warn'}">${pick ? `Changeable until ${esc(when(v.ends))}, the last contract week.` : `${esc(v.unanswered)} Decided ${esc(when(v.ends))}.`}</p></div>`;
+      <p class="fp-ask-n${pick ? '' : ' warn'}">${pick ? `Changeable until ${esc(when(v.ends))}, the last contract week.` : `${esc(sd(v.unanswered))} Decided ${esc(when(v.ends))}.`}</p></div>`;
   }
   function accRow(s, a) {
-    const pending = a.starts != null && a.starts > s.turn, left = Math.max(0, a.ends - (pending ? a.starts : s.turn) + 1), mood = Math.round(+a.mood || 0), c = coldAddOf(s, a), hue = moodHue(mood, c);
-    const short = a.starts != null && a.starts < s.turn && a.served != null && a.served < a.pfPerWeek - 0.05 && !a.leaving;
+    const pending = a.starts != null && a.starts > s.turn, left = Math.max(0, a.ends - (pending ? a.starts : s.turn) + 1), mood = Math.floor(+a.mood || 0), c = coldAddOf(s, a), hue = moodHue(mood, c);
+    const short = a.starts != null && a.starts < s.turn && a.served != null && a.served < pfDue(a) - 0.05 && !a.leaving, peak = pending ? 0 : pfNow(s, a) - a.pfPerWeek;
     const renewAt = AK().renewMood + c, sw = swingOf(s, a.sector), sk = skillOfAcc(a);
     const tag = a.leaving || mood < AK().churnMood ? badge('Leaving', 'bad', 'alert') : mood < AK().watchMood ? badge('At risk', 'bad', 'alert')
       : a.meeting ? badge('Meeting', a.meeting.answer ? 'brand' : 'warn', 'clock') : left <= 8 && !pending ? badge(mood >= renewAt ? 'Renews' : 'Ends', mood >= renewAt ? 'good' : 'warn', 'clock') : pending ? badge('Onboarding', 'info', 'clock') : '';
     const swb = sw === 'hot' ? badge('Hot', 'brand') : sw === 'cold' ? badge('Cold', '') : '';
     // name and fee on the first line (the name gets the width), tier and status badges lead the second
     return `<div class="fp-acc" data-accrow="${esc(a.id)}"><div class="fp-acc-h"><b>${esc(a.name)}</b><span class="num fp-acc-fee">${kmoney(a.feePerWeek)}<small>/wk</small></span></div>
-      <p class="fp-acc-s">${badge('Tier ' + a.tier, 'brand')}${tag}${swb}<span>${esc(a.sector || '')}${sk ? ` · ${esc(SKN(sk))}` : ''} · <span class="num">${trim1(a.pfPerWeek)} PF</span> · ${pending ? `<span class="num">${wks(left)}</span> from ${esc(when(a.starts))}` : `<span class="num">${wks(left)}</span> left`}</span></p>
+      <p class="fp-acc-s">${badge('Tier ' + a.tier, 'brand')}${tag}${swb}<span>${esc(a.sector || '')}${sk ? ` · ${esc(SKN(sk))}` : ''} · <span class="num">${trim1(a.pfPerWeek)}${peak > 0.05 ? ` + ${trim1(peak)}` : ''} PF</span> · ${pending ? `<span class="num">${wks(left)}</span> from ${esc(when(a.starts))}` : `<span class="num">${wks(left)}</span> left`}</span></p>
       <div class="fp-acc-m"><span>Mood</span><div class="meter ${hue}" style="--v:${clamp(mood, 0, 100)}" role="img" aria-label="Mood ${mood} of 100"><i></i></div><b class="num tone-${hue === 'cap' ? 'cap' : hue}">${mood}</b></div>
-      ${short ? `<p class="fp-acc-w">${ico('alert')}<span>Served ${n1(a.served)} of ${trim1(a.pfPerWeek)} PF last week. Each short week costs ${AK().mood.unserved} mood.</span></p>` : ''}
+      ${short ? `<p class="fp-acc-w">${ico('alert')}<span>Served ${n1(a.served)} of ${trim1(pfDue(a))} PF last week. Each short week costs ${AK().mood.unserved} mood.</span></p>` : ''}
       ${a.leaving ? '' : askBlock(s, a) + meetBlock(s, a)}</div>`;
   }
   // V0.4 reads for the Company overview (09_ui_overview.js): the sector strip and one plain line per ask
   U.accounts.strip = (s) => { s = s || S(); return s && s.accounts ? sectorStripHtml(s) : ''; };
-  U.accounts.askLine = (s, a) => { const v = askV(s, a); return v ? `${askLabel(s, a, v)}. <span class="num">${esc(v.progressText)}</span>` : ''; };
+  U.accounts.askLine = (s, a) => { const v = askV(s, a); return v ? `${askLabel(s, a, v)}. <span class="num">${esc(sd(v.progressText))}</span>` : ''; };
+  U.accounts.sd = (txt) => sd(txt);
   // V0.4 sector strip: swinging sectors (hot in board blue, cold in grey, weeks left); scrolls inside itself
   function sectorStripHtml(s) {
-    const st = strip(s), K = AK(), sc = accOf(s).sectors;
+    const st = strip(s), K = AK(), sc = accOf(s).sectors, full = (accOf(s).active || []).length >= maxActive(s);
     const chips = st.map(x => `<div class="fp-sw ${x.kind === 'hot' ? 'hot' : 'cold'}" role="listitem" data-sw="${x.kind}"><b>${esc(x.name)}<small> · ${esc(SKN(x.skill))}</small></b>
       <span><em>${x.kind === 'hot' ? 'Hot' : 'Cold'}</em> · <span class="num">${wks(x.weeksLeft)}</span> left</span>
-      <small>${x.kind === 'hot' ? `Offers ${K.sector.hotWeight}× as often, fees +${Math.round(((K.sector.hotFee || 1.25) - 1) * 100)}%` : `No offers; renewals need +${K.meet.coldAdd} mood`}</small></div>`).join('');
+      <small>${x.kind === 'hot' ? `Offers ${K.sector.hotWeight}× as often · fees +${Math.round(((K.sector.hotFee || 1.25) - 1) * 100)}% · mood +${K.sector.hotMood || 1}/wk${full ? ' · book full' : ''}`
+        : `No offers · −${K.sector.coldMood || 1} mood/wk out of step · asks are fee cuts · renewals +${K.meet.coldAdd}`}</small></div>`).join('');
     const next = sc && sc.nextAt > s.turn ? `<div class="fp-sw none" role="listitem"><b>No other swing</b><span>Next roll ${esc(when(sc.nextAt))}</span></div>` : '';
     return `<div class="fp-strip" role="list" aria-label="Sector swings" data-strip="${st.length}">${chips || `<div class="fp-sw none" role="listitem"><b>No sector swings</b><span>${sc && sc.nextAt ? `Next roll ${esc(when(sc.nextAt))}` : 'Every sector at its usual rate'}</span></div>`}${chips && st.length < 2 ? next : ''}</div>`;
   }
@@ -971,7 +978,9 @@
   P.parse = parse;
   const mine = () => !!(U.sheetId && (U.sheetId.indexOf('fp:') === 0 || U.sheetId === 'memo'));
   function focusTo(key) {
-    const body = $('sheetBody'), el = body && body.querySelector(`[data-focus="${key}"]`); if (!el) return;
+    const body = $('sheetBody'); let el = body && body.querySelector(`[data-focus="${key}"]`); if (!el) return;
+    if (key === 'accounts' && P.row) { const r = body.querySelector(`[data-accrow="${String(P.row).replace(/"/g, '')}"]`); if (r) el = r; }
+    P.row = null;
     const tabs = body.querySelector('.tabs.sticky'), off = 60 + (tabs ? tabs.offsetHeight : 0);
     body.scrollTop = Math.max(0, body.scrollTop + el.getBoundingClientRect().top - body.getBoundingClientRect().top - off);
   }
@@ -993,6 +1002,7 @@
   P.open = function (floor, tab, focus, hotspot) {
     if (!S() || !floor) return;
     P.floor = floor; P.tab = tab || DEFAULT_TAB[floor] || null; P.focus = focus || null; P.confirm = null; P.hotspot = hotspot || floor; drag = null;
+    if (P.focus !== 'accounts') P.row = null;
     render(false);
     FR.emit('ui:panel', { floorId: floor, tab: P.tab, hotspotId: P.hotspot });
   };
@@ -1006,6 +1016,7 @@
   // ride to the hotspot's floor if needed, glide to it (the world then emits hq:hotspot and the HUD opens the panel),
   // or open the panel at once when the target is not in the room
   function goTo(hot) {
+    const parts = String(hot).split(':'); hot = parts[0]; P.row = parts[1] || null;   // 'serving.accounts:<id>': that account's row
     const fid = String(hot).split('.')[0];
     const open = () => { const R = FR.r; if (R && !R.stub && R.target && R.target(hot) && (!R.live || R.live(hot)) && R.focus && R.focus(hot) !== false) return; U.panel(hot); };
     if (U.goFloor && FR.r && FR.r.current && FR.r.current.id !== fid && !FR.r.stub) U.goFloor(fid, open); else open();
@@ -1016,7 +1027,7 @@
   function lineIcon(l) {
     const t = l.text;
     if (/\bgap \d/i.test(t) && !/incident at gap/i.test(t)) return 'alert';
-    if (/^Account (mood|board)|^Signed |^Declined |contracts? (live|ends?)|ended (its|their) contracts?|renews|without renewal|^Enterprise buyers|renewal meeting|let go at term end| asks (for|that)| ask (met|missed|accepted|declined)|fee cut accepted|turns (hot|cold) through|(demand|budgets) back to normal/.test(t)) return 'building';
+    if (/^Account (mood|board)|^Signed |^Declined |contracts? (live|ends?)|ended (its|their) contracts?|renews|without renewal|^Enterprise buyers|renewal meeting|let go at term end| asks (for|that)| ask (met|missed|accepted|declined)|fee cut (accepted|applied)|turns (hot|cold) through|(demand|budgets) back to normal|^Also this week: /.test(t)) return 'building';
     if (/incident/i.test(t)) return 'incident';
     if (/\brecord\b/i.test(t)) return 'record';
     if (/round|series [ab]|milestone|investor/i.test(t)) return 'coin';
@@ -1052,9 +1063,15 @@
       if (a.starts != null && a.starts > T) out.push({ w: a.starts - T, icon: 'building', re: /fee starts/i, text: `${esc(a.name)}: fee of ${kmoney(a.feePerWeek)} a week and ${trim1(a.pfPerWeek)} PF reserved from ${esc(when(a.starts))}.` });
       if (a.leaving) return;
       const left = a.ends - T + 1, v = meetView(s, a), q = askV(s, a), nm = esc(a.name), rx = String(a.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (v) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.round(a.mood)}. Renewal meeting: ${v.answer ? esc(MEET.find(m => m[0] === v.answer)[1]) + '. ' + esc(v.text) : 'no answer. ' + esc(v.unanswered)}` });
-      else if (left <= 8 && a.starts <= T) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.round(a.mood)}.` });
-      if (q) out.push({ w: q.weeksLeft, icon: 'building', re: new RegExp('^' + rx + ' asks '), text: `${nm} ask: ${askLabel(s, a, q)}. ${esc(q.progressText)}.${q.declinable ? ` Decline by ${esc(when(q.declineBy))}; unanswered, it counts as accepted.` : ''}` });
+      if (v) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.floor(a.mood)}. Renewal meeting: ${v.answer ? esc(sd(v.text)) : 'no answer. ' + esc(sd(v.unanswered))}` });
+      else if (left <= 8 && a.starts <= T) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.floor(a.mood)}.` });
+      if (q) {
+        // the stakes (the arrival line is hidden behind this row); while it can be declined, the row counts to that date
+        const K = AK(), cost = q.type === 'cost', dm = cost ? K.ask.costDecline : K.ask.declineMood;
+        const stakes = cost ? `Accepting lifts mood ${K.ask.costMood}.` : `Met: ${kmoney(q.reward)} and mood +${K.ask.metMood}; missed: mood −${K.ask.missMood}.`;
+        out.push({ w: q.declinable ? q.declineBy - T + 1 : q.weeksLeft, icon: 'building', re: new RegExp('^' + rx + ' asks '), text: `${nm} ask: ${askLabel(s, a, q)}. ${esc(sd(q.progressText))}. ${stakes}` +
+          (q.declinable ? ` Decide by ${esc(when(q.declineBy))}: declining costs ${dm} mood; unanswered, it counts as accepted.` : '') });
+      }
     });
     (s.projects.active || []).forEach((p, i) => out.push({ w: p.turnsLeft, icon: 'project', text: `${esc(p.name)} finishes in ${wks(p.turnsLeft)} (${esc(META('proj' + (i + 1)).name)}).` }));
     (s.compute.deals || []).forEach(d => out.push({ w: d.ends - T, icon: 'rival', re: /compute share ends/i, text: `${esc(rival(s, d.rivalId).name)} compute share ends ${esc(when(d.ends))}: ${d.pf} PF withdrawn.` }));
@@ -1079,11 +1096,11 @@
     if (bk.short > 0.05) return { label: `Serving: ${trim1(bk.short)} PF short of the contracts`, icon: 'building', go: 'serving.wall' };
     // V0.4: an unanswered renewal meeting (soonest first), then an ask still open to decline
     const mt = meetingsOpen(s).filter(a => a.meeting && a.meeting.answer == null).sort((a, b) => a.ends - b.ends)[0];
-    if (mt) return { label: `Serving: ${mt.name} renewal meeting, ${wks(mt.ends - s.turn + 1)} left`, icon: 'building', go: 'serving.accounts' };
+    if (mt) return { label: `Serving: renewal meeting, ${wks(mt.ends - s.turn + 1)} left`, icon: 'building', go: 'serving.accounts:' + mt.id };
     const risk = (ac.active || []).filter(a => !a.leaving && +a.mood < AK().watchMood).sort((a, b) => a.mood - b.mood)[0];
     const ak = asksOpen(s).filter(a => a.ask && a.ask.answered == null && s.turn <= a.ask.declineBy)[0];
-    if (ak && !risk) return { label: `Serving: ${ak.name} ask, accept or decline`, icon: 'building', go: 'serving.accounts' };
-    if (risk) return { label: `Serving: ${risk.name} at risk, mood ${Math.round(risk.mood)}`, icon: 'building', go: 'serving.accounts' };
+    if (ak && !risk) return { label: `Serving: ${ak.name} ask, accept or decline`, icon: 'building', go: 'serving.accounts:' + ak.id };
+    if (risk) return { label: `Serving: ${risk.name} at risk, mood ${Math.floor(risk.mood)}`, icon: 'building', go: 'serving.accounts:' + risk.id };
     const can = room > 0 ? (ac.offers || []).filter(o => reqList(s, o).ok && s.money.cash >= signCost(o)).length : 0;
     if (can) return { label: `Serving: ${can} account ${can === 1 ? 'offer' : 'offers'} the lab qualifies for`, icon: 'building', go: 'serving.accounts' };
     const pj = s.projects; if (pj.active.length < pj.slots && pj.offers.some(o => o.tier <= s.research.tier)) return { label: 'Research: greenlight a project', icon: 'research', go: 'research.offers' };
@@ -1134,7 +1151,7 @@
     if (changed.length) out += `<ul class="wk-lines">${changed.map(l => li(l.kind === 'good' ? 'good' : 'change', lineIcon(l), esc(l.text))).join('')}</ul>`;
     // Flagged: warnings, incidents, rounds, records
     out += sec('alert', 'Flagged', flagged.length ? String(flagged.length) : '');
-    out += flagged.length ? `<ul class="wk-lines">${flagged.map(l => li(l.kind === 'flag' ? 'flag' : 'good', lineIcon(l), esc(l.text))).join('')}</ul>` : '<p class="fp-none">Nothing flagged this week.</p>';
+    out += flagged.length ? `<ul class="wk-lines">${flagged.map(l => li(l.kind === 'flag' ? 'flag' : l.kind === 'good' ? 'good' : 'change', lineIcon(l), esc(l.text))).join('')}</ul>` : '<p class="fp-none">Nothing flagged this week.</p>';
     // Due: dated items, then the memo's own due lines that no item already covers
     const items = dueItems(s), extra = dueL.filter(l => !items.some(it => it.re && it.re.test(l.text)));
     out += sec('clock', 'Due');
@@ -1392,10 +1409,10 @@
       '.fp-ask-a{margin-top:6px;gap:8px}.fp-ask-a .btn{min-height:var(--tap)}',
       '.fp-meet-seg{margin:8px 0 0}.fp-meet-seg .btn{min-height:var(--control);padding:6px 4px}',
       '.fp-meet-t{margin:6px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}',
-      '.fp-strip{display:flex;gap:8px;max-width:100%;margin:0 0 10px;padding:0 0 4px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch}',
-      '.fp-sw{flex:none;display:flex;flex-direction:column;gap:2px;min-width:0;max-width:78%;padding:7px 10px;border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:var(--r-sm);background:var(--surface);font-size:var(--text-xs);color:var(--ink-3);white-space:nowrap}',
-      '.fp-sw>b{font-size:var(--text-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis}.fp-sw>b small{font-weight:var(--w-medium);color:var(--ink-3)}',
-      '.fp-sw em{font-style:normal;font-weight:var(--w-bold)}.fp-sw>small{font-size:var(--text-xs);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}',
+      '.fp-strip{display:flex;flex-wrap:wrap;gap:8px;max-width:100%;margin:0 0 10px;padding:0 0 4px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch}',
+      '.fp-sw{flex:1 1 150px;display:flex;flex-direction:column;gap:2px;min-width:0;max-width:100%;padding:7px 10px;border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:var(--r-sm);background:var(--surface);font-size:var(--text-xs);color:var(--ink-3);white-space:nowrap}',
+      '.fp-sw>b{font-size:var(--text-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis}.fp-sw>b small{font-size:var(--text-xs);font-weight:var(--w-medium);color:var(--ink-3)}',
+      '.fp-sw em{font-style:normal;font-weight:var(--w-bold)}.fp-sw>small{font-size:var(--text-xs);line-height:var(--lh-snug);color:var(--ink-3);white-space:normal}',
       '.fp-sw.hot{border-left-color:var(--brand-bright);background:color-mix(in srgb,var(--brand) 14%,var(--surface))}.fp-sw.hot em{color:var(--brand-text)}',
       '.fp-sw.cold{border-left-color:var(--ink-3);background:var(--raised)}.fp-sw.cold em{color:var(--ink-2)}',
       '.fp-sw.none{border-left-color:var(--line)}',

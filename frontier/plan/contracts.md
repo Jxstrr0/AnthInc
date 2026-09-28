@@ -574,14 +574,17 @@ APIs (05b_accounts.js, `FR.accounts`), new or changed:
 - `meetings(s) → [account]` (open meetings, not leaving). `meetingView(s, idOrAccount) → { id, name, opens, answer, ends,
   weeksLeft, cold, mood, renew: { ok, need, text }, up: { ok, tier, need, sure, chance, qualifies, why, text },
   go: { ok, text }, unanswered, text }` — `chance` is 0, 0.5 or 1 with the lab as it is now; `text` = the line for the
-  current answer (or `unanswered`). e.g. up.text "Push up to tier 2: accepts at mood 70+ (now 64: even odds; a refusal
-  renews at tier 1)."
+  current answer (or `unanswered`); `stands` = what happens as things stand ("renews at tier 1" / "ends: renewal needs mood
+  45"). e.g. up.text "Push up to tier 2: accepts at mood 70+ (now 64: even odds; a refusal renews at tier 1). Tier 2: $132k
+  a week from Year 1, Week 8, 19 PF (+9), 104 weeks." (terms = what resolve() writes: fee(tier, ends + 1), scalePF, the
+  tier's length); renew.text adds the same terms; below upMood: "Push up needs mood 60 (now 44); as things stand it ends:
+  renewal needs mood 45." `mood` (and every mood quoted in text) is Math.floor(a.mood).
 - `renew(s, id, choice) → {ok, why, memo}` — choice 'renew' | 'up' | 'go'; refused before the meeting opens, for a leaving
   account, 'up' at tier 3. Changeable until the last contract week (commands in that week still count). Memo key
   'meeting:<id>' (one pending line per account).
 - `asks(s) → [account]` (open asks). `askView(s, idOrAccount) → { id, name, type, skill, target, progress, due, from,
   weeksLeft, declinable, declineBy, answered, reward, onTrack, progressText }` — progressText e.g. "35 / 38 · 6 weeks left",
-  "3 / 8 weeks in step · 5 weeks left", "6 PF more from Year 2, Week 8", "4 weeks clean · 9 weeks left"; onTrack = the
+  "3 / 8 weeks in step · 5 weeks left", "Starts in 3 weeks" (a peak before its window), "4 weeks clean · 9 weeks left"; onTrack = the
   forecast on today's sliders and target meets it (cap: projected to due; inStep: gap after a week ≤ 3 and weeks remain;
   peak: serving PF covers the book + the peak; clean: no gap over the incident line).
 - `answerAsk(s, id, accept) → {ok, why, memo}` — accept: cost asks apply at once (fee × 0.85 for the term, mood +10, ask
@@ -659,3 +662,24 @@ a live account with fewer than 8 weeks left gets `meeting = { opens: turn, answe
 Balance tool: the bots answer meetings (Push up when `meetingView().up.chance > 0`, Renew otherwise, Let go below 45 only
 when the board holds a qualifying offer at a better fee per PF) and asks (accept when `askView().onTrack`, else decline
 inside the window). The summary line adds renewals (ups) and asks met / missed.
+
+### V0.4 review round (2026-09-28)
+- Ask bonus is one-off: 05_money sets `money.askBonus` (0 on a week without one) and `FR.money.recurring(s)` = revenue −
+  askBonus. Valuation, `runway`, revenue milestones (`progress`, `nowText`, a fresh revenue milestone's value) read
+  `recurring`; the history row keeps `revenue` (cash in) and adds `askBonus` when > 0, which `trailRevenue` leaves out.
+  Cash, net, revContracts and the report still carry the bonus.
+- Ask feasibility (`makeAsk`) is judged on the best plan, not this week's sliders: Serving just covers the book (live +
+  onboarding), all other free PF to training (cap) or safety (inStep). Open asks count: no cap ask while an inStep or a
+  cap on another skill is open; no inStep while a cap is open; a peak needs free PF ≥ reserved + pending + every other
+  open peak not yet in reservedPF + its amount.
+- Clean ask: met in the step of `due + 1` (the due week's ladder has rolled), text "asks for no lab incident through
+  <due>"; progress = min(weeks, turn − arrived). A lab incident fails it with "a lab incident <week>".
+- Field training staff term (03_model): staff per free PF (Σ alloc staff ÷ max(1, Σ alloc PF, field PF ÷ K.field.rate)),
+  so Training at 0% and a small-capacity week do not move client-work gains.
+- `renew()` accepts only own keys of CHOICE ('renew' | 'up' | 'go'). The memo reads "<name> renewal meeting: <v.text>
+  Settled <ends>; changeable until then." Warnings with no answer: "No answer yet: it <stands>."
+- step() records `a.pfLast` (the PF the account was due this week, a running peak included) beside `a.served`.
+- Memo: a meeting line whose account is leaving at flush is dropped (function lines returning ''). Swing ends are p4
+  (a new swing wins the p3 place). When more account lines than places, the last place becomes "Also this week: <short>;
+  <short>." (a line's `short`, else its text to the first ". " or ": ").
+- Renewal line: "… at $66k a week, unchanged, …" when the repriced fee equals the old one.

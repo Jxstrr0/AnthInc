@@ -1435,6 +1435,7 @@ window.FR_VERSION="0.4.0.0";
     const b = FR.market.best(s);
     s.history.push({ turn: s.turn, cash: Math.round(s.money.cash), revenue: Math.round(s.money.revenue), burn: Math.round(s.money.burn),
       avgCap: FR.round(S.avgCap(s), 1), avgSafe: FR.round(S.avgSafe(s), 1), trust: FR.round(s.market.trust, 1), bestRival: FR.round(b.avgCap, 1) });
+    if (s.money.askBonus > 0) s.history[s.history.length - 1].askBonus = Math.round(s.money.askBonus);   // one-off (V0.4); trailRevenue leaves it out
     if (s.history.length > S.K.historyKeep) s.history.splice(0, s.history.length - S.K.historyKeep);
     if (s.status === 'playing') s.turn++;
     s.rngState = rng.state();
@@ -1572,12 +1573,16 @@ window.FR_VERSION="0.4.0.0";
   }
   // mutates `skills`; returns { cap:{}, safe:{} } deltas plus totals for the memo
   // field: training PF from client work by skill (FR.accounts.fieldPF, V0.4 §3.1). Each skill's field PF trains it as that
-  // many training PF would (staff = the lab's training staff per training PF), with no spillover, the same noise,
+  // many training PF would (staff = the lab's staff per free PF, floored by the client-work PF), with no spillover, the same noise,
   // diminishing returns and drift. d.field = the capability it added by skill.
   function run(skills, target, alloc, noise, field) {
     const before = {}, d = { cap: {}, safe: {}, drift: 0, field: {} };
     FR.SKILLS.forEach(k => { before[k] = { cap: skills[k].cap, safe: skills[k].safe }; });
-    const tr = part(alloc, 'training'), tOut = out(K.trainBase, tr) * noise, spp = tr.pf > 0 ? (tr.staff || 0) / tr.pf : 0;
+    const tr = part(alloc, 'training'), tOut = out(K.trainBase, tr) * noise;
+    // client work's staff term: the lab's staff per free PF (= training staff per training PF while Training > 0), with
+    // the PF that did the client work as a floor so a small-capacity week or Training at 0 does not move it
+    const fsum = FR.SKILLS.reduce((t, k) => t + ((field && field[k]) || 0), 0), rate = FR.accounts && FR.accounts.K ? FR.accounts.K.field.rate : 1;
+    const spp = FR.ALLOCS.reduce((t, k) => t + (part(alloc, k).staff || 0), 0) / Math.max(1, FR.ALLOCS.reduce((t, k) => t + (part(alloc, k).pf || 0), 0), rate > 0 ? fsum / rate : 0);
     FR.SKILLS.forEach(k => {
       const sk = skills[k], g = Math.min(100 - sk.cap, tOut * (k === target ? 1 : K.spill) * dim(sk.cap));
       sk.cap += g; const dr = Math.min(sk.safe, g * K.drift); sk.safe -= dr; d.drift += dr;
@@ -2058,9 +2063,12 @@ window.FR_VERSION="0.4.0.0";
     projects: FR.projects && FR.projects.cashDemand && s.projects ? FR.projects.cashDemand(s) : 0
   });
   M.burnEstimate = (s) => { const p = M.burnParts(s); return Math.round(p.payroll + p.ops + p.compute + p.projects); };
-  M.runway = (s) => weeksOf(s.money.cash, s.money.revenue - M.burnEstimate(s));   // weeks, Infinity when net ≥ 0
+  M.runway = (s) => weeksOf(s.money.cash, M.recurring(s) - M.burnEstimate(s));   // weeks, Infinity when net ≥ 0 (no one-off ask bonus)
   M.backlog = (s) => AC(s) ? AC(s).backlog(s) : 0;
-  M.valuation = (s) => Math.round((K.valBase + K.valCap * Math.pow(avg(s), K.valCapExp) + K.revMultiple * 52 * Math.max(0, s.money ? s.money.revenue : 0) +
+  // weekly revenue without a one-off ask bonus (V0.4): what valuation, revenue milestones and the history row read, so a
+  // single bonus week is not annualised as recurring revenue
+  M.recurring = (s) => s.money ? Math.max(0, (s.money.revenue || 0) - (s.money.askBonus || 0)) : 0;
+  M.valuation = (s) => Math.round((K.valBase + K.valCap * Math.pow(avg(s), K.valCapExp) + K.revMultiple * 52 * M.recurring(s) +
     K.backlogMultiple * M.backlog(s)) * M.trustMult(s));
 
   // ---- rounds and milestones ----
@@ -2096,7 +2104,7 @@ window.FR_VERSION="0.4.0.0";
   // current value against a milestone, for the memo and the UI
   M.progress = function (s, m) {
     m = m || s.money.milestone; if (!m) return null;
-    const cur = m.kind === 'cap' ? s.model.skills[m.skill || best(s)].cap : m.kind === 'avgCap' ? avg(s) : m.kind === 'revenue' ? s.money.revenue : trust(s);
+    const cur = m.kind === 'cap' ? s.model.skills[m.skill || best(s)].cap : m.kind === 'avgCap' ? avg(s) : m.kind === 'revenue' ? M.recurring(s) : trust(s);
     const early = !!(m.opens && s.turn < m.opens);   // the window has not opened yet: reaching the value does not count
     return { current: cur, value: m.value, met: !early && cur >= m.value, early, opensIn: early ? m.opens - s.turn : 0, weeksLeft: m.due - s.turn };
   };
@@ -2115,20 +2123,20 @@ window.FR_VERSION="0.4.0.0";
   function nowText(s, m) {
     if (m.kind === 'cap') { const k = m.skill || best(s); return FR.SKILL_NAME[k] + ' capability ' + Math.floor(s.model.skills[k].cap); }
     if (m.kind === 'avgCap') return 'average capability ' + Math.floor(avg(s) * 10) / 10;
-    if (m.kind === 'revenue') return 'weekly revenue ' + money(s.money.revenue);
+    if (m.kind === 'revenue') return 'weekly revenue ' + money(M.recurring(s));
     return 'public trust ' + Math.floor(trust(s));
   }
   // mean weekly revenue over the last K.ms.bRevWeeks weeks of history (this week's revenue when there is none)
   M.trailRevenue = function (s) {
-    const h = (s.history || []).slice(-K.ms.bRevWeeks).map(r => +r.revenue || 0);
-    return h.length ? h.reduce((a, b) => a + b, 0) / h.length : Math.max(0, s.money.revenue || 0);
+    const h = (s.history || []).slice(-K.ms.bRevWeeks).map(r => Math.max(0, (+r.revenue || 0) - (+r.askBonus || 0)));   // no one-off ask bonus
+    return h.length ? h.reduce((a, b) => a + b, 0) / h.length : M.recurring(s);
   };
   function setMilestone(s, round, kind, from, again) {
     const Q = K.ms; let value;
     if (kind === 'cap') { const c = s.model.skills[best(s)].cap; value = Math.min(100, ceil5(c + Q.capFrac * (100 - c))); }
     else if (kind === 'avgCap') { const a = avg(s); value = Math.min(100, ceil5(a + Q.avgFrac * (100 - a))); }
     else if (kind === 'revenue' && round === 'b') value = sig2(Math.max(Q.bRevMin, M.trailRevenue(s) * (again ? Q.bRevAgain : Q.bRevMult)));
-    else if (kind === 'revenue') value = sig2(Math.max(Q.revMin, s.money.revenue * Q.revMult));
+    else if (kind === 'revenue') value = sig2(Math.max(Q.revMin, M.recurring(s) * Q.revMult));
     else value = Math.min(Q.trustMax, ceil5(trust(s) + Q.trustAdd));
     const wait = round === 'b' && !again ? Q.bWait : 0;
     const m = { round, kind, skill: null, value, opens: wait ? from + wait : 0, due: from + wait + K.msTurns, text: '' };
@@ -2291,7 +2299,7 @@ window.FR_VERSION="0.4.0.0";
     const servingPF = alloc && alloc.serving ? Math.max(0, alloc.serving.pf) : 0, demand = M.demandPF(s), sp = M.revenueSplit(s, servingPF), served = sp.open;
     const p = M.burnParts(s), burn = Math.round(p.payroll + p.ops + p.compute + p.projects), revenue = Math.round(sp.total);
     m.revenue = revenue; m.revMarket = Math.round(sp.market); m.revContracts = revenue - m.revMarket;
-    m.burn = burn; m.net = revenue - burn; m.cash += m.net;
+    m.burn = burn; m.net = revenue - burn; m.cash += m.net; m.askBonus = 0;
     const was = weeksOf(cash0, m.net);                  // runway coming into the week, on the week's own bills
     report.flows.money = { revenue, market: m.revMarket, contracts: m.revContracts, reservedPF: FR.round(sp.reserved, 1), burn, net: m.net,
       payroll: p.payroll, ops: p.ops, compute: Math.round(p.compute), projects: Math.round(p.projects),
@@ -2309,7 +2317,7 @@ window.FR_VERSION="0.4.0.0";
     // are already applied by FR.accounts)
     const bonus = Math.round((report.flows.accounts && report.flows.accounts.bonus) || 0);
     if (bonus > 0) {
-      m.revenue += bonus; m.revContracts += bonus; m.net += bonus; m.cash += bonus;
+      m.revenue += bonus; m.revContracts += bonus; m.net += bonus; m.cash += bonus; m.askBonus = bonus;
       Object.assign(report.flows.money, { revenue: m.revenue, contracts: m.revContracts, net: m.net, cash: m.cash, askBonus: bonus });
     }
     arrivals(s, next, report);
@@ -2580,21 +2588,27 @@ window.FR_VERSION="0.4.0.0";
   // ---- renewal meetings (V0.4 §3.2) ----
   const CHOICE = { renew: 'Renew', up: 'Push up', go: 'Let go' };
   // what each choice would do if the contract ended now: thresholds, odds, the unanswered default. For the meeting card.
+  // Mood is shown floored (the readiness penalty can leave a half point), so 'now 44' never reads as meeting 'needs 45'.
   A.meetingView = function (s, id) {
     const a = typeof id === 'object' ? id : findLive(s, id); if (!a || !a.meeting) return null;
-    const c = coldAdd(s, a), M = K.meet, mood = Math.round(a.mood), up = a.tier + 1, left = a.ends - s.turn + 1;
+    const c = coldAdd(s, a), M = K.meet, mood = Math.floor(a.mood), up = a.tier + 1, left = a.ends - s.turn + 1;
     const renewNeed = M.renewMood + c, upNeed = M.upMood + c, sure = M.upSure + c;
     const renewOk = a.mood >= renewNeed, reqUp = up <= 3 ? A.qualifies(s, tierReq(up)) : no('Tier 3 is the top tier');
     const chance = up > 3 || !reqUp.ok || a.mood < upNeed ? 0 : a.mood >= sure ? 1 : M.upOdds;
-    const fallback = renewOk ? 'a refusal renews at tier ' + a.tier : 'a refusal ends the contract: renewal needs mood ' + renewNeed;
+    const lc = (x) => x.charAt(0).toLowerCase() + x.slice(1);
+    // the terms a renewal at `tier` would carry (what resolve() writes): fee repriced to the week after ends, PF scaled
+    const terms = (tier) => { const pf = scalePF(a.pfPerWeek, a.tier, tier), d = pf - a.pfPerWeek;
+      return money(A.fee(tier, a.ends + 1)) + ' a week from ' + FR.dateLabel(a.ends + 1) + ', ' + pf + ' PF' + (d ? ' (' + (d > 0 ? '+' : '') + d + ')' : '') + ', ' + wk(K.turns[tier - 1]); };
+    const stands = renewOk ? 'renews at tier ' + a.tier : 'ends: renewal needs mood ' + renewNeed;
     const upText = up > 3 ? 'Push up: tier 3 is the top tier; it renews at tier 3.'
-      : !reqUp.ok ? 'Push up to tier ' + up + ': ' + reqUp.why + '. As things stand it ' + (renewOk ? 'renews at tier ' + a.tier + '.' : 'ends: renewal needs mood ' + renewNeed + '.')
-      : 'Push up to tier ' + up + ': accepts at mood ' + sure + '+ (now ' + mood + (chance === 1 ? ': accepts' : chance > 0 ? ': even odds; ' + fallback : ': below ' + upNeed + ', ' + fallback) + ').';
-    const renewText = 'Renew at tier ' + a.tier + ': needs mood ' + renewNeed + ' (now ' + mood + ')' + (renewOk ? '.' : '; below it the contract ends.');
+      : !reqUp.ok ? 'Push up to tier ' + up + ' ' + lc(reqUp.why) + '. As things stand it ' + stands + '.'
+      : chance === 0 ? 'Push up needs mood ' + upNeed + ' (now ' + mood + '); as things stand it ' + stands + '.'
+      : 'Push up to tier ' + up + ': accepts at mood ' + sure + '+ (now ' + mood + (chance === 1 ? ': accepts' : ': even odds; a refusal ' + stands) + '). Tier ' + up + ': ' + terms(up) + '.';
+    const renewText = 'Renew at tier ' + a.tier + ': needs mood ' + renewNeed + ' (now ' + mood + ')' + (renewOk ? '. ' + terms(a.tier) + '.' : '; below it the contract ends.');
     const goText = 'Let go: leaves ' + FR.dateLabel(a.ends) + ', ' + a.pfPerWeek + ' PF freed, no trust cost.';
-    const dflt = 'Unanswered, it ' + (renewOk ? 'renews at tier ' + a.tier : 'ends: renewal needs mood ' + renewNeed) + '.';
+    const dflt = 'Unanswered, it ' + stands + '.';
     const pick = a.meeting.answer, text = pick === 'up' ? upText : pick === 'go' ? goText : pick === 'renew' ? renewText : dflt;
-    return { id: a.id, name: a.name, opens: a.meeting.opens, answer: pick, ends: a.ends, weeksLeft: left, cold: c > 0, mood,
+    return { id: a.id, name: a.name, opens: a.meeting.opens, answer: pick, ends: a.ends, weeksLeft: left, cold: c > 0, mood, stands,
       renew: { ok: renewOk, need: renewNeed, text: renewText },
       up: { ok: chance > 0, tier: up <= 3 ? up : null, need: upNeed, sure, chance, qualifies: reqUp.ok, why: reqUp.ok ? '' : reqUp.why, text: upText },
       go: { ok: true, text: goText }, unanswered: dflt, text };
@@ -2604,12 +2618,12 @@ window.FR_VERSION="0.4.0.0";
     const a = findLive(s, id); if (!a) return no('That account is not in the book');
     if (!a.meeting) return no('The ' + a.name + ' renewal meeting opens ' + FR.dateLabel(a.ends - K.dueWarn));
     if (out(s, a)) return no(a.name + ' is leaving');
-    if (!CHOICE[choice]) return no('Unknown renewal choice');
+    if (!Object.prototype.hasOwnProperty.call(CHOICE, choice)) return no('Unknown renewal choice');
     if (choice === 'up' && a.tier >= 3) return no('Tier 3 is the top tier');
     a.meeting.answer = choice;
     const v = A.meetingView(s, a);
     return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'meeting:' + a.id,
-      text: a.name + ' renewal meeting: ' + CHOICE[choice] + '. Decided ' + FR.dateLabel(a.ends) + '. ' + v.text } };
+      text: a.name + ' renewal meeting: ' + v.text + ' Settled ' + FR.dateLabel(a.ends) + '; changeable until then.' } };
   };
   function scalePF(pf, from, to) {
     const a = K.pf[from - 1], b = K.pf[to - 1], x = FR.clamp((pf - a[0]) / Math.max(1, a[1] - a[0]), 0, 1);
@@ -2617,7 +2631,7 @@ window.FR_VERSION="0.4.0.0";
   }
   // the last contract week: resolve the meeting. Returns nothing; pushes lines, events.
   function resolve(s, a, rng, L, report) {
-    const T = s.turn, c = coldAdd(s, a), M = K.meet, pick = a.meeting ? a.meeting.answer : null, mood = Math.round(a.mood);
+    const T = s.turn, c = coldAdd(s, a), M = K.meet, pick = a.meeting ? a.meeting.answer : null, mood = Math.floor(a.mood);
     const renewOk = a.mood >= M.renewMood + c;
     if (pick === 'go') {
       lose(s, a, 'let go', report);
@@ -2630,7 +2644,7 @@ window.FR_VERSION="0.4.0.0";
       if (up <= 3 && q.ok && a.mood >= M.upMood + c) {
         if (a.mood >= M.upSure + c || rng.chance(M.upOdds)) tier = up;
         else note = ' It declined the push to tier ' + up + ' at mood ' + mood + '.';
-      } else if (up <= 3) note = ' Push up to tier ' + up + ' not possible: ' + (q.ok ? 'needs mood ' + (M.upMood + c) + ', mood ' + mood : q.why) + '.';
+      } else if (up <= 3) note = ' Push up to tier ' + up + ' not possible: ' + (q.ok ? 'needs mood ' + (M.upMood + c) + ', mood ' + mood : q.why.charAt(0).toLowerCase() + q.why.slice(1)) + '.';
     }
     if (tier === a.tier && !renewOk) {
       lose(s, a, 'expired', report);
@@ -2643,7 +2657,7 @@ window.FR_VERSION="0.4.0.0";
     a.meeting = null; a.ask = null; delete a.hot;
     report.events.push({ type: 'account:renewed', id: a.id, name: a.name, tier, up });
     L.push({ p: 1, kind: 'good', text: a.name + ' renews' + (up ? ' at tier ' + tier : '') + ' for ' + wk(K.turns[tier - 1]) + ' at ' + money(a.feePerWeek) + ' a week, ' +
-      (a.feePerWeek >= was ? 'up' : 'down') + ' from ' + money(was) + (a.pfPerWeek !== pf0 ? ', reserving ' + a.pfPerWeek + ' PF, up from ' + pf0 : '') +
+      (a.feePerWeek === was ? 'unchanged' : (a.feePerWeek > was ? 'up' : 'down') + ' from ' + money(was)) + (a.pfPerWeek !== pf0 ? ', reserving ' + a.pfPerWeek + ' PF, up from ' + pf0 : '') +
       ', through ' + FR.dateLabel(a.ends) + '. Mood ' + mood + '.' + (pick ? note : ' No answer to the renewal meeting: same tier.') });
   }
 
@@ -2657,27 +2671,38 @@ window.FR_VERSION="0.4.0.0";
     }
     return v.model.skills;
   }
-  const rest3 = (s) => { const x = s.sliders; return x.training + x.safety + x.research; };
   const gapOf = (sk) => Math.max.apply(null, FR.SKILLS.map(k => Math.max(0, sk[k].cap - sk[k].safe)));
   const freePF = (s) => { const al = FR.sim.allocate(s); return Math.max(0, al.capacity - al.projects.pf); };
-  // a new ask for account a at turn T, or null when no type can be met in time
+  // the best plan for one ask, whatever the sliders are this week: Serving just covers the book (live + onboarding), every
+  // other free PF goes to `into` (training for a cap ask, safety for an inStep ask)
+  function bestPlan(s, into) {
+    const free = freePF(s), need = A.reservedPF(s) + A.pending(s);
+    const sv = free > 0 ? Math.min(100, Math.ceil(need / free * 100)) : 100, sl = { training: 0, serving: sv, safety: 0, research: 0 };
+    sl[into] = 100 - sv; return sl;
+  }
+  // a new ask for account a at turn T, or null when no type can be met in time. Asks already open elsewhere in the book
+  // count: two asks that no single plan meets together are not dealt (a cap ask and an inStep ask pull the free PF
+  // opposite ways; cap asks on two skills split the training; peaks add up)
   function makeAsk(s, a, rng) {
     const T = s.turn, Q = K.ask, room = a.ends - Q.quiet - T, skill = A.skillOf(a) || 'coding';
     const base = { skill, arrived: T, from: T, progress: 0, answered: null, declineBy: T + Q.declineWeeks, reward: 0 };
     if (A.swing(s, a.sector) === 'cold') return Object.assign(base, { type: 'cost', target: Q.costCut, due: a.ends, weeks: a.ends - T });
+    const open = A.asks(s).filter(x => x !== a).map(x => x.ask), has = (f) => open.some(f);
     const opts = [];
     const capW = Math.min(rng.int(Q.capWeeks[0], Q.capWeeks[1]), room), add = rng.int(Q.capAdd[a.tier - 1][0], Q.capAdd[a.tier - 1][1]);
     const cur = s.model.skills[skill].cap, tgt = Math.ceil(cur + add);
-    if (capW >= Q.capWeeks[0] && tgt <= 100) {
-      const top = project(s, { training: rest3(s), serving: s.sliders.serving, safety: 0, research: 0 }, skill, capW)[skill].cap;
+    if (capW >= Q.capWeeks[0] && tgt <= 100 && !has(q => q.type === 'inStep' || (q.type === 'cap' && q.skill !== skill))) {
+      const top = project(s, bestPlan(s, 'training'), skill, capW)[skill].cap;
       if (top >= tgt) opts.push({ type: 'cap', target: tgt, weeks: capW, due: T + capW, progress: FR.round(cur, 1) });
     }
-    if (Q.stepWeeks + Q.stepSpare <= room) {
-      const sk = project(s, { training: 0, serving: s.sliders.serving, safety: rest3(s), research: 0 }, s.target, Q.stepSpare);
+    if (Q.stepWeeks + Q.stepSpare <= room && !has(q => q.type === 'cap')) {
+      const sk = project(s, bestPlan(s, 'safety'), s.target, Q.stepSpare);
       if (gapOf(sk) <= Q.stepGap) opts.push({ type: 'inStep', target: Q.stepGap, weeks: Q.stepWeeks, due: T + Q.stepWeeks + Q.stepSpare });
     }
+    // peak: free PF covers the book, onboarding, every other open peak not yet counted in reservedPF, and this amount
     const lead = rng.int(Q.peakLead[0], Q.peakLead[1]), amt = Math.max(Q.peakMin, Math.round(a.pfPerWeek * rng.range(Q.peakShare[0], Q.peakShare[1])));
-    if (lead + Q.peakWeeks <= room && freePF(s) >= A.reservedPF(s) + A.pending(s) + amt)
+    const otherPeaks = sum(A.asks(s).filter(x => x !== a && x.ask.type === 'peak' && !A.peakPF(s, x)), x => x.ask.target);
+    if (lead + Q.peakWeeks <= room && freePF(s) >= A.reservedPF(s) + A.pending(s) + otherPeaks + amt)
       opts.push({ type: 'peak', target: amt, weeks: Q.peakWeeks, from: T + lead, due: T + lead + Q.peakWeeks - 1 });
     const cw = Math.min(rng.int(Q.cleanWeeks[0], Q.cleanWeeks[1]), room);
     if (cw >= Q.cleanWeeks[0] && worstGap(s) <= FR.model.K.incidentGap) opts.push({ type: 'clean', target: 0, weeks: cw, due: T + cw });
@@ -2696,7 +2721,7 @@ window.FR_VERSION="0.4.0.0";
     if (q.type === 'cap') return a.name + ' asks for ' + skillName(q.skill) + ' capability ' + q.target + ' by ' + d(q.due) + ' (now ' + n1(s.model.skills[q.skill].cap) + ').' + terms + by;
     if (q.type === 'inStep') return a.name + ' asks that every safety stay within ' + q.target + ' of capability for ' + wk(q.weeks) + ', starting now, by ' + d(q.due) + '.' + terms + by;
     if (q.type === 'peak') return a.name + ' asks for ' + q.target + ' more PF from ' + d(q.from) + ' for ' + wk(q.weeks) + '.' + terms + by;
-    if (q.type === 'clean') return a.name + ' asks for no incident before ' + d(q.due + 1) + '.' + terms + by;
+    if (q.type === 'clean') return a.name + ' asks for no lab incident through ' + d(q.due) + '.' + terms + by;
     return a.name + ' asks for a ' + Math.round(q.target * 100) + '% fee cut for the rest of its term: ' + money(a.feePerWeek) + ' to ' + money(cap$(a.feePerWeek * (1 - q.target))) +
       ' a week. Accepting lifts mood ' + Q.costMood + '.' + by + ' Unanswered, it is accepted.';
   }
@@ -2718,12 +2743,12 @@ window.FR_VERSION="0.4.0.0";
     } else if (q.type === 'peak') {
       const need = A.reservedPF(s) + A.pending(s) + (T < q.from ? q.target : 0), have = FR.sim.allocate(s).serving.pf;
       onTrack = have >= need - 0.05;
-      progressText = T < q.from ? q.target + ' PF more from ' + FR.dateLabel(q.from) : q.progress + ' / ' + q.weeks + ' weeks served · ' + wk(left) + ' left';
+      progressText = T < q.from ? 'Starts in ' + wk(q.from - T) : q.progress + ' / ' + q.weeks + ' weeks served · ' + wk(left) + ' left';
       target = q.weeks;
     } else if (q.type === 'clean') {
       onTrack = worstGap(s) <= FR.model.K.incidentGap;
-      progressText = (T - q.arrived) + ' weeks clean · ' + wk(left) + ' left';
-      progress = T - q.arrived; target = q.weeks;
+      progress = Math.min(q.weeks, T - q.arrived); target = q.weeks;
+      progressText = wk(progress) + ' clean · ' + wk(left) + ' left';
     } else {
       progressText = 'Fee ' + money(a.feePerWeek) + ' to ' + money(cap$(a.feePerWeek * (1 - q.target))) + ' a week';
       onTrack = true;
@@ -2744,7 +2769,7 @@ window.FR_VERSION="0.4.0.0";
       if (q.type === 'cost') {
         const was = a.feePerWeek; applyCut(s, a);
         return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'ask:' + a.id, text: a.name + ' fee cut accepted: ' + money(was) + ' to ' + money(a.feePerWeek) +
-          ' a week through ' + FR.dateLabel(a.ends) + '. Mood ' + Math.round(a.mood) + '.' } };
+          ' a week through ' + FR.dateLabel(a.ends) + '. Mood ' + Math.floor(a.mood) + '.' } };
       }
       q.answered = true;
       return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'ask:' + a.id, text: a.name + ' ask accepted: due ' + FR.dateLabel(q.due) + '.' } };
@@ -2754,7 +2779,7 @@ window.FR_VERSION="0.4.0.0";
     const d = q.type === 'cost' ? K.ask.costDecline : K.ask.declineMood;
     a.mood = FR.clamp(a.mood - d, 0, 100); a.ask = null;
     if (a.mood < K.mood.churn) a.leaving = true;
-    return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'ask:' + a.id, text: a.name + ' ask declined: mood down ' + d + ' to ' + Math.round(a.mood) + '.' +
+    return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'ask:' + a.id, text: a.name + ' ask declined: mood down ' + d + ' to ' + Math.floor(a.mood) + '.' +
       (a.leaving ? ' Below ' + K.mood.churn + ', it ends its contract next week.' : '') } };
   };
 
@@ -2791,11 +2816,20 @@ window.FR_VERSION="0.4.0.0";
     const L = lines(report), f = report.flows.accounts, target = report.memo;
     const cmd = target.some(l => l && typeof l.key === 'string' && l.key.indexOf('accounts:') === 0) ? 1 : 0;
     const room = Math.max(L.some(l => l.p === 0) ? 1 : 0, K.memoMax - cmd - (f.said || 0));
-    const out = L.sort((a, b) => a.p - b.p).slice(0, Math.max(0, room)).map(l => ({ kind: l.kind, text: typeof l.text === 'function' ? l.text() : l.text }));
+    // function lines are read first; one that comes back empty (a meeting whose account is now leaving) takes no place
+    const all = L.map(l => typeof l.text === 'function' ? Object.assign({}, l, { text: l.text() }) : l).filter(l => l.text).sort((a, b) => a.p - b.p);
+    let out = all.slice(0, Math.max(0, room)).map(l => ({ kind: l.kind, text: l.text }));
+    // more lines than places: the last place becomes one 'Also this week' line naming the rest, so no news is lost
+    if (all.length > room && room >= 2) {
+      out = out.slice(0, room - 1);
+      out.push({ kind: 'change', text: 'Also this week: ' + all.slice(room - 1).map(shortOf).join('; ') + '.' });
+    }
     f.said = (f.said || 0) + out.length; f.lines = [];
     const at = f.at != null && f.at <= target.length ? f.at : target.length;
     target.splice.apply(target, [at, 0].concat(out));
   }
+  // a line's short form for the 'Also this week' line: its own `short`, else its text up to the first sentence or colon
+  const shortOf = (l) => l.short || String(l.text).split(/[.:] /)[0].replace(/\.$/, '');
   A.flush = function (report) { if (report.flows && report.flows.accounts) flush(report); };
   const auto = (report) => { if (!report.deferAccounts) flush(report); };
   function lose(s, a, why, report) {
@@ -2807,7 +2841,7 @@ window.FR_VERSION="0.4.0.0";
     if (st.lost.length > K.lostKeep) st.lost.splice(0, st.lost.length - K.lostKeep);
     report.events.push({ type: 'account:churned', id: a.id, name: a.name, why });
   }
-  const moodLine = (s, a, why) => ({ p: 0, kind: 'flag', text: a.name + ' mood ' + Math.round(a.mood) + ' ' + why + '. The account ends its contract next week.' });
+  const moodLine = (s, a, why) => ({ p: 0, kind: 'flag', text: a.name + ' mood ' + Math.floor(a.mood) + ' ' + why + '. The account ends its contract next week.' });
   // mood down d; crossing the churn line marks it leaving (one p0 line), crossing the watch line flags it
   function drop(s, a, d, why, L, watchText) {
     const was = a.mood; a.mood = FR.clamp(a.mood - d, 0, 100);
@@ -2822,7 +2856,7 @@ window.FR_VERSION="0.4.0.0";
     ['hot', 'cold'].forEach(k => {
       const w = sc[k]; if (!w || w.until >= T) return;
       sc.last[w.name] = w.until; sc[k] = null;
-      L.push({ p: 3, kind: 'change', text: w.name + ' ' + (k === 'hot' ? 'demand' : 'budgets') + ' back to normal: ' + (k === 'hot' ? 'offers at the usual rate and fees.' : 'offers resume.') });
+      L.push({ p: 4, kind: 'change', text: w.name + ' ' + (k === 'hot' ? 'demand' : 'budgets') + ' back to normal: ' + (k === 'hot' ? 'offers at the usual rate and fees.' : 'offers resume.') });
     });
     if (!sc.nextAt) sc.nextAt = T + S.every;
     if (T < sc.nextAt) return;
@@ -2870,10 +2904,11 @@ window.FR_VERSION="0.4.0.0";
       if (!(a.id in served)) return;
       a.served = FR.round(served[a.id], 1); a.field = FR.round(a.served * K.field.rate, 2);
       const pf = A.pfOf(s, a), short = pf - served[a.id], sw = A.swing(s, a.sector), top = sw === 'hot' ? S.hotTop : M.top;
+      a.pfLast = FR.round(pf, 1);   // the PF it was due this week (a running peak ask included), for the UI's short-week check
       if (short > 0.05) {
         unserved += short;
         drop(s, a, penalty, 'after weeks of unserved capacity (' + a.served + ' of ' + pf + ' PF this week)', L,
-          () => a.name + ' mood ' + Math.round(a.mood) + ': ' + a.served + ' of ' + pf + ' reserved PF served this week. Raise Serving or rent PF; below ' + M.churn + ' the account leaves.');
+          () => a.name + ' mood ' + Math.floor(a.mood) + ': ' + a.served + ' of ' + pf + ' reserved PF served this week. Raise Serving or rent PF; below ' + M.churn + ' the account leaves.');
       } else {
         if (step && a.mood !== top) a.mood = a.mood < top ? Math.min(top, a.mood + M.up) : Math.max(top, a.mood - M.up);
         if (sw === 'hot' && a.mood < top) a.mood = Math.min(top, a.mood + S.hotMood);
@@ -2887,7 +2922,7 @@ window.FR_VERSION="0.4.0.0";
       if (q.type === 'cost') {
         if (T >= q.declineBy) {
           const was = a.feePerWeek; applyCut(s, a);
-          L.push({ p: 2, kind: 'change', text: a.name + ' fee cut applied, unanswered: ' + money(was) + ' to ' + money(a.feePerWeek) + ' a week through ' + FR.dateLabel(a.ends) + '. Mood ' + Math.round(a.mood) + '.' });
+          L.push({ p: 2, kind: 'change', short: a.name + ' fee cut applied (' + money(a.feePerWeek) + ' a week)', text: a.name + ' fee cut applied, unanswered: ' + money(was) + ' to ' + money(a.feePerWeek) + ' a week through ' + FR.dateLabel(a.ends) + '. Mood ' + Math.floor(a.mood) + '.' });
         }
         return;
       }
@@ -2906,14 +2941,15 @@ window.FR_VERSION="0.4.0.0";
         }
         if (!miss && T >= q.due) met = true;
       } else if (q.type === 'clean') {
-        q.progress = T - q.arrived;
-        if (T >= q.due) met = true;
+        // met the week after due: that week's ladder has rolled, so the promise covers the due week itself
+        q.progress = Math.min(q.weeks, T - q.arrived);
+        if (T > q.due) met = true;
       }
       if (met) {
         const pay = Math.round(q.reward * factor(s)); bonus += pay;
         a.mood = FR.clamp(a.mood + Q.metMood, 0, 100); a.ask = null;
         report.events.push({ type: 'account:askMet', id: a.id, name: a.name, bonus: pay });
-        L.push({ p: 2, kind: 'good', text: a.name + ' ask met: ' + metWhat(s, q) + '. Bonus ' + money(pay) + ' paid this week; mood ' + Math.round(a.mood) + '.' });
+        L.push({ p: 2, kind: 'good', short: a.name + ' ask met, bonus ' + money(pay) + ' paid', text: a.name + ' ask met: ' + metWhat(s, q) + '. Bonus ' + money(pay) + ' paid this week; mood ' + Math.floor(a.mood) + '.' });
       } else if (miss) missAsk(s, a, miss, L, report);
     });
     report.flows.accounts.bonus = bonus;
@@ -2944,7 +2980,7 @@ window.FR_VERSION="0.4.0.0";
     // the offer board (no line while the book is full: nothing on it could be signed)
     if (T + 1 >= st.refreshAt) {
       const n = deal(s, rng, T + 1, report), room = A.maxActive(s) - st.active.length;
-      if (n && room > 0) L.push({ p: 5, kind: 'change', text: 'Account board: ' + n + (n === 1 ? ' offer' : ' offers') + ' on the Serving floor until ' + FR.dateLabel(st.refreshAt - 1) + '.' });
+      if (n && room > 0) L.push({ p: 5, kind: 'change', short: 'account board: ' + n + (n === 1 ? ' offer' : ' offers'), text: 'Account board: ' + n + (n === 1 ? ' offer' : ' offers') + ' on the Serving floor until ' + FR.dateLabel(st.refreshAt - 1) + '.' });
       else if (!n) L.push({ p: 5, kind: 'change', text: 'Account board: no new buyers this round. Every name is in the book, resting after a decline or expiry, in a cold sector, or gone. Next board ' + FR.dateLabel(st.refreshAt) + '.' });
     }
     // new asks: every 13 weeks of a live contract from 13 weeks after go-live; at most K.ask.maxOpen open across the book
@@ -2955,7 +2991,7 @@ window.FR_VERSION="0.4.0.0";
       const q = makeAsk(s, a, rng); if (!q) return;
       a.ask = q;
       report.events.push({ type: 'account:ask', id: a.id, name: a.name, ask: q.type });   // ask = the ask's type (type is the event's)
-      L.push({ p: 2, kind: 'due', text: askText(s, a) });
+      L.push({ p: 2, kind: 'due', short: a.name + ' put an ask to the lab (Serving floor)', text: askText(s, a) });
     });
     // renewal meetings: open K.dueWarn weeks out; the memo warns at 8, 4 and 1 weeks left
     st.active.forEach(a => {
@@ -2965,7 +3001,7 @@ window.FR_VERSION="0.4.0.0";
         a.meeting = { opens: T, answer: null };
         report.events.push({ type: 'account:meeting', id: a.id, name: a.name, ends: a.ends });
       }
-      if (a.meeting && K.meet.warnAt.indexOf(w) >= 0) L.push({ p: 1, kind: 'due', text: () => meetLine(s, a, w) });
+      if (a.meeting && K.meet.warnAt.indexOf(w) >= 0) L.push({ p: 1, kind: 'due', short: a.name + ' renewal meeting, ' + wk(w) + ' left', text: () => meetLine(s, a, w) });
     });
     Object.assign(report.flows.accounts, { active: st.active.length, contracted: Math.round(A.contracted(s)), unservedPF: FR.round(unserved, 1),
       reservedPF: FR.round(A.reservedPF(s), 1), field: A.fieldPF(s) });
@@ -2982,15 +3018,16 @@ window.FR_VERSION="0.4.0.0";
     report.events.push({ type: 'account:askMissed', id: a.id, name: a.name });
     const was = a.mood; a.mood = FR.clamp(a.mood - K.ask.missMood, 0, 100);
     const leaving = a.mood < K.mood.churn && was >= K.mood.churn; if (leaving) a.leaving = true;
-    L.push({ p: leaving ? 0 : 2, kind: 'flag', text: a.name + ' ask missed: ' + why + '. Mood down ' + K.ask.missMood + ' to ' + Math.round(a.mood) + '.' +
+    L.push({ p: leaving ? 0 : 2, kind: 'flag', short: a.name + ' ask missed, mood ' + Math.floor(a.mood), text: a.name + ' ask missed: ' + why + '. Mood down ' + K.ask.missMood + ' to ' + Math.floor(a.mood) + '.' +
       (leaving ? ' Below ' + K.mood.churn + ', the account ends its contract next week.' : '') });
   }
   function meetLine(s, a, w) {
+    if (out(s, a)) return '';   // a shock this week took it below the churn line: its leaving line says so
     const v = A.meetingView(s, a);
-    const head = a.name + ' contract ends ' + FR.dateLabel(a.ends) + '. Mood ' + Math.round(a.mood) + '. ';
+    const head = a.name + ' contract ends ' + FR.dateLabel(a.ends) + '. Mood ' + Math.floor(a.mood) + '. ';
     if (!v) return head;
-    if (!v.answer) return head + (w === K.dueWarn ? 'Renewal meeting open: Renew, Push up or Let go on the Serving floor. ' : 'Renewal meeting unanswered. ') + v.unanswered;
-    return head + 'Renewal meeting: ' + CHOICE[v.answer] + '. ' + v.text;
+    if (!v.answer) return head + (w === K.dueWarn ? 'Renewal meeting open: Renew, Push up or Let go on the Serving floor. ' + v.unanswered : 'No answer yet: it ' + v.stands + '.');
+    return head + 'Renewal meeting: ' + v.text;
   }
 
   // after the ladder (02_sim): this week's incidents move every account's mood. A lab incident −25, a rival incident −10,
@@ -3008,12 +3045,12 @@ window.FR_VERSION="0.4.0.0";
       (rival.length ? ' and ' + (rival.length === 1 ? 'a rival incident' : rival.length + ' rival incidents') : '')
       : (rival.length === 1 ? 'the ' + rivals[0] + ' incident' : 'incidents at ' + list(rivals));
     // up to 3 accounts by name; a bigger book as its average (the leaving names are listed anyway)
-    const act = st.active, moods = act.length <= 3 ? act.map(a => a.name + ' ' + Math.round(a.mood)).join(', ')
+    const act = st.active, moods = act.length <= 3 ? act.map(a => a.name + ' ' + Math.floor(a.mood)).join(', ')
       : 'average ' + Math.round(sum(act, a => a.mood) / act.length) + ' across ' + act.length + ' accounts';
     const L = lines(report);
     L.push({ p: leaving.length ? 0 : 4, kind: leaving.length ? 'flag' : 'change', text: 'Account mood down ' + hit + ' after ' + what + ': ' +
       moods + '.' + (leaving.length ? ' Below ' + K.mood.churn + ', ' + list(leaving) + (leaving.length === 1 ? ' ends its contract' : ' end their contracts') + ' next week.' : '') });
-    if (lab.length) act.forEach(a => { if (a.ask && a.ask.type === 'clean' && !a.leaving) missAsk(s, a, 'an incident before ' + FR.dateLabel(a.ask.due + 1), L, report); });
+    if (lab.length) act.forEach(a => { if (a.ask && a.ask.type === 'clean' && !a.leaving) missAsk(s, a, 'a lab incident ' + FR.dateLabel(s.turn), L, report); });
     auto(report);
   };
 
@@ -5205,14 +5242,16 @@ window.FR_VERSION="0.4.0.0";
   // leaves below 30); `add` = the cold-sector surcharge on each mark
   const MEETK = () => Object.assign({ renewMood: 45, upMood: 60, coldAdd: 10 }, tryf(() => FR.accounts.K.meet, {}));
   const moodCol = (m, add) => { const M = MEETK(), c = add || 0; return m >= M.upMood + c ? HX.brandB : m >= M.renewMood + c ? HX.warn : HX.bad; };
-  // plaque tints (instance colour on the shared atlas material): a hot sector a shade warmer, a cold one a shade dimmer
-  const TINT = { hot: [1.16, 1.04, 0.86], cold: [0.66, 0.69, 0.74] };
+  // plaque tints, drawn into the atlas cell's background and name only (a hot sector a shade warmer, a cold one a shade
+  // dimmer): the mood bar and the ask / meeting marker keep their colours, which carry meaning
+  const TINT = { hot: { bg: '#2a2620', top: '#4a3f2c', ink: '#fff4e0' }, cold: { bg: '#141920', top: '#232b35', ink: '#aeb8c4' } };
   const kfmt = (n) => (FR.ui && FR.ui.kmoney ? FR.ui.kmoney(n) : money(n));
   // a plaque is read from across the room: the buyer's name large, the tier stripe, and a thick mood bar (or ONBOARDING /
   // CONTRACT ENDED in its place). Sector, PF and fee live in the Serving panel's rows.
   function drawPlaque(x, cx, cy, p) {
     const W0 = PLQ.cw, H0 = PLQ.ch; x.save(); x.translate(cx, cy); x.clearRect(0, 0, W0, H0);
-    rect(x, 0, 0, W0, H0, p.dark ? '#10151b' : '#1a222c'); rect(x, 0, 0, W0, 4, p.dark ? '#1c232b' : '#2f3c4a');
+    const tn = !p.dark && TINT[p.sw];
+    rect(x, 0, 0, W0, H0, p.dark ? '#10151b' : tn ? tn.bg : '#1a222c'); rect(x, 0, 0, W0, 4, p.dark ? '#1c232b' : tn ? tn.top : '#2f3c4a');
     rect(x, 0, 0, 18, H0, p.dark ? '#5a2020' : p.empty ? '#2f3c4a' : TIER_COL[p.tier] || HX.brandB);
     if (p.empty) {
       T(x, 'NO ACCOUNTS YET', 44, 92, 50, HX.ink2, 'left', 700, DISP, W0 - 72);
@@ -5220,7 +5259,7 @@ window.FR_VERSION="0.4.0.0";
       x.restore(); return;
     }
     // the buyer’s name: one line at 88 px, shrunk down to 64; a longer name takes two lines at 60 px (then an ellipsis)
-    const NW = W0 - 72, ink = p.dark ? HX.ink2 : HX.ink;
+    const NW = W0 - 72, ink = p.dark ? HX.ink2 : tn ? tn.ink : HX.ink;
     x.font = fnt(700, 88, DISP); const nw = x.measureText(p.name).width, ns = nw > NW ? Math.floor(88 * NW / nw) : 88;
     if (ns >= 64) { x.font = fnt(700, ns, DISP); T(x, p.name, 44, 86, ns, ink, 'left', 700, DISP, NW); }
     else {   // two lines: the largest size from 60 down to 40 that wraps into two
@@ -5230,10 +5269,11 @@ window.FR_VERSION="0.4.0.0";
     }
     if (p.dark) { T(x, 'CONTRACT ENDED', 44, 190, 46, '#ff8a7a', 'left', 700, MONO, W0 - 72); x.restore(); return; }
     if (p.pending) { T(x, 'ONBOARDING', 44, 190, 46, HX.info, 'left', 700, MONO, W0 - 72); x.restore(); return; }
-    // V0.4: a small amber tag at the bar's end while an ask or a renewal meeting is open
-    const tw = p.tag ? 132 : 0;
-    bar(x, 44, 170, W0 - 88 - (tw ? tw + 12 : 0), 40, clamp(p.mood / 100, 0, 1), moodCol(p.mood, p.add), 'rgba(255,255,255,.12)');
-    if (tw) { rrect(x, W0 - 44 - tw, 166, tw, 48, 10, HX.warn); T(x, p.tag, W0 - 44 - tw / 2, 191, 30, '#1a1206', 'center', 700, MONO, tw - 12); }
+    // V0.4: an amber marker at the bar's end while an ask or a renewal meeting is open: a symbol, not a word, so it
+    // reads at the size a plaque is seen from ('!' a meeting, '?' an ask, '!?' both)
+    const tw = p.tag ? (p.tag.length > 1 ? 116 : 76) : 0;
+    bar(x, 44, 170, W0 - 88 - (tw ? tw + 14 : 0), 40, clamp(p.mood / 100, 0, 1), moodCol(p.mood, p.add), 'rgba(255,255,255,.12)');
+    if (tw) { rrect(x, W0 - 44 - tw, 152, tw, 76, 12, HX.warn); T(x, p.tag, W0 - 44 - tw / 2, 191, 64, '#1a1206', 'center', 800, DISP, tw - 10); }
     x.restore();
   }
   function drawClients(x, w, h, d) {
@@ -5264,8 +5304,8 @@ window.FR_VERSION="0.4.0.0";
     const a = s && s.accounts; if (!a) return { locked: true, list: [], max: 4 };
     const sw = (x) => tryf(() => FR.accounts.swing(s, x.sector), null), coldAdd = MEETK().coldAdd;
     const act = (a.active || []).map(x => { const k = sw(x);
-      return { name: x.name, tier: x.tier, mood: Math.round(+x.mood || 0), pending: x.starts != null && x.starts > s.turn, at: x.signed || 0,
-        tag: x.leaving ? '' : x.ask && x.meeting ? 'ASK · MTG' : x.meeting ? 'MEETING' : x.ask ? 'ASK' : '', sw: k || '', add: k === 'cold' ? coldAdd : 0 }; });
+      return { name: x.name, tier: x.tier, mood: Math.floor(+x.mood || 0), pending: x.starts != null && x.starts > s.turn, at: x.signed || 0,
+        tag: x.leaving ? '' : x.ask && x.meeting ? '!?' : x.meeting ? '!' : x.ask ? '?' : '', sw: k || '', add: k === 'cold' ? coldAdd : 0 }; });
     // churned in the week just resolved: dark for this week (lost.turn is the week it left) in the place it hung (lost
     // carries the signing week), gone after the next End Turn
     const gone = (a.lost || []).filter(l => l && l.why === 'churn' && s.turn - l.turn <= 1 && !act.some(x => x.name === l.name))
@@ -5288,8 +5328,7 @@ window.FR_VERSION="0.4.0.0";
       cw.cell.setXY(i, c / PLQ.cols, 1 - (r + 1) / PLQ.rows);
       const px = PLQ.x + (c === 0 ? -PLQ.dx : PLQ.dx), py = PLQ.y0 - r * PLQ.dy;
       place(cw.plq, i, px, py, -HD + 0.085); place(cw.frm, i, px, py, -HD + 0.06);
-      const tn = !p.dark && TINT[p.sw];
-      cw.plq.setColorAt(i, tn ? _col.setRGB(tn[0], tn[1], tn[2]) : _col.setScalar(p.dark ? 0.8 : 1));
+      cw.plq.setColorAt(i, _col.setScalar(p.dark ? 0.8 : 1));
     });
     cw.plq.count = cw.frm.count = d.list.length; cw.cell.needsUpdate = true;
     cw.plq.instanceMatrix.needsUpdate = cw.frm.instanceMatrix.needsUpdate = true; if (cw.plq.instanceColor) cw.plq.instanceColor.needsUpdate = true;
@@ -6876,6 +6915,9 @@ window.FR_VERSION="0.4.0.0";
   let refTurn = null;
   const when = (t) => { const s = S(), ref = refTurn != null ? refTurn : s && s.turn;
     return (s && FR.year(t) === FR.year(ref) ? 'Week ' + FR.weekOfYear(t) : FR.dateLabel(t)).replace(/ /g, '\u00a0'); };
+  // sim text dates ('Year 2, Week 5') in the same style as when(): this year's weeks read 'Week 5'
+  const sd = (txt) => { const s = S(), ref = refTurn != null ? refTurn : s && s.turn;
+    return String(txt || '').replace(/Year (\d+), Week (\d+)/g, (m, y, w) => s && +y === FR.year(ref) ? 'Week ' + w : m); };
   const runwayText = (w) => (w == null || w === Infinity) ? 'cash-positive' : w >= 104 ? 'over 2 years' : wks(Math.max(0, w));
   const META = (id) => (FR.HQ_FLOOR_META || {})[id] || { n: '?', name: String(id) };
   const ORD = ['first', 'second', 'third', 'fourth', 'fifth'];
@@ -6950,6 +6992,8 @@ window.FR_VERSION="0.4.0.0";
   const askV = (s, a) => a && a.ask && has('accounts', 'askView') ? tryr(() => FR.accounts.askView(s, a), null) : null;
   const strip = (s) => has('accounts', 'sectorStrip') ? tryr(() => FR.accounts.sectorStrip(s), []) || [] : [];
   const meetingsOpen = (s) => has('accounts', 'meetings') ? tryr(() => FR.accounts.meetings(s), []) || [] : [];
+  const pfDue = (a) => a.pfLast != null ? +a.pfLast : +a.pfPerWeek || 0;   // PF the account was due last week (a peak ask included)
+  const pfNow = (s, a) => has('accounts', 'pfOf') ? +tryr(() => FR.accounts.pfOf(s, a), a.pfPerWeek) || 0 : +a.pfPerWeek || 0;
   const asksOpen = (s) => has('accounts', 'asks') ? tryr(() => FR.accounts.asks(s), []) || [] : [];
   // revenue split at `pf` served (default: next week's forecast serving PF): { market, contracts, total, reserved, open, pf }
   function revSplit(s, pf) {
@@ -6972,7 +7016,7 @@ window.FR_VERSION="0.4.0.0";
   function book(s, pf) {
     if (pf == null) { const f = fc(s); pf = f && f.alloc && f.alloc.serving ? f.alloc.serving.pf : 0; }
     const res = reservedPF(s), pend = pendingPF(s), next = (accOf(s).active || []).filter(a => a.starts > s.turn).reduce((m, a) => Math.min(m, a.starts), Infinity);
-    const lastShort = (accOf(s).active || []).some(a => a.starts < s.turn && !a.leaving && a.served != null && a.served < a.pfPerWeek - 0.05);
+    const lastShort = (accOf(s).active || []).some(a => a.starts < s.turn && !a.leaving && a.served != null && a.served < pfDue(a) - 0.05);
     return { pf: Math.max(0, +pf || 0), res, pend, next: next === Infinity ? null : next, short: Math.max(0, res + pend - Math.max(0, +pf || 0)), lastShort };
   }
   // the contract money actually received last week against the gross book, and why they differ
@@ -6982,8 +7026,8 @@ window.FR_VERSION="0.4.0.0";
     const share = has('compute', 'revShare') ? tryr(() => FR.compute.revShare(s), 0) : 0;
     if (share > 0) why.push(`the ${pct0(share)} DeepField share`);
     if (has('money', 'underReview') && tryr(() => FR.money.underReview(s), false)) why.push('half while under incident review');
-    const short = (accOf(s).active || []).filter(x => x.starts < s.turn && !x.leaving && x.served != null && x.served < x.pfPerWeek - 0.05);
-    if (short.length) why.push(`${short.reduce((t, x) => t + x.pfPerWeek - x.served, 0).toFixed(0)} PF short`);
+    const short = (accOf(s).active || []).filter(x => x.starts < s.turn && !x.leaving && x.served != null && x.served < pfDue(x) - 0.05);
+    if (short.length) why.push(`${short.reduce((t, x) => t + pfDue(x) - x.served, 0).toFixed(0)} PF short`);
     return { gross, got, why, gap: gross - got > 500 };
   }
   U.revSplit = (s, pf) => { s = s || S(); return s && s.money ? revSplit(s, pf) : null; };
@@ -7245,7 +7289,7 @@ window.FR_VERSION="0.4.0.0";
     if (q.type === 'cap') return `${esc(SN(q.skill))} capability <b class="num">${q.target}</b> by ${d(q.due)}`;
     if (q.type === 'inStep') return `Every safety within <b class="num">${q.target}</b> of capability for <b class="num">${wks(q.weeks)}</b> by ${d(q.due)}`;
     if (q.type === 'peak') return `<b class="num">${q.target} PF</b> more from ${d(q.from)} for <b class="num">${wks(q.weeks)}</b>`;
-    if (q.type === 'clean') return `No incident at the lab before ${d(q.due + 1)}`;
+    if (q.type === 'clean') return `No incident at the lab through ${d(q.due)}`;
     return `A <b class="num">${Math.round(q.target * 100)}%</b> fee cut for the rest of the term`;
   }
   function askBlock(s, a) {
@@ -7253,14 +7297,14 @@ window.FR_VERSION="0.4.0.0";
     const q = a.ask, K = AK(), dead = !live(s), cost = v.type === 'cost', dm = cost ? K.ask.costDecline : K.ask.declineMood;
     const state = v.answered === true ? badge('Accepted', 'good', 'check') : v.declinable ? badge('Open', 'warn', 'clock') : '';
     const track = cost ? '' : badge(v.onTrack ? 'On track' : 'Off track', v.onTrack ? 'good' : 'warn');
-    const terms = cost ? `Accepting lifts mood ${K.ask.costMood || 10}; declining costs ${dm} mood.`
+    const terms = cost ? `Accepting lifts mood ${K.ask.costMood || 10}.`
       : `Met: <b class="num">${kmoney(v.reward)}</b> bonus and mood +${K.ask.metMood}. Missed: mood −${K.ask.missMood}.`;
     const acts = v.declinable
-      ? `<div class="card-actions fp-ask-a">${btn('askNo', a.id, 'Decline', 'quiet', dead)}${btn('askOk', a.id, cost ? 'Accept the cut' : 'Accept', 'primary', dead, 'check')}</div>
+      ? `<div class="card-actions fp-ask-a">${btn('askNo', a.id, 'Decline', 'quiet', dead)}${btn('askOk', a.id, 'Accept', 'primary', dead, 'check')}</div>
         <p class="fp-ask-n">Declining costs ${dm} mood, until ${esc(when(v.declineBy))}. Unanswered, the ask counts as accepted.</p>` : '';
     return `<div class="fp-ask" data-ask="${esc(a.id)}"><p class="fp-ask-h">${ico('star')}<b>Ask</b>${state}${track}</p>
       <p class="fp-ask-t">${askLabel(s, a, v)}.</p>
-      <p class="fp-ask-p num">${esc(v.progressText)}</p>
+      <p class="fp-ask-p num">${esc(sd(v.progressText))}</p>
       <p class="fp-ask-n">${terms}</p>${acts}</div>`;
   }
   // V0.4 renewal meeting card: Renew / Push up / Let go (48 px), the pick highlighted, the odds line, the unanswered default
@@ -7268,36 +7312,38 @@ window.FR_VERSION="0.4.0.0";
   function meetBlock(s, a) {
     const v = meetView(s, a); if (!v) return '';
     const dead = !live(s), pick = v.answer;
-    const odds = pick ? v.text : a.tier < 3 ? v.up.text : v.renew.text;
+    const odds = sd(pick ? v.text : a.tier < 3 ? v.up.text : v.renew.text);
     const seg = `<div class="seg fp-meet-seg" role="group" aria-label="Renewal meeting: ${esc(a.name)}">${MEET.map(([k, l]) =>
       `<button class="btn${pick === k ? ' sel' : ''}" data-fp="meet" data-v="${esc(a.id)}:${k}" aria-pressed="${pick === k}"${dead || (k === 'up' && a.tier >= 3) ? ' disabled' : ''}><span>${l}</span></button>`).join('')}</div>`;
-    return `<div class="fp-meet" data-meet="${esc(a.id)}"><p class="fp-ask-h">${ico('clock')}<b>Renewal meeting</b>${pick ? badge(MEET.find(m => m[0] === pick)[1], 'brand', 'check') : badge('No answer', 'warn', 'alert')}<em class="num">${wks(v.weeksLeft)} left</em></p>
+    return `<div class="fp-meet" data-meet="${esc(a.id)}"><p class="fp-ask-h">${ico('clock')}<b>Renewal meeting</b>${pick ? badge(MEET.find(m => m[0] === pick)[1] + ' · ' + wkS(v.weeksLeft), 'brand', 'check') : badge('No answer · ' + wkS(v.weeksLeft), 'warn', 'alert')}</p>
       ${seg}<p class="fp-meet-t">${esc(odds)}</p>
-      <p class="fp-ask-n${pick ? '' : ' warn'}">${pick ? `Changeable until ${esc(when(v.ends))}, the last contract week.` : `${esc(v.unanswered)} Decided ${esc(when(v.ends))}.`}</p></div>`;
+      <p class="fp-ask-n${pick ? '' : ' warn'}">${pick ? `Changeable until ${esc(when(v.ends))}, the last contract week.` : `${esc(sd(v.unanswered))} Decided ${esc(when(v.ends))}.`}</p></div>`;
   }
   function accRow(s, a) {
-    const pending = a.starts != null && a.starts > s.turn, left = Math.max(0, a.ends - (pending ? a.starts : s.turn) + 1), mood = Math.round(+a.mood || 0), c = coldAddOf(s, a), hue = moodHue(mood, c);
-    const short = a.starts != null && a.starts < s.turn && a.served != null && a.served < a.pfPerWeek - 0.05 && !a.leaving;
+    const pending = a.starts != null && a.starts > s.turn, left = Math.max(0, a.ends - (pending ? a.starts : s.turn) + 1), mood = Math.floor(+a.mood || 0), c = coldAddOf(s, a), hue = moodHue(mood, c);
+    const short = a.starts != null && a.starts < s.turn && a.served != null && a.served < pfDue(a) - 0.05 && !a.leaving, peak = pending ? 0 : pfNow(s, a) - a.pfPerWeek;
     const renewAt = AK().renewMood + c, sw = swingOf(s, a.sector), sk = skillOfAcc(a);
     const tag = a.leaving || mood < AK().churnMood ? badge('Leaving', 'bad', 'alert') : mood < AK().watchMood ? badge('At risk', 'bad', 'alert')
       : a.meeting ? badge('Meeting', a.meeting.answer ? 'brand' : 'warn', 'clock') : left <= 8 && !pending ? badge(mood >= renewAt ? 'Renews' : 'Ends', mood >= renewAt ? 'good' : 'warn', 'clock') : pending ? badge('Onboarding', 'info', 'clock') : '';
     const swb = sw === 'hot' ? badge('Hot', 'brand') : sw === 'cold' ? badge('Cold', '') : '';
     // name and fee on the first line (the name gets the width), tier and status badges lead the second
     return `<div class="fp-acc" data-accrow="${esc(a.id)}"><div class="fp-acc-h"><b>${esc(a.name)}</b><span class="num fp-acc-fee">${kmoney(a.feePerWeek)}<small>/wk</small></span></div>
-      <p class="fp-acc-s">${badge('Tier ' + a.tier, 'brand')}${tag}${swb}<span>${esc(a.sector || '')}${sk ? ` · ${esc(SKN(sk))}` : ''} · <span class="num">${trim1(a.pfPerWeek)} PF</span> · ${pending ? `<span class="num">${wks(left)}</span> from ${esc(when(a.starts))}` : `<span class="num">${wks(left)}</span> left`}</span></p>
+      <p class="fp-acc-s">${badge('Tier ' + a.tier, 'brand')}${tag}${swb}<span>${esc(a.sector || '')}${sk ? ` · ${esc(SKN(sk))}` : ''} · <span class="num">${trim1(a.pfPerWeek)}${peak > 0.05 ? ` + ${trim1(peak)}` : ''} PF</span> · ${pending ? `<span class="num">${wks(left)}</span> from ${esc(when(a.starts))}` : `<span class="num">${wks(left)}</span> left`}</span></p>
       <div class="fp-acc-m"><span>Mood</span><div class="meter ${hue}" style="--v:${clamp(mood, 0, 100)}" role="img" aria-label="Mood ${mood} of 100"><i></i></div><b class="num tone-${hue === 'cap' ? 'cap' : hue}">${mood}</b></div>
-      ${short ? `<p class="fp-acc-w">${ico('alert')}<span>Served ${n1(a.served)} of ${trim1(a.pfPerWeek)} PF last week. Each short week costs ${AK().mood.unserved} mood.</span></p>` : ''}
+      ${short ? `<p class="fp-acc-w">${ico('alert')}<span>Served ${n1(a.served)} of ${trim1(pfDue(a))} PF last week. Each short week costs ${AK().mood.unserved} mood.</span></p>` : ''}
       ${a.leaving ? '' : askBlock(s, a) + meetBlock(s, a)}</div>`;
   }
   // V0.4 reads for the Company overview (09_ui_overview.js): the sector strip and one plain line per ask
   U.accounts.strip = (s) => { s = s || S(); return s && s.accounts ? sectorStripHtml(s) : ''; };
-  U.accounts.askLine = (s, a) => { const v = askV(s, a); return v ? `${askLabel(s, a, v)}. <span class="num">${esc(v.progressText)}</span>` : ''; };
+  U.accounts.askLine = (s, a) => { const v = askV(s, a); return v ? `${askLabel(s, a, v)}. <span class="num">${esc(sd(v.progressText))}</span>` : ''; };
+  U.accounts.sd = (txt) => sd(txt);
   // V0.4 sector strip: swinging sectors (hot in board blue, cold in grey, weeks left); scrolls inside itself
   function sectorStripHtml(s) {
-    const st = strip(s), K = AK(), sc = accOf(s).sectors;
+    const st = strip(s), K = AK(), sc = accOf(s).sectors, full = (accOf(s).active || []).length >= maxActive(s);
     const chips = st.map(x => `<div class="fp-sw ${x.kind === 'hot' ? 'hot' : 'cold'}" role="listitem" data-sw="${x.kind}"><b>${esc(x.name)}<small> · ${esc(SKN(x.skill))}</small></b>
       <span><em>${x.kind === 'hot' ? 'Hot' : 'Cold'}</em> · <span class="num">${wks(x.weeksLeft)}</span> left</span>
-      <small>${x.kind === 'hot' ? `Offers ${K.sector.hotWeight}× as often, fees +${Math.round(((K.sector.hotFee || 1.25) - 1) * 100)}%` : `No offers; renewals need +${K.meet.coldAdd} mood`}</small></div>`).join('');
+      <small>${x.kind === 'hot' ? `Offers ${K.sector.hotWeight}× as often · fees +${Math.round(((K.sector.hotFee || 1.25) - 1) * 100)}% · mood +${K.sector.hotMood || 1}/wk${full ? ' · book full' : ''}`
+        : `No offers · −${K.sector.coldMood || 1} mood/wk out of step · asks are fee cuts · renewals +${K.meet.coldAdd}`}</small></div>`).join('');
     const next = sc && sc.nextAt > s.turn ? `<div class="fp-sw none" role="listitem"><b>No other swing</b><span>Next roll ${esc(when(sc.nextAt))}</span></div>` : '';
     return `<div class="fp-strip" role="list" aria-label="Sector swings" data-strip="${st.length}">${chips || `<div class="fp-sw none" role="listitem"><b>No sector swings</b><span>${sc && sc.nextAt ? `Next roll ${esc(when(sc.nextAt))}` : 'Every sector at its usual rate'}</span></div>`}${chips && st.length < 2 ? next : ''}</div>`;
   }
@@ -7805,7 +7851,9 @@ window.FR_VERSION="0.4.0.0";
   P.parse = parse;
   const mine = () => !!(U.sheetId && (U.sheetId.indexOf('fp:') === 0 || U.sheetId === 'memo'));
   function focusTo(key) {
-    const body = $('sheetBody'), el = body && body.querySelector(`[data-focus="${key}"]`); if (!el) return;
+    const body = $('sheetBody'); let el = body && body.querySelector(`[data-focus="${key}"]`); if (!el) return;
+    if (key === 'accounts' && P.row) { const r = body.querySelector(`[data-accrow="${String(P.row).replace(/"/g, '')}"]`); if (r) el = r; }
+    P.row = null;
     const tabs = body.querySelector('.tabs.sticky'), off = 60 + (tabs ? tabs.offsetHeight : 0);
     body.scrollTop = Math.max(0, body.scrollTop + el.getBoundingClientRect().top - body.getBoundingClientRect().top - off);
   }
@@ -7827,6 +7875,7 @@ window.FR_VERSION="0.4.0.0";
   P.open = function (floor, tab, focus, hotspot) {
     if (!S() || !floor) return;
     P.floor = floor; P.tab = tab || DEFAULT_TAB[floor] || null; P.focus = focus || null; P.confirm = null; P.hotspot = hotspot || floor; drag = null;
+    if (P.focus !== 'accounts') P.row = null;
     render(false);
     FR.emit('ui:panel', { floorId: floor, tab: P.tab, hotspotId: P.hotspot });
   };
@@ -7840,6 +7889,7 @@ window.FR_VERSION="0.4.0.0";
   // ride to the hotspot's floor if needed, glide to it (the world then emits hq:hotspot and the HUD opens the panel),
   // or open the panel at once when the target is not in the room
   function goTo(hot) {
+    const parts = String(hot).split(':'); hot = parts[0]; P.row = parts[1] || null;   // 'serving.accounts:<id>': that account's row
     const fid = String(hot).split('.')[0];
     const open = () => { const R = FR.r; if (R && !R.stub && R.target && R.target(hot) && (!R.live || R.live(hot)) && R.focus && R.focus(hot) !== false) return; U.panel(hot); };
     if (U.goFloor && FR.r && FR.r.current && FR.r.current.id !== fid && !FR.r.stub) U.goFloor(fid, open); else open();
@@ -7850,7 +7900,7 @@ window.FR_VERSION="0.4.0.0";
   function lineIcon(l) {
     const t = l.text;
     if (/\bgap \d/i.test(t) && !/incident at gap/i.test(t)) return 'alert';
-    if (/^Account (mood|board)|^Signed |^Declined |contracts? (live|ends?)|ended (its|their) contracts?|renews|without renewal|^Enterprise buyers|renewal meeting|let go at term end| asks (for|that)| ask (met|missed|accepted|declined)|fee cut accepted|turns (hot|cold) through|(demand|budgets) back to normal/.test(t)) return 'building';
+    if (/^Account (mood|board)|^Signed |^Declined |contracts? (live|ends?)|ended (its|their) contracts?|renews|without renewal|^Enterprise buyers|renewal meeting|let go at term end| asks (for|that)| ask (met|missed|accepted|declined)|fee cut (accepted|applied)|turns (hot|cold) through|(demand|budgets) back to normal|^Also this week: /.test(t)) return 'building';
     if (/incident/i.test(t)) return 'incident';
     if (/\brecord\b/i.test(t)) return 'record';
     if (/round|series [ab]|milestone|investor/i.test(t)) return 'coin';
@@ -7886,9 +7936,15 @@ window.FR_VERSION="0.4.0.0";
       if (a.starts != null && a.starts > T) out.push({ w: a.starts - T, icon: 'building', re: /fee starts/i, text: `${esc(a.name)}: fee of ${kmoney(a.feePerWeek)} a week and ${trim1(a.pfPerWeek)} PF reserved from ${esc(when(a.starts))}.` });
       if (a.leaving) return;
       const left = a.ends - T + 1, v = meetView(s, a), q = askV(s, a), nm = esc(a.name), rx = String(a.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (v) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.round(a.mood)}. Renewal meeting: ${v.answer ? esc(MEET.find(m => m[0] === v.answer)[1]) + '. ' + esc(v.text) : 'no answer. ' + esc(v.unanswered)}` });
-      else if (left <= 8 && a.starts <= T) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.round(a.mood)}.` });
-      if (q) out.push({ w: q.weeksLeft, icon: 'building', re: new RegExp('^' + rx + ' asks '), text: `${nm} ask: ${askLabel(s, a, q)}. ${esc(q.progressText)}.${q.declinable ? ` Decline by ${esc(when(q.declineBy))}; unanswered, it counts as accepted.` : ''}` });
+      if (v) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.floor(a.mood)}. Renewal meeting: ${v.answer ? esc(sd(v.text)) : 'no answer. ' + esc(sd(v.unanswered))}` });
+      else if (left <= 8 && a.starts <= T) out.push({ w: left, icon: 'building', re: new RegExp('^' + rx + ' contract ends'), text: `${nm} contract ends ${esc(when(a.ends))}. Mood ${Math.floor(a.mood)}.` });
+      if (q) {
+        // the stakes (the arrival line is hidden behind this row); while it can be declined, the row counts to that date
+        const K = AK(), cost = q.type === 'cost', dm = cost ? K.ask.costDecline : K.ask.declineMood;
+        const stakes = cost ? `Accepting lifts mood ${K.ask.costMood}.` : `Met: ${kmoney(q.reward)} and mood +${K.ask.metMood}; missed: mood −${K.ask.missMood}.`;
+        out.push({ w: q.declinable ? q.declineBy - T + 1 : q.weeksLeft, icon: 'building', re: new RegExp('^' + rx + ' asks '), text: `${nm} ask: ${askLabel(s, a, q)}. ${esc(sd(q.progressText))}. ${stakes}` +
+          (q.declinable ? ` Decide by ${esc(when(q.declineBy))}: declining costs ${dm} mood; unanswered, it counts as accepted.` : '') });
+      }
     });
     (s.projects.active || []).forEach((p, i) => out.push({ w: p.turnsLeft, icon: 'project', text: `${esc(p.name)} finishes in ${wks(p.turnsLeft)} (${esc(META('proj' + (i + 1)).name)}).` }));
     (s.compute.deals || []).forEach(d => out.push({ w: d.ends - T, icon: 'rival', re: /compute share ends/i, text: `${esc(rival(s, d.rivalId).name)} compute share ends ${esc(when(d.ends))}: ${d.pf} PF withdrawn.` }));
@@ -7913,11 +7969,11 @@ window.FR_VERSION="0.4.0.0";
     if (bk.short > 0.05) return { label: `Serving: ${trim1(bk.short)} PF short of the contracts`, icon: 'building', go: 'serving.wall' };
     // V0.4: an unanswered renewal meeting (soonest first), then an ask still open to decline
     const mt = meetingsOpen(s).filter(a => a.meeting && a.meeting.answer == null).sort((a, b) => a.ends - b.ends)[0];
-    if (mt) return { label: `Serving: ${mt.name} renewal meeting, ${wks(mt.ends - s.turn + 1)} left`, icon: 'building', go: 'serving.accounts' };
+    if (mt) return { label: `Serving: renewal meeting, ${wks(mt.ends - s.turn + 1)} left`, icon: 'building', go: 'serving.accounts:' + mt.id };
     const risk = (ac.active || []).filter(a => !a.leaving && +a.mood < AK().watchMood).sort((a, b) => a.mood - b.mood)[0];
     const ak = asksOpen(s).filter(a => a.ask && a.ask.answered == null && s.turn <= a.ask.declineBy)[0];
-    if (ak && !risk) return { label: `Serving: ${ak.name} ask, accept or decline`, icon: 'building', go: 'serving.accounts' };
-    if (risk) return { label: `Serving: ${risk.name} at risk, mood ${Math.round(risk.mood)}`, icon: 'building', go: 'serving.accounts' };
+    if (ak && !risk) return { label: `Serving: ${ak.name} ask, accept or decline`, icon: 'building', go: 'serving.accounts:' + ak.id };
+    if (risk) return { label: `Serving: ${risk.name} at risk, mood ${Math.floor(risk.mood)}`, icon: 'building', go: 'serving.accounts:' + risk.id };
     const can = room > 0 ? (ac.offers || []).filter(o => reqList(s, o).ok && s.money.cash >= signCost(o)).length : 0;
     if (can) return { label: `Serving: ${can} account ${can === 1 ? 'offer' : 'offers'} the lab qualifies for`, icon: 'building', go: 'serving.accounts' };
     const pj = s.projects; if (pj.active.length < pj.slots && pj.offers.some(o => o.tier <= s.research.tier)) return { label: 'Research: greenlight a project', icon: 'research', go: 'research.offers' };
@@ -7968,7 +8024,7 @@ window.FR_VERSION="0.4.0.0";
     if (changed.length) out += `<ul class="wk-lines">${changed.map(l => li(l.kind === 'good' ? 'good' : 'change', lineIcon(l), esc(l.text))).join('')}</ul>`;
     // Flagged: warnings, incidents, rounds, records
     out += sec('alert', 'Flagged', flagged.length ? String(flagged.length) : '');
-    out += flagged.length ? `<ul class="wk-lines">${flagged.map(l => li(l.kind === 'flag' ? 'flag' : 'good', lineIcon(l), esc(l.text))).join('')}</ul>` : '<p class="fp-none">Nothing flagged this week.</p>';
+    out += flagged.length ? `<ul class="wk-lines">${flagged.map(l => li(l.kind === 'flag' ? 'flag' : l.kind === 'good' ? 'good' : 'change', lineIcon(l), esc(l.text))).join('')}</ul>` : '<p class="fp-none">Nothing flagged this week.</p>';
     // Due: dated items, then the memo's own due lines that no item already covers
     const items = dueItems(s), extra = dueL.filter(l => !items.some(it => it.re && it.re.test(l.text)));
     out += sec('clock', 'Due');
@@ -8226,10 +8282,10 @@ window.FR_VERSION="0.4.0.0";
       '.fp-ask-a{margin-top:6px;gap:8px}.fp-ask-a .btn{min-height:var(--tap)}',
       '.fp-meet-seg{margin:8px 0 0}.fp-meet-seg .btn{min-height:var(--control);padding:6px 4px}',
       '.fp-meet-t{margin:6px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--ink-2)}',
-      '.fp-strip{display:flex;gap:8px;max-width:100%;margin:0 0 10px;padding:0 0 4px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch}',
-      '.fp-sw{flex:none;display:flex;flex-direction:column;gap:2px;min-width:0;max-width:78%;padding:7px 10px;border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:var(--r-sm);background:var(--surface);font-size:var(--text-xs);color:var(--ink-3);white-space:nowrap}',
-      '.fp-sw>b{font-size:var(--text-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis}.fp-sw>b small{font-weight:var(--w-medium);color:var(--ink-3)}',
-      '.fp-sw em{font-style:normal;font-weight:var(--w-bold)}.fp-sw>small{font-size:var(--text-xs);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}',
+      '.fp-strip{display:flex;flex-wrap:wrap;gap:8px;max-width:100%;margin:0 0 10px;padding:0 0 4px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch}',
+      '.fp-sw{flex:1 1 150px;display:flex;flex-direction:column;gap:2px;min-width:0;max-width:100%;padding:7px 10px;border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:var(--r-sm);background:var(--surface);font-size:var(--text-xs);color:var(--ink-3);white-space:nowrap}',
+      '.fp-sw>b{font-size:var(--text-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis}.fp-sw>b small{font-size:var(--text-xs);font-weight:var(--w-medium);color:var(--ink-3)}',
+      '.fp-sw em{font-style:normal;font-weight:var(--w-bold)}.fp-sw>small{font-size:var(--text-xs);line-height:var(--lh-snug);color:var(--ink-3);white-space:normal}',
       '.fp-sw.hot{border-left-color:var(--brand-bright);background:color-mix(in srgb,var(--brand) 14%,var(--surface))}.fp-sw.hot em{color:var(--brand-text)}',
       '.fp-sw.cold{border-left-color:var(--ink-3);background:var(--raised)}.fp-sw.cold em{color:var(--ink-2)}',
       '.fp-sw.none{border-left-color:var(--line)}',
@@ -8335,12 +8391,12 @@ window.FR_VERSION="0.4.0.0";
 
   // V0.4 clients: meetings due (the answer or what happens unanswered), open asks with progress, the sector strip
   function clients(s) {
-    const A = FR.accounts, P = U.accounts || {}, CH = { renew: 'Renew', up: 'Push up', go: 'Let go' };
+    const A = FR.accounts, P = U.accounts || {}, CH = { renew: 'Renew', up: 'Push up', go: 'Let go' }, sd = P.sd || ((x) => x);
     const mts = tryr(() => A.meetings(s), []).slice().sort((a, b) => a.ends - b.ends), asks = tryr(() => A.asks(s), []);
     let out = '';
     if (mts.length) out += `<p class="ov-sub">Renewal meetings</p><ul class="ov-list">${mts.map(a => {
       const v = tryr(() => A.meetingView(s, a), null); if (!v) return '';
-      return `<li data-ovmeet="${esc(a.id)}"><b>${esc(a.name)}</b><span class="badge ${v.answer ? 'brand' : 'warn'}">${v.answer ? CH[v.answer] : 'No answer'}</span><em class="num">${v.weeksLeft} wk${v.weeksLeft === 1 ? '' : 's'} left</em><small>${esc(v.answer ? v.text : v.unanswered)}</small></li>`;
+      return `<li data-ovmeet="${esc(a.id)}"><b>${esc(a.name)}</b><span class="badge ${v.answer ? 'brand' : 'warn'}">${v.answer ? CH[v.answer] : 'No answer'} · <span class="num">${v.weeksLeft} wk${v.weeksLeft === 1 ? '' : 's'}</span></span><small>${esc(sd(v.answer ? v.text : v.unanswered))}</small></li>`;
     }).join('')}</ul>`;
     if (asks.length) out += `<p class="ov-sub">Client asks</p><ul class="ov-list">${asks.map(a => {
       const v = tryr(() => A.askView(s, a), null); if (!v) return '';

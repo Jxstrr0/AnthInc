@@ -461,14 +461,16 @@
   // leaves below 30); `add` = the cold-sector surcharge on each mark
   const MEETK = () => Object.assign({ renewMood: 45, upMood: 60, coldAdd: 10 }, tryf(() => FR.accounts.K.meet, {}));
   const moodCol = (m, add) => { const M = MEETK(), c = add || 0; return m >= M.upMood + c ? HX.brandB : m >= M.renewMood + c ? HX.warn : HX.bad; };
-  // plaque tints (instance colour on the shared atlas material): a hot sector a shade warmer, a cold one a shade dimmer
-  const TINT = { hot: [1.16, 1.04, 0.86], cold: [0.66, 0.69, 0.74] };
+  // plaque tints, drawn into the atlas cell's background and name only (a hot sector a shade warmer, a cold one a shade
+  // dimmer): the mood bar and the ask / meeting marker keep their colours, which carry meaning
+  const TINT = { hot: { bg: '#2a2620', top: '#4a3f2c', ink: '#fff4e0' }, cold: { bg: '#141920', top: '#232b35', ink: '#aeb8c4' } };
   const kfmt = (n) => (FR.ui && FR.ui.kmoney ? FR.ui.kmoney(n) : money(n));
   // a plaque is read from across the room: the buyer's name large, the tier stripe, and a thick mood bar (or ONBOARDING /
   // CONTRACT ENDED in its place). Sector, PF and fee live in the Serving panel's rows.
   function drawPlaque(x, cx, cy, p) {
     const W0 = PLQ.cw, H0 = PLQ.ch; x.save(); x.translate(cx, cy); x.clearRect(0, 0, W0, H0);
-    rect(x, 0, 0, W0, H0, p.dark ? '#10151b' : '#1a222c'); rect(x, 0, 0, W0, 4, p.dark ? '#1c232b' : '#2f3c4a');
+    const tn = !p.dark && TINT[p.sw];
+    rect(x, 0, 0, W0, H0, p.dark ? '#10151b' : tn ? tn.bg : '#1a222c'); rect(x, 0, 0, W0, 4, p.dark ? '#1c232b' : tn ? tn.top : '#2f3c4a');
     rect(x, 0, 0, 18, H0, p.dark ? '#5a2020' : p.empty ? '#2f3c4a' : TIER_COL[p.tier] || HX.brandB);
     if (p.empty) {
       T(x, 'NO ACCOUNTS YET', 44, 92, 50, HX.ink2, 'left', 700, DISP, W0 - 72);
@@ -476,7 +478,7 @@
       x.restore(); return;
     }
     // the buyer’s name: one line at 88 px, shrunk down to 64; a longer name takes two lines at 60 px (then an ellipsis)
-    const NW = W0 - 72, ink = p.dark ? HX.ink2 : HX.ink;
+    const NW = W0 - 72, ink = p.dark ? HX.ink2 : tn ? tn.ink : HX.ink;
     x.font = fnt(700, 88, DISP); const nw = x.measureText(p.name).width, ns = nw > NW ? Math.floor(88 * NW / nw) : 88;
     if (ns >= 64) { x.font = fnt(700, ns, DISP); T(x, p.name, 44, 86, ns, ink, 'left', 700, DISP, NW); }
     else {   // two lines: the largest size from 60 down to 40 that wraps into two
@@ -486,10 +488,11 @@
     }
     if (p.dark) { T(x, 'CONTRACT ENDED', 44, 190, 46, '#ff8a7a', 'left', 700, MONO, W0 - 72); x.restore(); return; }
     if (p.pending) { T(x, 'ONBOARDING', 44, 190, 46, HX.info, 'left', 700, MONO, W0 - 72); x.restore(); return; }
-    // V0.4: a small amber tag at the bar's end while an ask or a renewal meeting is open
-    const tw = p.tag ? 132 : 0;
-    bar(x, 44, 170, W0 - 88 - (tw ? tw + 12 : 0), 40, clamp(p.mood / 100, 0, 1), moodCol(p.mood, p.add), 'rgba(255,255,255,.12)');
-    if (tw) { rrect(x, W0 - 44 - tw, 166, tw, 48, 10, HX.warn); T(x, p.tag, W0 - 44 - tw / 2, 191, 30, '#1a1206', 'center', 700, MONO, tw - 12); }
+    // V0.4: an amber marker at the bar's end while an ask or a renewal meeting is open: a symbol, not a word, so it
+    // reads at the size a plaque is seen from ('!' a meeting, '?' an ask, '!?' both)
+    const tw = p.tag ? (p.tag.length > 1 ? 116 : 76) : 0;
+    bar(x, 44, 170, W0 - 88 - (tw ? tw + 14 : 0), 40, clamp(p.mood / 100, 0, 1), moodCol(p.mood, p.add), 'rgba(255,255,255,.12)');
+    if (tw) { rrect(x, W0 - 44 - tw, 152, tw, 76, 12, HX.warn); T(x, p.tag, W0 - 44 - tw / 2, 191, 64, '#1a1206', 'center', 800, DISP, tw - 10); }
     x.restore();
   }
   function drawClients(x, w, h, d) {
@@ -520,8 +523,8 @@
     const a = s && s.accounts; if (!a) return { locked: true, list: [], max: 4 };
     const sw = (x) => tryf(() => FR.accounts.swing(s, x.sector), null), coldAdd = MEETK().coldAdd;
     const act = (a.active || []).map(x => { const k = sw(x);
-      return { name: x.name, tier: x.tier, mood: Math.round(+x.mood || 0), pending: x.starts != null && x.starts > s.turn, at: x.signed || 0,
-        tag: x.leaving ? '' : x.ask && x.meeting ? 'ASK · MTG' : x.meeting ? 'MEETING' : x.ask ? 'ASK' : '', sw: k || '', add: k === 'cold' ? coldAdd : 0 }; });
+      return { name: x.name, tier: x.tier, mood: Math.floor(+x.mood || 0), pending: x.starts != null && x.starts > s.turn, at: x.signed || 0,
+        tag: x.leaving ? '' : x.ask && x.meeting ? '!?' : x.meeting ? '!' : x.ask ? '?' : '', sw: k || '', add: k === 'cold' ? coldAdd : 0 }; });
     // churned in the week just resolved: dark for this week (lost.turn is the week it left) in the place it hung (lost
     // carries the signing week), gone after the next End Turn
     const gone = (a.lost || []).filter(l => l && l.why === 'churn' && s.turn - l.turn <= 1 && !act.some(x => x.name === l.name))
@@ -544,8 +547,7 @@
       cw.cell.setXY(i, c / PLQ.cols, 1 - (r + 1) / PLQ.rows);
       const px = PLQ.x + (c === 0 ? -PLQ.dx : PLQ.dx), py = PLQ.y0 - r * PLQ.dy;
       place(cw.plq, i, px, py, -HD + 0.085); place(cw.frm, i, px, py, -HD + 0.06);
-      const tn = !p.dark && TINT[p.sw];
-      cw.plq.setColorAt(i, tn ? _col.setRGB(tn[0], tn[1], tn[2]) : _col.setScalar(p.dark ? 0.8 : 1));
+      cw.plq.setColorAt(i, _col.setScalar(p.dark ? 0.8 : 1));
     });
     cw.plq.count = cw.frm.count = d.list.length; cw.cell.needsUpdate = true;
     cw.plq.instanceMatrix.needsUpdate = cw.frm.instanceMatrix.needsUpdate = true; if (cw.plq.instanceColor) cw.plq.instanceColor.needsUpdate = true;

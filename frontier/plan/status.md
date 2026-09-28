@@ -1,6 +1,6 @@
 # Frontier — status (read this first every session)
 
-- **Version:** 0.3.0.0 (published 2026-09-28 to the artifact and GitHub Pages)
+- **Version:** 0.4.0.0 (published 2026-09-28 to the artifact and GitHub Pages)
 - **Artifact URL:** https://claude.ai/artifact/AFXyxwEKHRKuKf9oMy5Ms5 (title "Frontier", label = version; republish dist/game.artifact.html to it)
 - **Repo:** `Jxstrr0/AnthInc`, folder `frontier/`. Design: `docs/frontier-handoff-v0.1.html`. Contracts: `plan/contracts.md` (sim), `plan/contracts_ui.md` (HQ + UI).
 - **GitHub Pages:** https://jxstrr0.github.io/AnthInc/ serves `/index.html` at the repo root = the last PUBLISHED build.
@@ -39,9 +39,19 @@
   sector swings, client work trains the sector's skill (map kept: coding = Banking, Retail, Energy, Telecoms; reasoning =
   Insurance, Pharma, Legal; agents = Logistics, Public sector). **An unanswered meeting renews at the same tier if mood
   allows (≥ 45, +10 in a cold sector), otherwise lapses.**
+- Open after V0.4 (fixer's owner questions): push up is nearly always sure at resting mood 80 (upSure 70) — move
+  upSure or resting mood?; a hot sector with a full book changes little; the cold fee-cut trade (−10 mood vs ~$0.5M).
+  Not fixed: landscape close-up framing of the client wall.
 - PR flow: one PR per milestone; the owner merges once the game builds, passes tests and is published.
 
 ## Build log
+- 0.4.0.0 — the late-game book (docs/frontier-handoff-v0.4.html). Renewal meetings (Renew / Push up / Let go; unanswered
+  renews at the same tier if mood allows, else lapses), client asks (cap / inStep / peak / clean, cost in cold sectors),
+  sector swings (hot 3x dealing, +25% fees; cold no offers, mood drift, +10 thresholds), client work trains the sector's
+  skill (field rate 0.25, with drift), memo cap 3 with an "Also this week" fold. UI: meeting cards, ask rows, sector strip,
+  plaque tags and hot/cold tints, Company dock and client-wall badges, client-work readout. Owner balance call: rival pace
+  gainBase 0.52. Review round: 32 findings (31 fixed). Balance (20 seeds --noB): balanced 20%, customer-first 5%, race dies
+  ~week 62. Node ALL PASS; browser 7 sections ALL PASS.
 - 0.3.0.0 published after the owner's calls: B milestone window opens 26 weeks after the A; rival-incident mood halved
   when in step. Balance (20 seeds, --noB): balanced 30%, customer-first 5% (19 alive past year 4), balanced-noB 10%,
   lateB 15%, race dies of the final incident at median week 67; B median week 43. Node ALL PASS; browser 7 sections ALL PASS.

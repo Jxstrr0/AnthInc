@@ -239,21 +239,27 @@
   // ---- renewal meetings (V0.4 §3.2) ----
   const CHOICE = { renew: 'Renew', up: 'Push up', go: 'Let go' };
   // what each choice would do if the contract ended now: thresholds, odds, the unanswered default. For the meeting card.
+  // Mood is shown floored (the readiness penalty can leave a half point), so 'now 44' never reads as meeting 'needs 45'.
   A.meetingView = function (s, id) {
     const a = typeof id === 'object' ? id : findLive(s, id); if (!a || !a.meeting) return null;
-    const c = coldAdd(s, a), M = K.meet, mood = Math.round(a.mood), up = a.tier + 1, left = a.ends - s.turn + 1;
+    const c = coldAdd(s, a), M = K.meet, mood = Math.floor(a.mood), up = a.tier + 1, left = a.ends - s.turn + 1;
     const renewNeed = M.renewMood + c, upNeed = M.upMood + c, sure = M.upSure + c;
     const renewOk = a.mood >= renewNeed, reqUp = up <= 3 ? A.qualifies(s, tierReq(up)) : no('Tier 3 is the top tier');
     const chance = up > 3 || !reqUp.ok || a.mood < upNeed ? 0 : a.mood >= sure ? 1 : M.upOdds;
-    const fallback = renewOk ? 'a refusal renews at tier ' + a.tier : 'a refusal ends the contract: renewal needs mood ' + renewNeed;
+    const lc = (x) => x.charAt(0).toLowerCase() + x.slice(1);
+    // the terms a renewal at `tier` would carry (what resolve() writes): fee repriced to the week after ends, PF scaled
+    const terms = (tier) => { const pf = scalePF(a.pfPerWeek, a.tier, tier), d = pf - a.pfPerWeek;
+      return money(A.fee(tier, a.ends + 1)) + ' a week from ' + FR.dateLabel(a.ends + 1) + ', ' + pf + ' PF' + (d ? ' (' + (d > 0 ? '+' : '') + d + ')' : '') + ', ' + wk(K.turns[tier - 1]); };
+    const stands = renewOk ? 'renews at tier ' + a.tier : 'ends: renewal needs mood ' + renewNeed;
     const upText = up > 3 ? 'Push up: tier 3 is the top tier; it renews at tier 3.'
-      : !reqUp.ok ? 'Push up to tier ' + up + ': ' + reqUp.why + '. As things stand it ' + (renewOk ? 'renews at tier ' + a.tier + '.' : 'ends: renewal needs mood ' + renewNeed + '.')
-      : 'Push up to tier ' + up + ': accepts at mood ' + sure + '+ (now ' + mood + (chance === 1 ? ': accepts' : chance > 0 ? ': even odds; ' + fallback : ': below ' + upNeed + ', ' + fallback) + ').';
-    const renewText = 'Renew at tier ' + a.tier + ': needs mood ' + renewNeed + ' (now ' + mood + ')' + (renewOk ? '.' : '; below it the contract ends.');
+      : !reqUp.ok ? 'Push up to tier ' + up + ' ' + lc(reqUp.why) + '. As things stand it ' + stands + '.'
+      : chance === 0 ? 'Push up needs mood ' + upNeed + ' (now ' + mood + '); as things stand it ' + stands + '.'
+      : 'Push up to tier ' + up + ': accepts at mood ' + sure + '+ (now ' + mood + (chance === 1 ? ': accepts' : ': even odds; a refusal ' + stands) + '). Tier ' + up + ': ' + terms(up) + '.';
+    const renewText = 'Renew at tier ' + a.tier + ': needs mood ' + renewNeed + ' (now ' + mood + ')' + (renewOk ? '. ' + terms(a.tier) + '.' : '; below it the contract ends.');
     const goText = 'Let go: leaves ' + FR.dateLabel(a.ends) + ', ' + a.pfPerWeek + ' PF freed, no trust cost.';
-    const dflt = 'Unanswered, it ' + (renewOk ? 'renews at tier ' + a.tier : 'ends: renewal needs mood ' + renewNeed) + '.';
+    const dflt = 'Unanswered, it ' + stands + '.';
     const pick = a.meeting.answer, text = pick === 'up' ? upText : pick === 'go' ? goText : pick === 'renew' ? renewText : dflt;
-    return { id: a.id, name: a.name, opens: a.meeting.opens, answer: pick, ends: a.ends, weeksLeft: left, cold: c > 0, mood,
+    return { id: a.id, name: a.name, opens: a.meeting.opens, answer: pick, ends: a.ends, weeksLeft: left, cold: c > 0, mood, stands,
       renew: { ok: renewOk, need: renewNeed, text: renewText },
       up: { ok: chance > 0, tier: up <= 3 ? up : null, need: upNeed, sure, chance, qualifies: reqUp.ok, why: reqUp.ok ? '' : reqUp.why, text: upText },
       go: { ok: true, text: goText }, unanswered: dflt, text };
@@ -263,12 +269,12 @@
     const a = findLive(s, id); if (!a) return no('That account is not in the book');
     if (!a.meeting) return no('The ' + a.name + ' renewal meeting opens ' + FR.dateLabel(a.ends - K.dueWarn));
     if (out(s, a)) return no(a.name + ' is leaving');
-    if (!CHOICE[choice]) return no('Unknown renewal choice');
+    if (!Object.prototype.hasOwnProperty.call(CHOICE, choice)) return no('Unknown renewal choice');
     if (choice === 'up' && a.tier >= 3) return no('Tier 3 is the top tier');
     a.meeting.answer = choice;
     const v = A.meetingView(s, a);
     return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'meeting:' + a.id,
-      text: a.name + ' renewal meeting: ' + CHOICE[choice] + '. Decided ' + FR.dateLabel(a.ends) + '. ' + v.text } };
+      text: a.name + ' renewal meeting: ' + v.text + ' Settled ' + FR.dateLabel(a.ends) + '; changeable until then.' } };
   };
   function scalePF(pf, from, to) {
     const a = K.pf[from - 1], b = K.pf[to - 1], x = FR.clamp((pf - a[0]) / Math.max(1, a[1] - a[0]), 0, 1);
@@ -276,7 +282,7 @@
   }
   // the last contract week: resolve the meeting. Returns nothing; pushes lines, events.
   function resolve(s, a, rng, L, report) {
-    const T = s.turn, c = coldAdd(s, a), M = K.meet, pick = a.meeting ? a.meeting.answer : null, mood = Math.round(a.mood);
+    const T = s.turn, c = coldAdd(s, a), M = K.meet, pick = a.meeting ? a.meeting.answer : null, mood = Math.floor(a.mood);
     const renewOk = a.mood >= M.renewMood + c;
     if (pick === 'go') {
       lose(s, a, 'let go', report);
@@ -289,7 +295,7 @@
       if (up <= 3 && q.ok && a.mood >= M.upMood + c) {
         if (a.mood >= M.upSure + c || rng.chance(M.upOdds)) tier = up;
         else note = ' It declined the push to tier ' + up + ' at mood ' + mood + '.';
-      } else if (up <= 3) note = ' Push up to tier ' + up + ' not possible: ' + (q.ok ? 'needs mood ' + (M.upMood + c) + ', mood ' + mood : q.why) + '.';
+      } else if (up <= 3) note = ' Push up to tier ' + up + ' not possible: ' + (q.ok ? 'needs mood ' + (M.upMood + c) + ', mood ' + mood : q.why.charAt(0).toLowerCase() + q.why.slice(1)) + '.';
     }
     if (tier === a.tier && !renewOk) {
       lose(s, a, 'expired', report);
@@ -302,7 +308,7 @@
     a.meeting = null; a.ask = null; delete a.hot;
     report.events.push({ type: 'account:renewed', id: a.id, name: a.name, tier, up });
     L.push({ p: 1, kind: 'good', text: a.name + ' renews' + (up ? ' at tier ' + tier : '') + ' for ' + wk(K.turns[tier - 1]) + ' at ' + money(a.feePerWeek) + ' a week, ' +
-      (a.feePerWeek >= was ? 'up' : 'down') + ' from ' + money(was) + (a.pfPerWeek !== pf0 ? ', reserving ' + a.pfPerWeek + ' PF, up from ' + pf0 : '') +
+      (a.feePerWeek === was ? 'unchanged' : (a.feePerWeek > was ? 'up' : 'down') + ' from ' + money(was)) + (a.pfPerWeek !== pf0 ? ', reserving ' + a.pfPerWeek + ' PF, up from ' + pf0 : '') +
       ', through ' + FR.dateLabel(a.ends) + '. Mood ' + mood + '.' + (pick ? note : ' No answer to the renewal meeting: same tier.') });
   }
 
@@ -316,27 +322,38 @@
     }
     return v.model.skills;
   }
-  const rest3 = (s) => { const x = s.sliders; return x.training + x.safety + x.research; };
   const gapOf = (sk) => Math.max.apply(null, FR.SKILLS.map(k => Math.max(0, sk[k].cap - sk[k].safe)));
   const freePF = (s) => { const al = FR.sim.allocate(s); return Math.max(0, al.capacity - al.projects.pf); };
-  // a new ask for account a at turn T, or null when no type can be met in time
+  // the best plan for one ask, whatever the sliders are this week: Serving just covers the book (live + onboarding), every
+  // other free PF goes to `into` (training for a cap ask, safety for an inStep ask)
+  function bestPlan(s, into) {
+    const free = freePF(s), need = A.reservedPF(s) + A.pending(s);
+    const sv = free > 0 ? Math.min(100, Math.ceil(need / free * 100)) : 100, sl = { training: 0, serving: sv, safety: 0, research: 0 };
+    sl[into] = 100 - sv; return sl;
+  }
+  // a new ask for account a at turn T, or null when no type can be met in time. Asks already open elsewhere in the book
+  // count: two asks that no single plan meets together are not dealt (a cap ask and an inStep ask pull the free PF
+  // opposite ways; cap asks on two skills split the training; peaks add up)
   function makeAsk(s, a, rng) {
     const T = s.turn, Q = K.ask, room = a.ends - Q.quiet - T, skill = A.skillOf(a) || 'coding';
     const base = { skill, arrived: T, from: T, progress: 0, answered: null, declineBy: T + Q.declineWeeks, reward: 0 };
     if (A.swing(s, a.sector) === 'cold') return Object.assign(base, { type: 'cost', target: Q.costCut, due: a.ends, weeks: a.ends - T });
+    const open = A.asks(s).filter(x => x !== a).map(x => x.ask), has = (f) => open.some(f);
     const opts = [];
     const capW = Math.min(rng.int(Q.capWeeks[0], Q.capWeeks[1]), room), add = rng.int(Q.capAdd[a.tier - 1][0], Q.capAdd[a.tier - 1][1]);
     const cur = s.model.skills[skill].cap, tgt = Math.ceil(cur + add);
-    if (capW >= Q.capWeeks[0] && tgt <= 100) {
-      const top = project(s, { training: rest3(s), serving: s.sliders.serving, safety: 0, research: 0 }, skill, capW)[skill].cap;
+    if (capW >= Q.capWeeks[0] && tgt <= 100 && !has(q => q.type === 'inStep' || (q.type === 'cap' && q.skill !== skill))) {
+      const top = project(s, bestPlan(s, 'training'), skill, capW)[skill].cap;
       if (top >= tgt) opts.push({ type: 'cap', target: tgt, weeks: capW, due: T + capW, progress: FR.round(cur, 1) });
     }
-    if (Q.stepWeeks + Q.stepSpare <= room) {
-      const sk = project(s, { training: 0, serving: s.sliders.serving, safety: rest3(s), research: 0 }, s.target, Q.stepSpare);
+    if (Q.stepWeeks + Q.stepSpare <= room && !has(q => q.type === 'cap')) {
+      const sk = project(s, bestPlan(s, 'safety'), s.target, Q.stepSpare);
       if (gapOf(sk) <= Q.stepGap) opts.push({ type: 'inStep', target: Q.stepGap, weeks: Q.stepWeeks, due: T + Q.stepWeeks + Q.stepSpare });
     }
+    // peak: free PF covers the book, onboarding, every other open peak not yet counted in reservedPF, and this amount
     const lead = rng.int(Q.peakLead[0], Q.peakLead[1]), amt = Math.max(Q.peakMin, Math.round(a.pfPerWeek * rng.range(Q.peakShare[0], Q.peakShare[1])));
-    if (lead + Q.peakWeeks <= room && freePF(s) >= A.reservedPF(s) + A.pending(s) + amt)
+    const otherPeaks = sum(A.asks(s).filter(x => x !== a && x.ask.type === 'peak' && !A.peakPF(s, x)), x => x.ask.target);
+    if (lead + Q.peakWeeks <= room && freePF(s) >= A.reservedPF(s) + A.pending(s) + otherPeaks + amt)
       opts.push({ type: 'peak', target: amt, weeks: Q.peakWeeks, from: T + lead, due: T + lead + Q.peakWeeks - 1 });
     const cw = Math.min(rng.int(Q.cleanWeeks[0], Q.cleanWeeks[1]), room);
     if (cw >= Q.cleanWeeks[0] && worstGap(s) <= FR.model.K.incidentGap) opts.push({ type: 'clean', target: 0, weeks: cw, due: T + cw });
@@ -355,7 +372,7 @@
     if (q.type === 'cap') return a.name + ' asks for ' + skillName(q.skill) + ' capability ' + q.target + ' by ' + d(q.due) + ' (now ' + n1(s.model.skills[q.skill].cap) + ').' + terms + by;
     if (q.type === 'inStep') return a.name + ' asks that every safety stay within ' + q.target + ' of capability for ' + wk(q.weeks) + ', starting now, by ' + d(q.due) + '.' + terms + by;
     if (q.type === 'peak') return a.name + ' asks for ' + q.target + ' more PF from ' + d(q.from) + ' for ' + wk(q.weeks) + '.' + terms + by;
-    if (q.type === 'clean') return a.name + ' asks for no incident before ' + d(q.due + 1) + '.' + terms + by;
+    if (q.type === 'clean') return a.name + ' asks for no lab incident through ' + d(q.due) + '.' + terms + by;
     return a.name + ' asks for a ' + Math.round(q.target * 100) + '% fee cut for the rest of its term: ' + money(a.feePerWeek) + ' to ' + money(cap$(a.feePerWeek * (1 - q.target))) +
       ' a week. Accepting lifts mood ' + Q.costMood + '.' + by + ' Unanswered, it is accepted.';
   }
@@ -377,12 +394,12 @@
     } else if (q.type === 'peak') {
       const need = A.reservedPF(s) + A.pending(s) + (T < q.from ? q.target : 0), have = FR.sim.allocate(s).serving.pf;
       onTrack = have >= need - 0.05;
-      progressText = T < q.from ? q.target + ' PF more from ' + FR.dateLabel(q.from) : q.progress + ' / ' + q.weeks + ' weeks served · ' + wk(left) + ' left';
+      progressText = T < q.from ? 'Starts in ' + wk(q.from - T) : q.progress + ' / ' + q.weeks + ' weeks served · ' + wk(left) + ' left';
       target = q.weeks;
     } else if (q.type === 'clean') {
       onTrack = worstGap(s) <= FR.model.K.incidentGap;
-      progressText = (T - q.arrived) + ' weeks clean · ' + wk(left) + ' left';
-      progress = T - q.arrived; target = q.weeks;
+      progress = Math.min(q.weeks, T - q.arrived); target = q.weeks;
+      progressText = wk(progress) + ' clean · ' + wk(left) + ' left';
     } else {
       progressText = 'Fee ' + money(a.feePerWeek) + ' to ' + money(cap$(a.feePerWeek * (1 - q.target))) + ' a week';
       onTrack = true;
@@ -403,7 +420,7 @@
       if (q.type === 'cost') {
         const was = a.feePerWeek; applyCut(s, a);
         return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'ask:' + a.id, text: a.name + ' fee cut accepted: ' + money(was) + ' to ' + money(a.feePerWeek) +
-          ' a week through ' + FR.dateLabel(a.ends) + '. Mood ' + Math.round(a.mood) + '.' } };
+          ' a week through ' + FR.dateLabel(a.ends) + '. Mood ' + Math.floor(a.mood) + '.' } };
       }
       q.answered = true;
       return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'ask:' + a.id, text: a.name + ' ask accepted: due ' + FR.dateLabel(q.due) + '.' } };
@@ -413,7 +430,7 @@
     const d = q.type === 'cost' ? K.ask.costDecline : K.ask.declineMood;
     a.mood = FR.clamp(a.mood - d, 0, 100); a.ask = null;
     if (a.mood < K.mood.churn) a.leaving = true;
-    return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'ask:' + a.id, text: a.name + ' ask declined: mood down ' + d + ' to ' + Math.round(a.mood) + '.' +
+    return { ok: true, from: 'accounts', memo: { kind: 'change', key: 'ask:' + a.id, text: a.name + ' ask declined: mood down ' + d + ' to ' + Math.floor(a.mood) + '.' +
       (a.leaving ? ' Below ' + K.mood.churn + ', it ends its contract next week.' : '') } };
   };
 
@@ -450,11 +467,20 @@
     const L = lines(report), f = report.flows.accounts, target = report.memo;
     const cmd = target.some(l => l && typeof l.key === 'string' && l.key.indexOf('accounts:') === 0) ? 1 : 0;
     const room = Math.max(L.some(l => l.p === 0) ? 1 : 0, K.memoMax - cmd - (f.said || 0));
-    const out = L.sort((a, b) => a.p - b.p).slice(0, Math.max(0, room)).map(l => ({ kind: l.kind, text: typeof l.text === 'function' ? l.text() : l.text }));
+    // function lines are read first; one that comes back empty (a meeting whose account is now leaving) takes no place
+    const all = L.map(l => typeof l.text === 'function' ? Object.assign({}, l, { text: l.text() }) : l).filter(l => l.text).sort((a, b) => a.p - b.p);
+    let out = all.slice(0, Math.max(0, room)).map(l => ({ kind: l.kind, text: l.text }));
+    // more lines than places: the last place becomes one 'Also this week' line naming the rest, so no news is lost
+    if (all.length > room && room >= 2) {
+      out = out.slice(0, room - 1);
+      out.push({ kind: 'change', text: 'Also this week: ' + all.slice(room - 1).map(shortOf).join('; ') + '.' });
+    }
     f.said = (f.said || 0) + out.length; f.lines = [];
     const at = f.at != null && f.at <= target.length ? f.at : target.length;
     target.splice.apply(target, [at, 0].concat(out));
   }
+  // a line's short form for the 'Also this week' line: its own `short`, else its text up to the first sentence or colon
+  const shortOf = (l) => l.short || String(l.text).split(/[.:] /)[0].replace(/\.$/, '');
   A.flush = function (report) { if (report.flows && report.flows.accounts) flush(report); };
   const auto = (report) => { if (!report.deferAccounts) flush(report); };
   function lose(s, a, why, report) {
@@ -466,7 +492,7 @@
     if (st.lost.length > K.lostKeep) st.lost.splice(0, st.lost.length - K.lostKeep);
     report.events.push({ type: 'account:churned', id: a.id, name: a.name, why });
   }
-  const moodLine = (s, a, why) => ({ p: 0, kind: 'flag', text: a.name + ' mood ' + Math.round(a.mood) + ' ' + why + '. The account ends its contract next week.' });
+  const moodLine = (s, a, why) => ({ p: 0, kind: 'flag', text: a.name + ' mood ' + Math.floor(a.mood) + ' ' + why + '. The account ends its contract next week.' });
   // mood down d; crossing the churn line marks it leaving (one p0 line), crossing the watch line flags it
   function drop(s, a, d, why, L, watchText) {
     const was = a.mood; a.mood = FR.clamp(a.mood - d, 0, 100);
@@ -481,7 +507,7 @@
     ['hot', 'cold'].forEach(k => {
       const w = sc[k]; if (!w || w.until >= T) return;
       sc.last[w.name] = w.until; sc[k] = null;
-      L.push({ p: 3, kind: 'change', text: w.name + ' ' + (k === 'hot' ? 'demand' : 'budgets') + ' back to normal: ' + (k === 'hot' ? 'offers at the usual rate and fees.' : 'offers resume.') });
+      L.push({ p: 4, kind: 'change', text: w.name + ' ' + (k === 'hot' ? 'demand' : 'budgets') + ' back to normal: ' + (k === 'hot' ? 'offers at the usual rate and fees.' : 'offers resume.') });
     });
     if (!sc.nextAt) sc.nextAt = T + S.every;
     if (T < sc.nextAt) return;
@@ -529,10 +555,11 @@
       if (!(a.id in served)) return;
       a.served = FR.round(served[a.id], 1); a.field = FR.round(a.served * K.field.rate, 2);
       const pf = A.pfOf(s, a), short = pf - served[a.id], sw = A.swing(s, a.sector), top = sw === 'hot' ? S.hotTop : M.top;
+      a.pfLast = FR.round(pf, 1);   // the PF it was due this week (a running peak ask included), for the UI's short-week check
       if (short > 0.05) {
         unserved += short;
         drop(s, a, penalty, 'after weeks of unserved capacity (' + a.served + ' of ' + pf + ' PF this week)', L,
-          () => a.name + ' mood ' + Math.round(a.mood) + ': ' + a.served + ' of ' + pf + ' reserved PF served this week. Raise Serving or rent PF; below ' + M.churn + ' the account leaves.');
+          () => a.name + ' mood ' + Math.floor(a.mood) + ': ' + a.served + ' of ' + pf + ' reserved PF served this week. Raise Serving or rent PF; below ' + M.churn + ' the account leaves.');
       } else {
         if (step && a.mood !== top) a.mood = a.mood < top ? Math.min(top, a.mood + M.up) : Math.max(top, a.mood - M.up);
         if (sw === 'hot' && a.mood < top) a.mood = Math.min(top, a.mood + S.hotMood);
@@ -546,7 +573,7 @@
       if (q.type === 'cost') {
         if (T >= q.declineBy) {
           const was = a.feePerWeek; applyCut(s, a);
-          L.push({ p: 2, kind: 'change', text: a.name + ' fee cut applied, unanswered: ' + money(was) + ' to ' + money(a.feePerWeek) + ' a week through ' + FR.dateLabel(a.ends) + '. Mood ' + Math.round(a.mood) + '.' });
+          L.push({ p: 2, kind: 'change', short: a.name + ' fee cut applied (' + money(a.feePerWeek) + ' a week)', text: a.name + ' fee cut applied, unanswered: ' + money(was) + ' to ' + money(a.feePerWeek) + ' a week through ' + FR.dateLabel(a.ends) + '. Mood ' + Math.floor(a.mood) + '.' });
         }
         return;
       }
@@ -565,14 +592,15 @@
         }
         if (!miss && T >= q.due) met = true;
       } else if (q.type === 'clean') {
-        q.progress = T - q.arrived;
-        if (T >= q.due) met = true;
+        // met the week after due: that week's ladder has rolled, so the promise covers the due week itself
+        q.progress = Math.min(q.weeks, T - q.arrived);
+        if (T > q.due) met = true;
       }
       if (met) {
         const pay = Math.round(q.reward * factor(s)); bonus += pay;
         a.mood = FR.clamp(a.mood + Q.metMood, 0, 100); a.ask = null;
         report.events.push({ type: 'account:askMet', id: a.id, name: a.name, bonus: pay });
-        L.push({ p: 2, kind: 'good', text: a.name + ' ask met: ' + metWhat(s, q) + '. Bonus ' + money(pay) + ' paid this week; mood ' + Math.round(a.mood) + '.' });
+        L.push({ p: 2, kind: 'good', short: a.name + ' ask met, bonus ' + money(pay) + ' paid', text: a.name + ' ask met: ' + metWhat(s, q) + '. Bonus ' + money(pay) + ' paid this week; mood ' + Math.floor(a.mood) + '.' });
       } else if (miss) missAsk(s, a, miss, L, report);
     });
     report.flows.accounts.bonus = bonus;
@@ -603,7 +631,7 @@
     // the offer board (no line while the book is full: nothing on it could be signed)
     if (T + 1 >= st.refreshAt) {
       const n = deal(s, rng, T + 1, report), room = A.maxActive(s) - st.active.length;
-      if (n && room > 0) L.push({ p: 5, kind: 'change', text: 'Account board: ' + n + (n === 1 ? ' offer' : ' offers') + ' on the Serving floor until ' + FR.dateLabel(st.refreshAt - 1) + '.' });
+      if (n && room > 0) L.push({ p: 5, kind: 'change', short: 'account board: ' + n + (n === 1 ? ' offer' : ' offers'), text: 'Account board: ' + n + (n === 1 ? ' offer' : ' offers') + ' on the Serving floor until ' + FR.dateLabel(st.refreshAt - 1) + '.' });
       else if (!n) L.push({ p: 5, kind: 'change', text: 'Account board: no new buyers this round. Every name is in the book, resting after a decline or expiry, in a cold sector, or gone. Next board ' + FR.dateLabel(st.refreshAt) + '.' });
     }
     // new asks: every 13 weeks of a live contract from 13 weeks after go-live; at most K.ask.maxOpen open across the book
@@ -614,7 +642,7 @@
       const q = makeAsk(s, a, rng); if (!q) return;
       a.ask = q;
       report.events.push({ type: 'account:ask', id: a.id, name: a.name, ask: q.type });   // ask = the ask's type (type is the event's)
-      L.push({ p: 2, kind: 'due', text: askText(s, a) });
+      L.push({ p: 2, kind: 'due', short: a.name + ' put an ask to the lab (Serving floor)', text: askText(s, a) });
     });
     // renewal meetings: open K.dueWarn weeks out; the memo warns at 8, 4 and 1 weeks left
     st.active.forEach(a => {
@@ -624,7 +652,7 @@
         a.meeting = { opens: T, answer: null };
         report.events.push({ type: 'account:meeting', id: a.id, name: a.name, ends: a.ends });
       }
-      if (a.meeting && K.meet.warnAt.indexOf(w) >= 0) L.push({ p: 1, kind: 'due', text: () => meetLine(s, a, w) });
+      if (a.meeting && K.meet.warnAt.indexOf(w) >= 0) L.push({ p: 1, kind: 'due', short: a.name + ' renewal meeting, ' + wk(w) + ' left', text: () => meetLine(s, a, w) });
     });
     Object.assign(report.flows.accounts, { active: st.active.length, contracted: Math.round(A.contracted(s)), unservedPF: FR.round(unserved, 1),
       reservedPF: FR.round(A.reservedPF(s), 1), field: A.fieldPF(s) });
@@ -641,15 +669,16 @@
     report.events.push({ type: 'account:askMissed', id: a.id, name: a.name });
     const was = a.mood; a.mood = FR.clamp(a.mood - K.ask.missMood, 0, 100);
     const leaving = a.mood < K.mood.churn && was >= K.mood.churn; if (leaving) a.leaving = true;
-    L.push({ p: leaving ? 0 : 2, kind: 'flag', text: a.name + ' ask missed: ' + why + '. Mood down ' + K.ask.missMood + ' to ' + Math.round(a.mood) + '.' +
+    L.push({ p: leaving ? 0 : 2, kind: 'flag', short: a.name + ' ask missed, mood ' + Math.floor(a.mood), text: a.name + ' ask missed: ' + why + '. Mood down ' + K.ask.missMood + ' to ' + Math.floor(a.mood) + '.' +
       (leaving ? ' Below ' + K.mood.churn + ', the account ends its contract next week.' : '') });
   }
   function meetLine(s, a, w) {
+    if (out(s, a)) return '';   // a shock this week took it below the churn line: its leaving line says so
     const v = A.meetingView(s, a);
-    const head = a.name + ' contract ends ' + FR.dateLabel(a.ends) + '. Mood ' + Math.round(a.mood) + '. ';
+    const head = a.name + ' contract ends ' + FR.dateLabel(a.ends) + '. Mood ' + Math.floor(a.mood) + '. ';
     if (!v) return head;
-    if (!v.answer) return head + (w === K.dueWarn ? 'Renewal meeting open: Renew, Push up or Let go on the Serving floor. ' : 'Renewal meeting unanswered. ') + v.unanswered;
-    return head + 'Renewal meeting: ' + CHOICE[v.answer] + '. ' + v.text;
+    if (!v.answer) return head + (w === K.dueWarn ? 'Renewal meeting open: Renew, Push up or Let go on the Serving floor. ' + v.unanswered : 'No answer yet: it ' + v.stands + '.');
+    return head + 'Renewal meeting: ' + v.text;
   }
 
   // after the ladder (02_sim): this week's incidents move every account's mood. A lab incident −25, a rival incident −10,
@@ -667,12 +696,12 @@
       (rival.length ? ' and ' + (rival.length === 1 ? 'a rival incident' : rival.length + ' rival incidents') : '')
       : (rival.length === 1 ? 'the ' + rivals[0] + ' incident' : 'incidents at ' + list(rivals));
     // up to 3 accounts by name; a bigger book as its average (the leaving names are listed anyway)
-    const act = st.active, moods = act.length <= 3 ? act.map(a => a.name + ' ' + Math.round(a.mood)).join(', ')
+    const act = st.active, moods = act.length <= 3 ? act.map(a => a.name + ' ' + Math.floor(a.mood)).join(', ')
       : 'average ' + Math.round(sum(act, a => a.mood) / act.length) + ' across ' + act.length + ' accounts';
     const L = lines(report);
     L.push({ p: leaving.length ? 0 : 4, kind: leaving.length ? 'flag' : 'change', text: 'Account mood down ' + hit + ' after ' + what + ': ' +
       moods + '.' + (leaving.length ? ' Below ' + K.mood.churn + ', ' + list(leaving) + (leaving.length === 1 ? ' ends its contract' : ' end their contracts') + ' next week.' : '') });
-    if (lab.length) act.forEach(a => { if (a.ask && a.ask.type === 'clean' && !a.leaving) missAsk(s, a, 'an incident before ' + FR.dateLabel(a.ask.due + 1), L, report); });
+    if (lab.length) act.forEach(a => { if (a.ask && a.ask.type === 'clean' && !a.leaving) missAsk(s, a, 'a lab incident ' + FR.dateLabel(s.turn), L, report); });
     auto(report);
   };
 

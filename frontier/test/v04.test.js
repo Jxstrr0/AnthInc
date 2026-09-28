@@ -52,9 +52,16 @@ assert.ok(g1.field.agents > 0 && g1.field.coding > 0 && g1.field.reasoning === 0
 assert.ok(g1.field.agents > g1.field.coding, 'more served PF, more gain');
 near(g1.cap.agents - g0.cap.agents, g1.field.agents, 1e-9); near(g1.cap.reasoning, g0.cap.reasoning, 1e-9);   // no spillover
 assert.ok(g1.safe.agents < g0.safe.agents, 'client work drifts safety like any training');
-// equals what field PF of training would produce (staff per training PF), diminishing returns included
-const spp = alloc.training.staff / alloc.training.pf, dim = Math.pow(1 - (30 + g0.cap.agents) / 100, FR.model.K.dimExp);
+// equals what field PF of training would produce (staff per free PF, floored by the PF that did the client work: here
+// last week's 30 served PF), diminishing returns included
+const freeNow = FR.ALLOCS.reduce((t, k) => t + alloc[k].pf, 0), spp = s.staff.headcount / Math.max(1, freeNow, 30), dim = Math.pow(1 - (30 + g0.cap.agents) / 100, FR.model.K.dimExp);
 near(g1.field.agents, FR.sim.output(FR.model.K.trainBase, f.agents, spp * f.agents) * dim, 1e-9);
+// the staff term does not hinge on the Training slider or on a small-capacity week (served PF floors the divisor)
+{ const z = FR.clone(s); z.sliders = { training: 0, serving: 50, safety: 30, research: 20 }; const gz = FR.model.gains(z, FR.sim.allocate(z));
+  const o = FR.clone(s); o.sliders = { training: 1, serving: 49, safety: 30, research: 20 }; const go = FR.model.gains(o, FR.sim.allocate(o));
+  near(gz.field.agents, go.field.agents, 1e-3);   // (Training 1% nudges capability, so dim differs a hair)
+  const cut = FR.clone(s); cut.compute.rentPF = 0; const gc = FR.model.gains(cut, FR.sim.allocate(cut));
+  near(gc.field.agents, g1.field.agents, 0.01); }   // no rented PF: the same client-work staff term (dim moves a hair)
 // the forecast carries it; endTurn applies it (flows.model.field) and records a.field for the readout
 const fc = FR.sim.forecast(s); near(fc.fieldGain.agents, g1.field.agents, 1e-9); near(fc.fieldPF.agents, f.agents, 1e-9);
 assert.ok(/^Client work: \+[\d.]+ agents, \+[\d.]+ coding a week\.$/.test(FR.model.fieldText(g1.field)), FR.model.fieldText(g1.field));
@@ -81,8 +88,9 @@ s = game(); a = live(s, 1, { ends: s.turn + 20 });
 assert.ok(!cmd(s, { type: 'renewAccount', id: a.id, choice: 'renew' }).r.ok, 'no meeting yet');
 a.ends = s.turn + 5; a.meeting = { opens: s.turn, answer: null };
 assert.ok(!cmd(s, { type: 'renewAccount', id: a.id, choice: 'maybe' }).r.ok);
+['constructor', 'toString', '__proto__', 'hasOwnProperty'].forEach(ch => assert.ok(!cmd(s, { type: 'renewAccount', id: a.id, choice: ch }).r.ok, 'inherited key ' + ch));
 let c = cmd(s, { type: 'renewAccount', id: a.id, choice: 'up' }); assert.ok(c.r.ok); assert.strictEqual(c.s.accounts.active.find(x => x.id === a.id).meeting.answer, 'up');
-assert.ok(/renewal meeting: Push up\./.test(c.s.pendingMemo.slice(-1)[0].text));
+assert.ok(/renewal meeting: Push up/.test(c.s.pendingMemo.slice(-1)[0].text) && !/Push up\. Push up/.test(c.s.pendingMemo.slice(-1)[0].text), c.s.pendingMemo.slice(-1)[0].text);
 c = cmd(c.s, { type: 'renewAccount', id: a.id, choice: 'go' }); assert.strictEqual(c.s.pendingMemo.filter(m => m.key === 'meeting:' + a.id).length, 1, 'the choice can change; one line');
 a.tier = 3; assert.ok(!cmd(s, { type: 'renewAccount', id: a.id, choice: 'up' }).r.ok);
 
@@ -119,13 +127,20 @@ assert.ok(r.q.events.some(e => e.type === 'account:renewed' && e.tier === 2 && e
 });
 // a push up failing on the tier minimums (trust under tier 2's 48) falls back to Renew; below 45 it lapses
 r = end('up', 72, { trust: 47 }); assert.deepStrictEqual([r.a.tier, r.a.pfPerWeek], [1, 10]);
-assert.ok(r.q.memo.some(m => /Push up to tier 2 not possible: Needs public trust 48/.test(m.text)), JSON.stringify(r.q.memo));
+assert.ok(r.q.memo.some(m => /Push up to tier 2 not possible: needs public trust 48/.test(m.text)), JSON.stringify(r.q.memo));
 r = end('up', 44, { trust: 47 }); assert.strictEqual(r.lost.why, 'expired');
 // the meeting view quotes the odds plainly
 s = game(); a = live(s, 1, { ends: s.turn + 3, mood: 64, meeting: { opens: s.turn - 5, answer: 'up' } });
 let v = A.meetingView(s, a.id);
-assert.strictEqual(v.up.text, 'Push up to tier 2: accepts at mood 70+ (now 64: even odds; a refusal renews at tier 1).');
+assert.strictEqual(v.up.text, 'Push up to tier 2: accepts at mood 70+ (now 64: even odds; a refusal renews at tier 1). Tier 2: ' +
+  FR.fmtMoney(A.fee(2, a.ends + 1)) + ' a week from ' + FR.dateLabel(a.ends + 1) + ', 19 PF (+9), 104 weeks.');
+assert.strictEqual(v.renew.text, 'Renew at tier 1: needs mood 45 (now 64). ' + FR.fmtMoney(A.fee(1, a.ends + 1)) + ' a week from ' + FR.dateLabel(a.ends + 1) + ', 10 PF, 52 weeks.');
 assert.deepStrictEqual([v.up.chance, v.renew.ok, v.weeksLeft], [0.5, true, 4]);
+// below the push-up mark: no odds to quote, what happens as things stand; a half-point mood reads floored against its mark
+a.mood = 44.5; v = A.meetingView(s, a.id);
+assert.strictEqual(v.up.text, 'Push up needs mood 60 (now 44); as things stand it ends: renewal needs mood 45.');
+assert.strictEqual(v.renew.text, 'Renew at tier 1: needs mood 45 (now 44); below it the contract ends.'); assert.strictEqual(v.renew.ok, false);
+a.mood = 64;
 a.mood = 72; assert.strictEqual(A.meetingView(s, a.id).up.chance, 1); a.mood = 50; assert.strictEqual(A.meetingView(s, a.id).up.chance, 0);
 // unanswered (owner call): same tier when mood allows (45; 55 in a cold sector), otherwise 'expired'
 r = end(null, 44); assert.strictEqual(r.lost.why, 'expired'); assert.ok(r.q.memo.some(m => /No answer to the renewal meeting\./.test(m.text)));
@@ -163,18 +178,31 @@ s.turn++; assert.strictEqual(A.reservedPF(s), 10);
 s = game(); a = live(s, 1, { mood: 60, pfPerWeek: 10 }); ask(s, a, { type: 'peak', target: 6, weeks: 2, from: s.turn, due: s.turn + 1 });
 q = step(s, 12); assert.strictEqual(a.ask, null); assert.strictEqual(a.mood, 60 - 3 - 15, 'unserved penalty and the miss');
 assert.ok(q.memo.some(m => /ask missed: 12 of 16 PF served this week/.test(m.text)), JSON.stringify(q.memo));
-// clean: met at due with no incident; a lab incident (shock) fails it
-s = game(); a = live(s, 1, { mood: 60 }); ask(s, a, { type: 'clean', target: 0, weeks: 13, due: s.turn });
+// clean: met the week after due with no incident (the due week's ladder has rolled); a lab incident (shock) fails it
+s = game(); a = live(s, 1, { mood: 60 }); ask(s, a, { type: 'clean', target: 0, weeks: 13, due: s.turn - 1 });
 q = step(s); assert.strictEqual(a.ask, null); assert.ok(q.events.some(e => e.type === 'account:askMet'));
 s = game(); a = live(s, 1, { mood: 70 }); ask(s, a, { type: 'clean', target: 0, weeks: 13, due: s.turn + 5 });
 q = rep(s.turn); q.events.push({ type: 'model:incident', skill: 'coding', gap: 22 }); A.shock(s, q);
 assert.strictEqual(a.ask, null); assert.strictEqual(a.mood, 70 - 25 - 15); assert.ok(q.events.some(e => e.type === 'account:askMissed'));
 // the bonus lands in this week's revenue through endTurn (contract revenue, cash)
 s = game(); s.sliders = { training: 30, serving: 40, safety: 20, research: 10 }; s.compute.rentPF = 200;
-a = live(s, 1, { mood: 60 }); ask(s, a, { type: 'clean', target: 0, weeks: 13, due: s.turn });
+a = live(s, 1, { mood: 60 }); ask(s, a, { type: 'clean', target: 0, weeks: 13, due: s.turn - 1 });
 t = FR.sim.endTurn(s, []);
 const mf = t.lastReport.flows.money; assert.ok(mf.askBonus > 0); assert.strictEqual(mf.askBonus, Math.round(a.ask.reward * FR.money.incidentFactor(s)));
 assert.strictEqual(t.money.revContracts, mf.contracts); assert.ok(t.money.revContracts >= mf.askBonus);
+// the bonus is one-off: valuation, the revenue milestone and the history row read recurring revenue without it
+{ const b0 = FR.clone(s); b0.accounts.active[0].ask = null; const t0 = FR.sim.endTurn(b0, []);
+  assert.strictEqual(t.money.askBonus, mf.askBonus); assert.strictEqual(FR.money.recurring(t), t.money.revenue - mf.askBonus);
+  near(t.money.valuation, t0.money.valuation, Math.abs(t0.money.valuation) * 0.001 + 1);
+  assert.strictEqual(t.history.slice(-1)[0].askBonus, mf.askBonus); near(FR.money.trailRevenue(t), FR.money.recurring(t), 1);
+  const ms = { round: 'b', kind: 'revenue', skill: null, value: FR.money.recurring(t) + 1, opens: 0, due: t.turn + 10, text: '' };
+  assert.strictEqual(FR.money.progress(t, ms).met, false, 'the bonus cannot meet a revenue milestone'); }
+// a shock that takes a meeting account below the churn line drops its meeting line (it is leaving; renew() refuses)
+{ const sm = game(); const am = live(sm, 1, { ends: sm.turn + 8, mood: 50 }); const qm = step(sm);
+  assert.ok(qm.memo.some(m => /Renewal meeting open/.test(m.text)));
+  const sm2 = game(); const am2 = live(sm2, 1, { ends: sm2.turn + 8, mood: 50 }); const q2 = rep(sm2.turn); q2.deferAccounts = true;
+  A.step(sm2, serve(1000), FR.rng(3), q2); q2.events.push({ type: 'model:incident', skill: 'coding', gap: 22 }); A.shock(sm2, q2); A.flush(q2);
+  assert.ok(am2.leaving && !q2.memo.some(m => /Renewal meeting open/.test(m.text)), JSON.stringify(q2.memo)); }
 // the decline window: 2 weeks from arrival, mood −5; after it, refused; unanswered counts as accepted (it still runs)
 s = game(); a = live(s, 1, { mood: 60 }); ask(s, a, { type: 'clean', target: 0, weeks: 13, due: s.turn + 10, arrived: s.turn, declineBy: s.turn + 2 });
 c = cmd(s, { type: 'answerAsk', id: a.id, accept: false }); assert.ok(c.r.ok);
@@ -217,9 +245,24 @@ assert.ok(/asks for a 15% fee cut for the rest of its term/.test(got[0].q.memo.f
 got = arrivals(s => [live(s, 1, { starts: s.turn - 13 }), live(s, 1, { starts: s.turn - 13 }), live(s, 1, { starts: s.turn - 13 }), live(s, 1, { starts: s.turn - 13 })], 60);
 const perWeek = {}; got.forEach(x => { perWeek[x.s.seed] = (perWeek[x.s.seed] || 0) + 1; });
 assert.ok(Object.keys(perWeek).length && Object.values(perWeek).every(v => v <= K.ask.maxOpen), 'at most 2 open');
-// unwinnable asks are skipped: with no training, safety or research share, no cap ask (the target is out of reach)
-got = arrivals(s => { s.sliders = { training: 0, serving: 100, safety: 0, research: 0 }; return [live(s, 1, { starts: s.turn - 13 })]; }, 120);
+// unwinnable asks are skipped: when the book takes every free PF there is nothing left to train on, so no cap ask
+const bookAll = (s) => { const al = FR.sim.allocate(s); return Math.ceil(al.capacity - al.projects.pf); };
+got = arrivals(s => [live(s, 1, { starts: s.turn - 13, pfPerWeek: bookAll(s) })], 120);
 assert.ok(got.length > 0 && !got.some(x => x.type === 'cap'));
+// feasibility is judged on the best plan, not this week's sliders: Serving at 100% on the roll week draws the same asks
+const draw = (sl) => arrivals(s => { s.compute.rentPF = 150; if (sl) s.sliders = sl; return [live(s, 1, { starts: s.turn - 13 })]; }, 120).map(x => x.type).join();
+assert.strictEqual(draw({ training: 0, serving: 100, safety: 0, research: 0 }), draw(null));
+// asks already open count: an open inStep ask (or a cap ask on another skill) rules out a cap ask, an open cap rules out
+// inStep, and an open peak not yet running counts against the free PF for a new peak
+const withOpen = (o, extra) => arrivals(s => { s.compute.rentPF = 150; const x = live(s, 1, Object.assign({ sector: 'Logistics' }, extra || {}));
+  ask(s, x, o); return [live(s, 1, { starts: s.turn - 13, sector: 'Banking' })]; }, 200).map(x => x.type);
+let ty = withOpen({ type: 'inStep', skill: null, target: 3, weeks: 8, due: 30 }); assert.ok(ty.length && ty.indexOf('cap') < 0, ty.join());
+ty = withOpen({ type: 'cap', skill: 'agents', target: 40, weeks: 10, due: 30 }); assert.ok(ty.length && ty.indexOf('cap') < 0 && ty.indexOf('inStep') < 0, ty.join());
+ty = withOpen({ type: 'cap', skill: 'coding', target: 40, weeks: 10, due: 30 }, { sector: 'Retail' }); assert.ok(ty.indexOf('cap') >= 0 && ty.indexOf('inStep') < 0, 'same skill: both can be met');
+ty = arrivals(s => { s.compute.rentPF = 0; const free = bookAll(s), x = live(s, 1, { pfPerWeek: 2 });
+  ask(s, x, { type: 'peak', target: Math.max(0, free - 2 - 3), weeks: 8, from: s.turn + 3, due: s.turn + 10 });
+  return [live(s, 1, { starts: s.turn - 13, pfPerWeek: 3 })]; }, 200).map(x => x.type);
+assert.ok(ty.indexOf('peak') < 0, 'the open peak (from week 3) leaves no room: ' + ty.join());
 // with a gap past the incident line, no clean ask
 got = arrivals(s => { s.model.skills.agents.cap = s.model.skills.agents.safe + 22; return [live(s, 1, { starts: s.turn - 13 })]; }, 120);
 assert.ok(!got.some(x => x.type === 'clean'));
@@ -280,10 +323,15 @@ s.turn += 21; q = step(s); assert.strictEqual(s.accounts.sectors.hot, null); ass
 // ---- memo: at most 3 account lines a week; meetings before asks before sectors before go-live ----
 s = game(); s.accounts.sectors.nextAt = s.turn;
 live(s, 1, { ends: s.turn, mood: 70 }); live(s, 1, { starts: s.turn });
-a = live(s, 1, { mood: 60 }); ask(s, a, { type: 'clean', target: 0, weeks: 13, due: s.turn });
+a = live(s, 1, { mood: 60 }); ask(s, a, { type: 'clean', target: 0, weeks: 13, due: s.turn - 1 });
 q = step(s, 1000, 4);
 assert.ok(q.memo.length <= K.memoMax);
 assert.ok(/renews/.test(q.memo[0].text) && /ask met/.test(q.memo[1].text), JSON.stringify(q.memo));
+// the overflow is folded into the last place, not dropped: 'Also this week: <sector swing>; <go-live>.'
+assert.ok(/^Also this week: .*(turns hot|turns cold).*; .*contracts? live\.$/.test(q.memo[2].text), q.memo[2].text);
+// a new swing outranks a swing ending the same week (p3 vs p4)
+s = game(); s.accounts.sectors.nextAt = s.turn; s.accounts.sectors.cold = { name: 'Legal', until: s.turn - 1, from: s.turn - 20 };
+q = step(s, 1000, 4); assert.ok(/turns (hot|cold) through/.test(q.memo[0].text) && /Legal budgets back to normal/.test(q.memo[1].text), JSON.stringify(q.memo));
 
 // ---- 0.3 save migration: no meetings, asks or sectors; swings from turn + 13; a contract inside 8 weeks gets its meeting ----
 s = game(); s.turn = 90; a = live(s, 1, { ends: 95 }); const far = live(s, 1, { ends: 140 });
