@@ -214,7 +214,7 @@
     let u0 = Infinity, u1 = -Infinity;
     pts.forEach(q => { _v.set(q[0], q[1], q[2]).applyMatrix4(fitCam.matrixWorldInverse); if (_v.z > -0.1) return; const u = _v.x / -_v.z; if (u < u0) u0 = u; if (u > u1) u1 = u; });
     if (!(u1 > u0)) return p;
-    const A = Math.max(W() / H(), R.DESIGN_ASPECT), Tu = Math.tan(p.fov * Math.PI / 360) * A, sx = p.shiftX || 0, m = 0.04 * Tu;
+    const A = Math.max(W() / H(), R.DESIGN_ASPECT), Tu = Math.tan(p.fov * Math.PI / 360) * A, sx = p.shiftX || 0, m = 0.1 * Tu;   // margin: room for the tag pill
     if (u0 - m >= (-1 + 2 * sx) * Tu && u1 + m <= (1 + 2 * sx) * Tu) return p;
     const half = (u1 - u0) / 2 + m;
     if (half <= Tu) {   // fits at this fov: the smallest shift that brings both sides in

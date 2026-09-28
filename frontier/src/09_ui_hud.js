@@ -132,7 +132,8 @@
 
   // ---------- the in-game menu (#hMenu) ----------
   U.gameMenu = function () {
-    const s = FR.state; if (!s || (FR.elevator && FR.elevator.riding)) return;   // not mid-ride: quitting would strand the ride const st = FR.settings || {};
+    // not mid-ride: quitting would strand the ride
+    const s = FR.state; if (!s || (FR.elevator && FR.elevator.riding)) return; const st = FR.settings || {};
     const seg = (id, key, opts) => `<div class="seg" id="${id}" role="group">${opts.map(([v, n]) => `<button class="btn small${!!st[key] === v ? ' sel' : ''}" data-k="${key}" data-v="${v ? 1 : 0}" aria-pressed="${!!st[key] === v}">${n}</button>`).join('')}</div>`;
     const failed = !!U._saveFailed;
     U.sheet(`<div class="wk wk-menu"><span class="kicker">${esc(s.lab.name)} · ${esc(FR.dateLabel(s.turn))}</span><h3>Game menu</h3>
