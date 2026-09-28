@@ -73,7 +73,7 @@ const turn = (s, rng) => { const r = rep(); M.ladder(s, rng, r); if (s.status ==
 { const s = fresh(); set(s, 'coding', 30, 10); set(s, 'reasoning', 30, 28); set(s, 'agents', 30, 28);
   const g = M.gains(s, alloc(0, 50, 5));
   assert.ok(g.safe.coding > g.safe.reasoning * 2, 'weighted toward the gap'); assert.strictEqual(g.cap.coding, 0);
-  M.train(s, alloc(0, 5000, 50), NO, rep());
+  M.train(s, alloc(0, 5e6, 5000), NO, rep());
   FR.SKILLS.forEach(k => assert.ok(s.model.skills[k].safe <= s.model.skills[k].cap + K.safeLead + 1e-9));
   assert.ok(Math.abs(s.model.skills.coding.safe - 33) < 1e-9, 'huge safety output fills to the lead cap');
   const b = M.boost(s, 'agents', { safe: 50 }); assert.strictEqual(s.model.skills.agents.safe, 33); assert.ok(b.safe <= 3);

@@ -6,7 +6,8 @@
     winTurns: 52,          // consecutive turns safely at the frontier to win
     safeMargin: 5,         // "safely": every safe >= cap - safeMargin
     newsKeep: 60, historyKeep: 312, doneKeep: 20,
-    allocExp: 0.6, staffExp: 0.4   // out = base * pf^allocExp * (staff+1)^staffExp (modules read these)
+    allocExp: 0.36, staffExp: 0.24   // out = base * pf^allocExp * (staff+1)^staffExp (modules read these). Sum < 1: returns
+                                     // to scale fall, so a raise buys less than proportional progress
   };
   const mods = () => [FR.model, FR.compute, FR.money, FR.market, FR.projects];
 

@@ -161,7 +161,7 @@ s.market.trust = 80; near(M.revenue(s, 1e4), d * Math.sqrt(1.3) * pr * 1.3 * 0.9
 s.market.trust = 50; s.compute.deals = [];
 s.market.rivals[0].cap = { coding: 50, reasoning: 50, agents: 50 }; near(M.zetaFactor(s), 1 - 10 * K.zetaDrag); near(M.revenue(s, 1e4), d * pr * (1 - 10 * K.zetaDrag));
 s.market.rivals[0].cap = { coding: 30, reasoning: 30, agents: 30 }; assert.strictEqual(M.zetaFactor(s), 1);
-setCap(s, 50); assert.ok(M.demandPF(s) > d); s.market.trust = 70; assert.ok(M.demandPF(s) > K.demandBase * 25);
+setCap(s, 50); assert.ok(M.demandPF(s) > d); s.market.trust = 70; assert.ok(M.demandPF(s) > K.demandBase * Math.pow(5, K.demandExp));
 // through the turn: serving beyond demand earns nothing extra
 s = game(); setCap(s, 40); s.sliders = { training: 0, serving: 100, safety: 0, research: 0 }; s.compute.rentPF = 400;
 s = run(s, 1); assert.strictEqual(s.money.revenue, Math.round(d * pr)); assert.strictEqual(s.lastReport.flows.money.servedPF, FR.round(d, 1));
