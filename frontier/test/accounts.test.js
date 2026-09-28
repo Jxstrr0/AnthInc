@@ -42,7 +42,7 @@ assert.strictEqual(A.fee(3, 105), Math.round(3 * K.feeBase * 1.3 / 1000) * 1000)
 
 // ---- init shape and 0.2 save migration ----
 let s = FR.sim.newGame({ seed: 2 });
-assert.deepStrictEqual(Object.keys(s.accounts).sort(), ['active', 'boost', 'cool', 'lost', 'offers', 'readyUntil', 'refreshAt', 'unlocked', 'used']);
+assert.deepStrictEqual(Object.keys(s.accounts).sort(), ['active', 'boost', 'cool', 'lost', 'offers', 'readyUntil', 'refreshAt', 'sectors', 'unlocked', 'used']);
 assert.strictEqual(s.accounts.unlocked, false); assert.strictEqual(A.reservedPF(s), 0); assert.strictEqual(A.maxActive(s), K.maxActive);
 const old = FR.clone(s); delete old.accounts; delete old.money.revMarket; delete old.money.revContracts;
 const mig = FR.sim.migrate(old);
@@ -193,34 +193,39 @@ s = FR.sim.endTurn(s, []); assert.strictEqual(s.accounts.active[0].mood, 28);
 s = FR.sim.endTurn(s, []); assert.strictEqual(s.accounts.active.length, 0); assert.strictEqual(s.accounts.lost[0].why, 'churn');
 assert.ok(s.lastReport.events.some(e => e.type === 'account:churned'));
 
-// ---- renewal at the next tier's fee when mood >= 60; otherwise the account leaves quietly ----
+// ---- renewal (V0.4: the renewal meeting replaced the automatic renewal). Push up at mood 70+ goes one tier up with PF
+// scaled; an unanswered meeting renews at the same tier when mood allows (owner call), else the account leaves quietly ----
 s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = 999;
-a = live(s, 1, { ends: s.turn, mood: 65 }); const b = live(s, 2, { ends: s.turn, mood: 55 });
+a = live(s, 1, { ends: s.turn, mood: 72, meeting: { opens: s.turn - 8, answer: 'up' } }); const b = live(s, 2, { ends: s.turn, mood: 43 });   // +1 this week: 44, under 45
+const c0 = live(s, 1, { ends: s.turn, mood: 55 });
 q = step(1000);
 assert.strictEqual(a.tier, 2); assert.strictEqual(a.feePerWeek, A.fee(2, s.turn + 1)); assert.strictEqual(a.ends, s.turn + K.turns[1]);
 assert.strictEqual(a.pfPerWeek, 19, 'reserved PF scaled into tier 2 (10 of 8-14 -> 19 of 16-26): the fee per PF holds');
 assert.ok(s.accounts.active.indexOf(a) >= 0); assert.ok(s.accounts.active.indexOf(b) < 0);
+assert.deepStrictEqual([c0.tier, c0.ends], [1, s.turn + K.turns[0]], 'unanswered at mood 55: renews at the same tier');
 assert.deepStrictEqual(s.accounts.lost.map(x => [x.name, x.why]), [[b.name, 'expired']]);
 assert.ok(q.events.some(e => e.type === 'account:churned' && e.why === 'expired'));
+assert.ok(q.events.some(e => e.type === 'account:renewed' && e.id === a.id && e.tier === 2 && e.up === true));
 assert.ok(q.memo.some(m => m.text.indexOf(a.name + ' renews at tier 2 for 104 weeks at ') === 0 && /reserving 19 PF, up from 10/.test(m.text)), JSON.stringify(q.memo));
-assert.strictEqual(q.memo.filter(m => /renews|without renewal/.test(m.text)).length, 2);
-// a tier 3 renews at tier 3 (this year's fee)
-s.turn = 60; a.tier = 3; a.ends = 60; a.mood = 70; step(1000); assert.strictEqual(a.tier, 3); assert.strictEqual(a.ends, 60 + 156);
-// the renewal-due line 8 weeks out
+assert.strictEqual(q.memo.filter(m => /renews|without renewal/.test(m.text)).length, 3);
+// a tier 3 pushed up renews at tier 3 (this year's fee)
+s.turn = 60; a.tier = 3; a.ends = 60; a.mood = 70; a.meeting = { opens: 52, answer: 'up' }; step(1000); assert.strictEqual(a.tier, 3); assert.strictEqual(a.ends, 60 + 156);
+// the renewal-due line 8 weeks out (the meeting opens)
 a.ends = s.turn + K.dueWarn + 1; s.turn++; q = step(1000); assert.ok(q.memo.some(m => m.kind === 'due' && m.text.indexOf(a.name + ' contract ends') === 0));
-// a lab short of the next tier's minimums renews at the same tier (this year's fee, same PF): no tier-3 fee for a tier-1 book
+assert.ok(a.meeting && a.meeting.answer === null);
+// a lab short of the next tier's minimums renews at the same tier on Push up (this year's fee, same PF)
 s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = 999; s.market.trust = K.minTrust[1] - 1;
-a = live(s, 1, { ends: s.turn, mood: 70, pfPerWeek: 8 }); step(1000);
+a = live(s, 1, { ends: s.turn, mood: 70, pfPerWeek: 8, meeting: { opens: s.turn - 8, answer: 'up' } }); step(1000);
 assert.deepStrictEqual([a.tier, a.pfPerWeek, a.feePerWeek, a.ends], [1, 8, A.fee(1, s.turn + 1), s.turn + K.turns[0]]);
 
-// ---- at most two account memo lines a week, the urgent ones first ----
+// ---- at most K.memoMax (3) account memo lines a week, the urgent ones first ----
 s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = s.turn + 1;
 for (let i = 0; i < 4; i++) live(s, 1, { ends: s.turn, mood: 70 });
 live(s, 1, { mood: 10 });
 q = step(1000);
 assert.strictEqual(q.memo.length, K.memoMax); assert.ok(/has ended its contract/.test(q.memo[0].text));
 q.events.push({ type: 'model:incident', skill: 'coding', gap: 21 }); A.shock(s, q);
-assert.strictEqual(q.memo.length, K.memoMax, 'the week already used both lines');
+assert.strictEqual(q.memo.length, K.memoMax, 'the week already used its lines');
 // two accounts leaving in the same week share one memo line (none is lost under the two-line cap)
 s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = s.turn + 50;
 live(s, 1, { mood: 10 }); live(s, 1, { mood: 12 }); live(s, 1, { mood: 11 });

@@ -137,6 +137,22 @@ function accounts(bot, s, cash, cmds) {
     cmds.push({ type: 'signAccount', id: o.id }); room--; left -= cost;
   });
 }
+// V0.4 renewal meetings and client asks. Meetings: Push up when allowed, Renew otherwise, Let go below 45 mood only when
+// the board holds a better offer (it qualifies for, at a higher fee per PF). Asks: accept what the forecast says the lab
+// can meet (FR.accounts.askView onTrack), decline the rest while the window is open.
+function book(bot, s, cmds) {
+  const A = FR.accounts, st = s.accounts; if (!bot.accounts || !st) return;
+  A.meetings(s).forEach(a => {
+    const v = A.meetingView(s, a);
+    const better = st.offers.some(o => s.turn <= o.expires && A.qualifies(s, o).ok && o.feePerWeek / o.pfPerWeek > a.feePerWeek / a.pfPerWeek);
+    const pick = v.up.chance > 0 ? 'up' : a.mood < A.K.meet.renewMood && better ? 'go' : 'renew';
+    if (pick !== v.answer) cmds.push({ type: 'renewAccount', id: a.id, choice: pick });
+  });
+  A.asks(s).forEach(a => {
+    const v = A.askView(s, a);
+    if (v.answered == null && v.declinable) cmds.push({ type: 'answerAsk', id: a.id, accept: v.onTrack });
+  });
+}
 // a capability milestone on one skill is open and not yet met
 function chasing(s) { const ms = s.money.milestone, p = ms && FR.money.progress(s, ms); return !!(p && ms.kind === 'cap' && !p.met && !s.money.offer); }
 function decide(bot, s) {
@@ -156,21 +172,23 @@ function decide(bot, s) {
   cmds.unshift(Object.assign({ type: 'sliders' }, bot.full(s, t)));
   greenlight(s, bot.score, cash, t.budget, cmds);
   accounts(bot, s, cash, cmds);
+  book(bot, s, cmds);
   return cmds;
 }
 
 function play(bot, seed) {
-  let s = FR.sim.newGame({ seed }), front = null, signed = 0, churned = 0, expired = 0, bAt = null, bAmt = null, bPct = null;
+  let s = FR.sim.newGame({ seed }), front = null, signed = 0, churned = 0, expired = 0, bAt = null, bAmt = null, bPct = null, renewed = 0, upped = 0, asksMet = 0, asksMissed = 0;
   while (s.status === 'playing' && s.turn <= TURNS) {
     s = FR.sim.endTurn(s, decide(bot, s));
     if (front == null && FR.sim.atFrontier(s)) front = s.lastReport.turn;   // first week level with or ahead of the best rival
     s.lastReport.events.forEach(e => { if (e.type === 'account:signed') signed++; if (e.type === 'account:churned') { if (e.why === 'churn') churned++; else expired++; }
-      if (e.type === 'money:round' && e.round === 'b') { bAt = s.lastReport.turn; bAmt = e.amount; bPct = e.pct; } });
+      if (e.type === 'money:round' && e.round === 'b') { bAt = s.lastReport.turn; bAmt = e.amount; bPct = e.pct; }
+      if (e.type === 'account:renewed') { renewed++; if (e.up) upped++; } if (e.type === 'account:askMet') asksMet++; if (e.type === 'account:askMissed') asksMissed++; });
   }
   const live = s.status === 'playing';
   return { seed, outcome: live ? 'alive' : s.status === 'dead' ? 'dead:' + s.end.cause + (s.end.skill ? '/' + s.end.skill : '') : s.status,
     turn: live ? s.turn - 1 : s.turn, peak: s.model.peakCap, inc: s.stats.incidents, fw: s.stats.firstsWon, fl: s.stats.firstsLost,
-    hold: s.win.best, cash: s.money.cash, dead: s.status === 'dead' ? s.end.cause : null, front, signed, churned, expired, bAt, bAmt, bPct,
+    hold: s.win.best, cash: s.money.cash, dead: s.status === 'dead' ? s.end.cause : null, front, signed, churned, expired, bAt, bAmt, bPct, renewed, upped, asksMet, asksMissed,
     stake: s.money.founderPct, rounds: s.money.roundsDone.join('') };
 }
 
@@ -194,7 +212,8 @@ if (require.main === module) {
       (dead.length ? Object.keys(causes).map(c => c + ' ' + causes[c]).join(', ') : 'none') + ' | median death turn ' + median(dead.map(r => r.turn)) +
       ' | past year 4 ' + past4 + ' | first frontier median ' + median(fronts) + ' (' + fronts.length + ' seeds, ' + fronts.filter(f => f <= 104).length + ' by week 104) | B taken ' + bs.length +
       (bs.length ? ' (median week ' + median(bs.map(r => r.bAt)) + ', ' + FR.fmtMoney(medianF(bs.map(r => r.bAmt))) + ' for ' + FR.round(100 * medianF(bs.map(r => r.bPct)), 1) + '%)' : '') +
-      ' | stake median ' + FR.round(medianF(rows.map(r => r.stake)), 1) + '% | accounts signed ' + sum(r => r.signed) + ', churned ' + sum(r => r.churned) + ', ended ' + sum(r => r.expired);
+      ' | stake median ' + FR.round(medianF(rows.map(r => r.stake)), 1) + '% | accounts signed ' + sum(r => r.signed) + ', churned ' + sum(r => r.churned) + ', ended ' + sum(r => r.expired) +
+      ' | renewed ' + sum(r => r.renewed) + ' (' + sum(r => r.upped) + ' up) | asks met ' + sum(r => r.asksMet) + ', missed ' + sum(r => r.asksMissed);
     console.log(line); lines.push(line);
   });
   console.log('\nSUMMARY (' + ((Date.now() - t0) / 1000).toFixed(1) + 's)\n' + lines.join('\n'));

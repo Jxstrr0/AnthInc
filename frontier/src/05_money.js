@@ -356,6 +356,13 @@
     // accounts after revenue resolves (mood, churn, expiry and renewal, the offer board); their lines follow the money lines
     const acct = { turn: report.turn, events: report.events, memo: [], news: report.news, flows: report.flows, deferAccounts: report.deferAccounts };
     if (FR.accounts) FR.accounts.step(s, alloc, rng, acct);
+    // an account ask met this week pays its bonus now, in this week's revenue (the incident factor and DeepField share
+    // are already applied by FR.accounts)
+    const bonus = Math.round((report.flows.accounts && report.flows.accounts.bonus) || 0);
+    if (bonus > 0) {
+      m.revenue += bonus; m.revContracts += bonus; m.net += bonus; m.cash += bonus;
+      Object.assign(report.flows.money, { revenue: m.revenue, contracts: m.revContracts, net: m.net, cash: m.cash, askBonus: bonus });
+    }
     arrivals(s, next, report);
     m.valuation = M.valuation(s);
     const tail = () => { report.memo.push.apply(report.memo, acct.memo); if (report.flows.accounts) report.flows.accounts.at = report.memo.length; };

@@ -49,6 +49,8 @@
     // V0.3: enterprise accounts and the revenue split (0.2 saves have neither)
     if (d.money && !d.accounts && FR.accounts) FR.accounts.init(d);
     if (d.accounts) ['active', 'offers', 'lost', 'used', 'cool'].forEach(k => { if (!d.accounts[k]) d.accounts[k] = []; });
+    // V0.4: meetings, asks and sector swings (a 0.3 save has none; swings roll from 13 weeks on)
+    if (d.accounts && FR.accounts.migrate) FR.accounts.migrate(d);
     if (d.money && d.money.revMarket == null) { d.money.revMarket = d.money.revenue || 0; d.money.revContracts = 0; }
     if (d.money && d.money.passes == null) d.money.passes = 0;
     // a 0.2 save past its Series A: the B opens on a revenue milestone set from the trailing revenue (not 'Investors are back')
@@ -106,6 +108,8 @@
       case 'greenlight': return FR.projects.greenlight(s, c.offerId);
       case 'signAccount': return FR.accounts.sign(s, c.id);
       case 'declineAccount': return FR.accounts.decline(s, c.id);
+      case 'renewAccount': return FR.accounts.renew(s, c.id, c.choice);
+      case 'answerAsk': return FR.accounts.answerAsk(s, c.id, !!c.accept);
       case 'cancel': return FR.projects.cancel(s, c.uid);
       case 'retire': {
         const text = s.lab.name + ' closed by its founders in ' + FR.dateLabel(s.turn) + '. The record stands as filed.';
@@ -223,7 +227,8 @@
     const g = FR.model.gains(s, alloc);
     const net = revenue - burn;
     const split = FR.money.revenueSplit(s, alloc.serving.pf);
-    return { capacity: alloc.capacity, alloc, revenue, market: split.market, contracts: split.contracts, burn, net, runway: net >= 0 ? Infinity : Math.floor(s.money.cash / -net), capGain: g.cap, safeGain: g.safe };
+    return { capacity: alloc.capacity, alloc, revenue, market: split.market, contracts: split.contracts, burn, net, runway: net >= 0 ? Infinity : Math.floor(s.money.cash / -net),
+      capGain: g.cap, safeGain: g.safe, fieldGain: g.field || {}, fieldPF: FR.model.fieldPF ? FR.model.fieldPF(s) : {} };   // capGain includes fieldGain (client work)
   };
 
   // end-of-run sheet. Plain, explainable parts.

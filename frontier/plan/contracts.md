@@ -534,3 +534,128 @@ Projects (07_projects.js): "Reference customer program" has `room: true` (dealt 
 its payoff text names the wider reach. The V0.1 template "Enterprise contract" is renamed "Fixed-scope deployment".
 
 Balance tool: `--noB` also adds `balanced-lateB` (declines the B until week 80, then takes it).
+
+## V0.4 — the late-game book (binding; design: docs/frontier-handoff-v0.4.html §3-§5)
+
+Owner calls: renewal meetings (Renew / Push up / Let go) replace the automatic renewal; client asks and sector swings;
+client work trains the sector's skill (map kept as the handoff's first pass). **An unanswered meeting at the last contract
+week renews at the same tier if mood allows (≥ `K.meet.renewMood` 45, +10 in a cold sector), otherwise it lapses as
+'expired'.**
+
+State (05b_accounts owns; all new fields exist on new games and after `FR.sim.migrate`):
+```
+accounts: { ..., sectors: { hot: { name, until, from } | null, cold: { name, until, from } | null, nextAt, last: { [sector]: turn } } }
+                                   // until = last week of the swing (inclusive); last = the week each sector's last swing ended
+active[]: { ..., meeting: null | { opens, answer: null | 'renew' | 'up' | 'go' },
+            ask: null | { type: 'cap'|'inStep'|'peak'|'clean'|'cost', skill, target, arrived, from, due, weeks, progress,
+                          reward, answered: null | true, declineBy },
+            field,                 // last week's field PF (served × K.field.rate), for the readout
+            hot?, cut? }           // hot: signed from an offer dealt while its sector was hot (+25% for the term);
+                                   // cut: the fee cut a cost ask applied
+offers[]: { ..., hot? }            // dealt while its sector is hot: fee already × K.sector.hotFee
+lost[].why / cool[].why            // adds 'let go' (rests K.cooldown weeks like 'expired'; no trust cost)
+```
+Ask fields by type: `cap` — skill = the sector's skill, target = capability, due = arrived + 8..16, progress = current cap
+(1 dp). `inStep` — skill null, target = 3 (every gap ≤ 3), weeks = 8 consecutive, due = arrived + 12, progress = weeks in
+a row so far. `peak` — target = extra PF (30-50% of the contract PF, min 3), from = arrived + 2..4, weeks = 8, due =
+from + 7, progress = weeks served in full. `clean` — target 0, weeks = 13..26, due = arrived + weeks. `cost` (cold sector
+only) — target = 0.15 (the cut), due = ends. reward = 4 × feePerWeek (rounded to $1k; paid × incident factor × (1 −
+DeepField share)). declineBy = arrived + 2 (commands on turns ≤ declineBy may decline).
+
+APIs (05b_accounts.js, `FR.accounts`), new or changed:
+- `K.sectorSkill` { Banking, Retail, Energy, Telecoms → 'coding'; Insurance, Pharma, Legal → 'reasoning'; Logistics,
+  'Public sector' → 'agents' }. `A.SECTORS` (the 9 sector names). `skillOf(sectorOrAccount) → skill | null`.
+- `fieldPF(s) → { coding, reasoning, agents }` — training-PF equivalent from client work this week: Σ over live accounts
+  of last week's `served` × `K.field.rate`, by the sector's skill (2 dp). Onboarding and leaving accounts give 0.
+- `pfOf(s, a)` = pfPerWeek + `peakPF(s, a)` (a running, not-declined peak ask's extra PF from `from` to `due`).
+  `reservedPF`, `serve` and `feeRevenue` use it; the peak's extra PF is unpaid (the fee is paid on the contract PF share).
+- `swing(s, sector) → 'hot'|'cold'|null`; `sectorStrip(s) → [ { name, kind, skill, from, until, weeksLeft } ]` (hot first;
+  the Serving strip: hot in board blue, cold in grey, weeks left).
+- `meetings(s) → [account]` (open meetings, not leaving). `meetingView(s, idOrAccount) → { id, name, opens, answer, ends,
+  weeksLeft, cold, mood, renew: { ok, need, text }, up: { ok, tier, need, sure, chance, qualifies, why, text },
+  go: { ok, text }, unanswered, text }` — `chance` is 0, 0.5 or 1 with the lab as it is now; `text` = the line for the
+  current answer (or `unanswered`). e.g. up.text "Push up to tier 2: accepts at mood 70+ (now 64: even odds; a refusal
+  renews at tier 1)."
+- `renew(s, id, choice) → {ok, why, memo}` — choice 'renew' | 'up' | 'go'; refused before the meeting opens, for a leaving
+  account, 'up' at tier 3. Changeable until the last contract week (commands in that week still count). Memo key
+  'meeting:<id>' (one pending line per account).
+- `asks(s) → [account]` (open asks). `askView(s, idOrAccount) → { id, name, type, skill, target, progress, due, from,
+  weeksLeft, declinable, declineBy, answered, reward, onTrack, progressText }` — progressText e.g. "35 / 38 · 6 weeks left",
+  "3 / 8 weeks in step · 5 weeks left", "6 PF more from Year 2, Week 8", "4 weeks clean · 9 weeks left"; onTrack = the
+  forecast on today's sliders and target meets it (cap: projected to due; inStep: gap after a week ≤ 3 and weeks remain;
+  peak: serving PF covers the book + the peak; clean: no gap over the incident line).
+- `answerAsk(s, id, accept) → {ok, why, memo}` — accept: cost asks apply at once (fee × 0.85 for the term, mood +10, ask
+  cleared); other asks set `answered = true` and run on. Decline: only while `s.turn ≤ declineBy` and not yet accepted;
+  mood −5 (cost: −10), ask cleared. Memo key 'ask:<id>'.
+- `migrate(s)` — 0.3 → 0.4 fill (see below). `debug(s)` adds `field` (fieldPF), `asksOpen`, `meetingsOpen`, `sectors`
+  (the strip).
+- Retired: the automatic renewal. `K.mood.renew` (60) stays only as the UI's mood colour mark (= `K.meet.upMood`).
+
+03_model.js: `train` adds field training after the target's training: each skill with field PF f gains
+`FR.sim.output(trainBase, f, f × trainingStaff / trainingPF) × noise × dim(cap)` (no spillover; the week's training
+noise; drift `K.drift` of the gain). `gains(s, alloc) → { cap, safe, field }` (cap/safe include client work; field =
+capability from client work by skill). `fieldPF(s)` (zeros without accounts). `fieldText(field) → "Client work: +0.4
+agents, +0.2 coding a week."` ('' when nothing reaches 0.05). The weekly training memo line appends "Client work: +0.1
+coding, +0.1 reasoning." `report.flows.model.field`.
+
+02_sim.js: `forecast(s)` adds `fieldGain` (= gains.field) and `fieldPF`; `capGain` includes the field gain. apply1:
+`{ type: 'renewAccount', id, choice }`, `{ type: 'answerAsk', id, accept }`. `migrate` calls `FR.accounts.migrate`.
+05_money.js: after `FR.accounts.step`, `report.flows.accounts.bonus` (asks met this week) is added to revenue,
+revContracts, net and cash; `report.flows.money.askBonus`.
+06_market.js: `FR.market.SECTOR_NEWS[kind][sector]` — the wire line printed the week a swing starts (from the
+`account:sector` event), e.g. "Banking budgets tighten; lenders pause new AI contracts."
+
+K (first pass, `FR.accounts.K`):
+- `field.rate` **0.25** (handoff first pass 0.35: customer-first won 30% on the 20-seed probe; lowered per §6).
+- `meet` { renewMood 45, upMood 60, upSure 70, upOdds 0.5, coldAdd 10, warnAt [8, 4, 1] }; `dueWarn` 8 (the meeting opens).
+- `ask` { chance 0.35, maxOpen 2, after 13, every 13, quiet 12, declineWeeks 2, weights { cap 35, inStep 25, peak 20,
+  clean 20 }, bonusWeeks 4, metMood 10, missMood 15, declineMood 5, capAdd [[3,4],[4,5],[5,6]] by tier, capWeeks [8,16],
+  stepGap 3, stepWeeks 8, stepSpare 4, peakShare [0.3,0.5], peakMin 3, peakLead [2,4], peakWeeks 8, cleanWeeks [13,26],
+  costCut 0.15, costMood 10, costDecline 10 }.
+- `sector` { every 26, hotChance 0.6, weeks [13,26], cooldown 26, hotWeight 3, hotFee 1.25, hotMood 1, hotTop 85, coldMood 1 }.
+- `memoMax` 3.
+
+Rules:
+- Meeting: opens when a live contract has `dueWarn` 8 weeks left (event `account:meeting`, a 'due' line "X contract ends
+  <date>. Mood 72. Renewal meeting open: Renew, Push up or Let go on the Serving floor. Unanswered, it renews at tier 1.");
+  'due' lines again at 4 and 1 weeks left. Resolved in the step of `ends` (after this week's mood): 'go' → leaves, why 'let
+  go', rests 52 weeks, no trust cost. 'up' → needs tier < 3, mood ≥ 60 (+10 cold) and the next tier's minimums now; mood ≥
+  70 (+10 cold) goes up (PF scaled with scalePF, next tier's fee and length), 60-69 goes up on `rng.chance(0.5)`, else the
+  same tier (memo says it declined). A push up that cannot happen falls back to Renew. Renew / unanswered / fallback →
+  same tier and length, fee = fee(tier, next week), PF unchanged, if mood ≥ 45 (+10 cold); otherwise 'expired' with the
+  reason in the memo. A renewal clears meeting, ask and `hot` (the renewed fee is the plain fee).
+- Asks: a live account rolls `chance` when (turn − starts) ≥ 13 and is a multiple of 13, it has no ask, fewer than 2 asks
+  are open and ends − turn > 12. The type is drawn by weight among types it can meet in time (cap: the projected skill cap
+  at full training on that skill by due reaches the target; inStep: full safety for 4 weeks brings every gap ≤ 3; peak:
+  free PF covers the book + onboarding + the amount; clean: no gap over the incident line; each needs its due ≤ ends − 12).
+  In a cold sector the ask is always 'cost'. Checks run from the week after arrival: cap met the week the cap reaches the
+  target, missed at due; inStep met at 8 consecutive weeks, missed once the weeks left cannot make it; peak missed on any
+  week short in the window, met at due; clean met at due, failed by `shock()` on a lab incident; cost accepted by silence
+  in the step of `declineBy`. Met: bonus × factor into this week's revenue, mood +10. Missed: mood −15 (below 30: leaving).
+- Sectors: `nextAt` = unlock + 26, then every 26 weeks: 60% hot, else cold; nothing if that slot is taken; the sector is
+  one not swinging and not within 26 weeks of its last swing's end; 13-26 weeks. Hot: its names weigh 3 in dealing, its
+  offers carry fee × 1.25 (rounded to $1k) for the term, its live accounts served in full gain +1 more mood a week toward
+  85. Cold: no offers dealt from it, its live accounts lose 1 mood a week while the lab is out of step, asks are 'cost',
+  meeting thresholds +10. A swing past `until` ends with a memo line ("Banking budgets back to normal: offers resume.").
+- Step order (§4): unlock → sector swings → service and mood (hot/cold drift; a.served, a.field) → asks → meetings at ends
+  → churn (accounts marked leaving before this week) → go-live line → the board → new asks → meetings open / warnings.
+  `shock()` after the ladder also fails open clean asks.
+- Memo priority (at most 3 a week): p0 an account leaving (always one place, as V0.3) → p1 meetings (open, warnings,
+  results) → p2 asks (arrived, met, missed, cost applied) → p3 sector swings → p4 go-live, mood-watch flags, the shock line
+  → p5 the board.
+
+Commands: `{ type: 'renewAccount', id, choice: 'renew'|'up'|'go' }`, `{ type: 'answerAsk', id, accept: true|false }`
+(02_sim apply1 → FR.accounts). 99_main should wrap them as `FR.cmd.renewAccount(id, choice)` / `FR.cmd.answerAsk(id,
+accept)` through `FR.cmd.do`.
+
+Events: `account:meeting {id, name, ends}`, `account:renewed {id, name, tier, up}`, `account:ask {id, name, ask}` (ask =
+the ask's type; `type` is the event's own), `account:askMet {id, name, bonus}`, `account:askMissed {id, name}`,
+`account:sector {name, kind: 'hot'|'cold', until}`; `account:churned` why adds 'let go'.
+
+Save migration (0.3 → 0.4, `FR.accounts.migrate` via `FR.sim.migrate`): `sectors` = { hot: null, cold: null, nextAt:
+turn + 13 (0 while locked: set at unlock), last: {} }; every active account gets `meeting: null`, `ask: null`, `field: 0`;
+a live account with fewer than 8 weeks left gets `meeting = { opens: turn, answer: null }`.
+
+Balance tool: the bots answer meetings (Push up when `meetingView().up.chance > 0`, Renew otherwise, Let go below 45 only
+when the board holds a qualifying offer at a better fee per PF) and asks (accept when `askView().onTrack`, else decline
+inside the window). The summary line adds renewals (ups) and asks met / missed.

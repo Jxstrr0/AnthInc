@@ -69,30 +69,51 @@
     }
   }
   // mutates `skills`; returns { cap:{}, safe:{} } deltas plus totals for the memo
-  function run(skills, target, alloc, noise) {
-    const before = {}, d = { cap: {}, safe: {}, drift: 0 };
+  // field: training PF from client work by skill (FR.accounts.fieldPF, V0.4 §3.1). Each skill's field PF trains it as that
+  // many training PF would (staff = the lab's training staff per training PF), with no spillover, the same noise,
+  // diminishing returns and drift. d.field = the capability it added by skill.
+  function run(skills, target, alloc, noise, field) {
+    const before = {}, d = { cap: {}, safe: {}, drift: 0, field: {} };
     FR.SKILLS.forEach(k => { before[k] = { cap: skills[k].cap, safe: skills[k].safe }; });
-    const tOut = out(K.trainBase, part(alloc, 'training')) * noise;
+    const tr = part(alloc, 'training'), tOut = out(K.trainBase, tr) * noise, spp = tr.pf > 0 ? (tr.staff || 0) / tr.pf : 0;
     FR.SKILLS.forEach(k => {
       const sk = skills[k], g = Math.min(100 - sk.cap, tOut * (k === target ? 1 : K.spill) * dim(sk.cap));
       sk.cap += g; const dr = Math.min(sk.safe, g * K.drift); sk.safe -= dr; d.drift += dr;
+    });
+    FR.SKILLS.forEach(k => {
+      const f = (field && field[k]) || 0; d.field[k] = 0; if (f <= 0) return;
+      const sk = skills[k], g = Math.min(100 - sk.cap, FR.sim.output(K.trainBase, f, spp * f) * noise * dim(sk.cap));
+      sk.cap += g; const dr = Math.min(sk.safe, g * K.drift); sk.safe -= dr; d.drift += dr; d.field[k] = g;
     });
     spread(skills, out(K.safeBase, part(alloc, 'safety')));
     FR.SKILLS.forEach(k => { d.cap[k] = skills[k].cap - before[k].cap; d.safe[k] = skills[k].safe - before[k].safe; });
     return d;
   }
 
+  // field training PF by skill this week (client work, V0.4); zeros without accounts
+  M.fieldPF = function (state) {
+    if (FR.accounts && FR.accounts.fieldPF && state.accounts) return FR.accounts.fieldPF(state);
+    const f = {}; FR.SKILLS.forEach(k => { f[k] = 0; }); return f;
+  };
+  // expected gains (no noise). cap/safe include client work; field = the capability client work adds by skill
   M.gains = function (state, alloc) {
-    const d = run(FR.clone(state.model.skills), state.target, alloc, 1);
-    return { cap: d.cap, safe: d.safe };
+    const d = run(FR.clone(state.model.skills), state.target, alloc, 1, M.fieldPF(state));
+    return { cap: d.cap, safe: d.safe, field: d.field };
+  };
+  // "Client work: +0.4 agents, +0.2 coding a week." from a field map ('' when nothing reaches 0.05)
+  M.fieldText = function (field) {
+    const bits = FR.SKILLS.filter(k => field && field[k] >= 0.05).sort((a, b) => field[b] - field[a]).map(k => '+' + r1(field[k]) + ' ' + NAME(k).toLowerCase());
+    return bits.length ? 'Client work: ' + bits.join(', ') + ' a week.' : '';
   };
 
   M.train = function (state, alloc, rng, report) {
     const noise = rng.range(1 - K.trainNoise, 1 + K.trainNoise);
-    const d = run(state.model.skills, state.target, alloc, noise);
-    report.flows.model = { cap: d.cap, safe: d.safe, drift: d.drift, noise };
+    const d = run(state.model.skills, state.target, alloc, noise, M.fieldPF(state));
+    report.flows.model = { cap: d.cap, safe: d.safe, drift: d.drift, noise, field: d.field };
     const t = state.target, up = d.cap[t], added = FR.SKILLS.reduce((a, k) => a + d.safe[k], 0) + d.drift, bits = [];
     if (up > 0.05) bits.push('Training on ' + NAME(t) + ': capability ' + r1(state.model.skills[t].cap) + ', up ' + r1(up) + '.');
+    const fb = FR.SKILLS.filter(k => d.field[k] >= 0.05).map(k => '+' + r1(d.field[k]) + ' ' + NAME(k).toLowerCase());
+    if (fb.length) bits.push('Client work: ' + fb.join(', ') + '.');
     if (added > 0.05 || d.drift > 0.05) bits.push('Safety work added ' + r1(added) + ' across skills; drift took ' + r1(d.drift) + '.');
     if (bits.length) report.memo.push({ kind: 'change', text: bits.join(' ') });
   };
