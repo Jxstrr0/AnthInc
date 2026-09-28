@@ -465,7 +465,10 @@
     const W0 = PLQ.cw, H0 = PLQ.ch; x.save(); x.translate(cx, cy); x.clearRect(0, 0, W0, H0);
     rect(x, 0, 0, W0, H0, p.dark ? '#0b0e12' : '#1a222c'); rect(x, 0, 0, W0, 3, p.dark ? '#151a20' : '#2f3c4a');
     rect(x, 0, 0, 12, H0, p.dark ? '#2a1414' : TIER_COL[p.tier] || HX.brandB);
-    T(x, fit((x.font = fnt(700, 48, DISP), x), p.name, W0 - 64), 36, 60, 48, p.dark ? HX.ink3 : HX.ink, 'left', 700, DISP, W0 - 64);
+    // the buyer’s name: 48 px, shrunk to fit down to 30 px, then cut with an ellipsis
+    x.font = fnt(700, 48, DISP); const nw = x.measureText(p.name).width, ns = nw > W0 - 64 ? Math.max(30, Math.floor(48 * (W0 - 64) / nw)) : 48;
+    x.font = fnt(700, ns, DISP);
+    T(x, fit(x, p.name, W0 - 64), 36, 60, ns, p.dark ? HX.ink3 : HX.ink, 'left', 700, DISP, W0 - 64);
     T(x, p.dark ? 'LEFT ' + wk(p.left).toUpperCase() : (p.sector || 'Enterprise').toUpperCase() + ' · TIER ' + p.tier, 36, 110, 24, p.dark ? '#5d6875' : HX.ink3, 'left', 600, MONO, W0 - 64);
     if (p.dark) { T(x, 'CONTRACT ENDED', 36, 172, 34, HX.bad, 'left', 700, MONO); x.restore(); return; }
     T(x, fmtPF(p.pf) + ' · ' + kfmt(p.fee) + '/WK', 36, 160, 32, HX.gold, 'left', 500, MONO, W0 - 64);
@@ -521,6 +524,12 @@
     cw.plq.instanceMatrix.needsUpdate = cw.frm.instanceMatrix.needsUpdate = true; if (cw.plq.instanceColor) cw.plq.instanceColor.needsUpdate = true;
     cw.tex.needsUpdate = true;
     cw.lit = d.list.filter(p => !p.dark).length; cw.dark = d.list.length - cw.lit; cw.names = d.list.map(p => (p.dark ? '(dark) ' : '') + p.name);
+    if (cw.target) cw.target.focus = clientFocus(d.list.length);
+  }
+  // the close-up frames the name plate and the rows of plaques in use (two rows minimum), so a short book reads large
+  function clientFocus(n) {
+    const rows = Math.max(2, Math.ceil(n / PLQ.cols)), top = 3.82, bot = PLQ.y0 - (rows - 1) * PLQ.dy - PLQ.h / 2 - 0.08;
+    return aim([PLQ.x, (top + bot) / 2, -6.9], 0, 6, fitD(2.5, top - bot));
   }
   R.floors.serving = { build(id) {
     const g = start(), scr = [];
@@ -561,8 +570,9 @@
       { id: 'serving.wall', label: 'Status wall', box: [-1.3, 0.75, -7, 6.5, 3.8, -6.8], focus: aim([2.6, 2.15, -6.9], 0, 10, fitD(7.8, 2.8)) },
       { id: 'serving.racks', label: 'Rack row', box: [-6.85, 0, -4.4, -5.75, 2.3, 5.4], focus: aim([-6.3, 1.1, 0.5], 68, 18, 10.5) },
       { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: aim([2.6, 0.8, -2.0], 0, 45, 11) },
-      { id: 'serving.accounts', label: 'Client wall', box: [-3.55, 1.0, -7, -1.35, 3.85, -6.8], focus: aim([PLQ.x, 2.4, -6.9], 0, 8, fitD(2.5, 2.9)) }
+      { id: 'serving.accounts', label: 'Client wall', box: [-3.55, 1.0, -7, -1.35, 3.85, -6.8], focus: clientFocus(0) }
     ];
+    cw.target = targets[targets.length - 1];
     let act = 0, dark = false, nWalk = 0, split0 = { walk: 0, sit: 0, stand: 0 }, scroll = 0;
     const f = { group: g, elevator: ev, targets, get hint() { return dark ? 'An incident is under review. Serving earns half for 3 weeks. Tap the status wall for serving.' : 'Tap the status wall for the serving share, demand and rented compute.'; },
       view: { pos: [3.1, 26.61, 14.57], look: [0, 0.8, 0], fov: 60, shift: -0.029, shiftX: 0.012 },

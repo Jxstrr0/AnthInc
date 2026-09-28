@@ -205,7 +205,12 @@
       el.addEventListener('click', go); el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } }); };
     chip('hudCashChip', 'money', () => { if (hasBook(FR.state)) U.split(); else route('boardroom.money'); });
     // the split card closes on any tap elsewhere, a sheet, a ride, End Turn or Escape
-    document.addEventListener('pointerdown', e => { if (U.splitOpen() && !e.target.closest('#hudSplit,#hudCashChip')) U.split(false); }, true);
+    // (a tap on the 3D view or a tag that closes the card is spent on closing it: it does not also glide to an object)
+    document.addEventListener('pointerdown', e => {
+      if (!U.splitOpen() || e.target.closest('#hudSplit,#hudCashChip')) return;
+      U.split(false);
+      if (e.target.closest('canvas,#tags')) e.stopPropagation();
+    }, true);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && U.splitOpen()) U.split(false); });
     ['ui:sheet', 'elevator:ride', 'turn:ended', 'game:new', 'game:loaded'].forEach(ev => FR.on(ev, () => { if (U.splitOpen()) U.split(false); }));
     chip('hudTrustChip', 'trust', () => route('lobby.trust'));

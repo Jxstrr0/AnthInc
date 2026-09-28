@@ -812,6 +812,9 @@ SECTIONS.accounts = async function (T) {
   await T.shot('hud-split-360');
   await T.page.mouse.click(180, 420);   // a tap elsewhere closes it
   await T.until(() => !FR.ui.splitOpen(), null, 3000, 'the split card to close on a tap elsewhere');
+  await sleep(700);
+  const spent = await T.ev(() => ({ sheet: FR.ui.sheetId, mode: FR.r.mode }));
+  assert(!spent.sheet && spent.mode !== 'focus', 'the tap that closed the split card also opened something: ' + JSON.stringify(spent));
   await T.closeSheet(); await T.settle();
   await wallView(T); await T.shot('client-wall-360');
   await T.ev(() => FR.r.home(0)); await T.settle();
