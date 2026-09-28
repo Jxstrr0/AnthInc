@@ -320,7 +320,24 @@
   R.live = function (id) { const t = byId[id]; return !!t && live(t); };
   R.targets = function () { return targets.slice(); };
   // a target's focus pose (shift defaults to FOCUS_SHIFT); null when the target is missing or has no focus
-  R.poseOf = function (id) { const t = byId[id]; return t && t.focus ? norm(t.focus, R.FOCUS_SHIFT) : null; };
+  // The pose is lowered (less lens shift) until the object's top edge clears the top chips and the frontier strip, at
+  // most 16% of the screen: a screen's heading (the wire, the incident log, the rival wall) stays readable over the sheet.
+  R.poseOf = function (id) { const t = byId[id]; return t && t.focus ? clearHud(t, norm(t.focus, R.FOCUS_SHIFT)) : null; };
+  function clearHud(t, p) {
+    if (!p || t.id === 'elevator' || !t.box) return p;
+    if (!fitCam) fitCam = new THREE.PerspectiveCamera();
+    fitCam.fov = effFov(p.fov); fitCam.aspect = W() / H(); fitCam.near = 0.1; fitCam.far = 1000;
+    fitCam.position.set(p.pos[0], p.pos[1], p.pos[2]); fitCam.lookAt(p.look[0], p.look[1], p.look[2]); fitCam.updateMatrixWorld(true);
+    fitCam.setViewOffset(W(), H(), (p.shiftX || 0) * W(), p.shift * H(), W(), H());
+    const b = t.box; let y0 = Infinity;
+    for (let i = 0; i < 8; i++) {
+      _v.set(i & 1 ? b[3] : b[0], i & 2 ? b[4] : b[1], i & 4 ? b[5] : b[2]).applyMatrix4(fitCam.matrixWorldInverse); if (_v.z > -0.1) continue;
+      _v.applyMatrix4(fitCam.projectionMatrix); const y = (1 - _v.y) / 2 * H(); if (y < y0) y0 = y;
+    }
+    fitCam.clearViewOffset();
+    const need = R.SAFE_TOP + 8 - y0;
+    return need > 0 && isFinite(need) ? Object.assign({}, p, { shift: p.shift - Math.min(need, 0.16 * H()) / H() }) : p;
+  }
 
   // ---------- picking ----------
   function toScreen(x, y, z, out) {

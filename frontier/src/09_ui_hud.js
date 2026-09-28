@@ -53,11 +53,11 @@
         + `<span class="st-v st-riv"><span class="nm">${esc(rname)}</span> <b>${(+b.avgCap).toFixed(1)}</b></span>`
         + `<span class="st-gap ${d >= 0 ? 'good' : 'warn'}">${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}</span>`
         + (hold > 0 ? `<span class="st-hold">Hold <b>${hold}/${WIN}</b><i style="--v:${Math.min(100, Math.round(hold / WIN * 100))}"></i></span>`
-          : blocked ? `<span class="st-hold st-block">Hold blocked <b>${esc(FR.SKILL_NAME[blocked])} gap ${Math.round(gapOf(s, blocked) * 10) / 10}</b></span>` : '');
+          : blocked ? `<span class="st-hold st-block">Blocked <b>${esc(FR.SKILL_NAME[blocked])} ${Math.round(gapOf(s, blocked) * 10) / 10}</b></span>` : '');
       label = `Average capability: yours ${you.toFixed(1)}, ${rname} ${(+b.avgCap).toFixed(1)}.` + (hold > 0 ? ` Safe frontier hold ${hold} of ${WIN} weeks.`
         : blocked ? ` The safe hold has not started: ${FR.SKILL_NAME[blocked]} safety is more than ${M} below capability.` : '') + ' Opens the Rivals tab.';
     } catch (e) { html = ''; }
-    if (html !== last.strip) { last.strip = html; el.innerHTML = html; el.classList.toggle('holding', /st-hold/.test(html)); if (label) el.setAttribute('aria-label', label); }
+    if (html !== last.strip) { last.strip = html; el.innerHTML = html; el.classList.toggle('holding', /st-hold/.test(html)); el.classList.toggle('blocked', /st-block/.test(html)); if (label) el.setAttribute('aria-label', label); }
   };
 
   const gapOf = (s, k) => Math.max(0, s.model.skills[k].cap - s.model.skills[k].safe);

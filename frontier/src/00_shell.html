@@ -183,7 +183,7 @@ body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{an
 .btn.slot{justify-content:flex-start;gap:var(--sp-3);min-height:56px;margin:0;padding:8px 14px;text-align:left}
 .slot .slot-t{flex:1;min-width:0;display:flex;flex-direction:column}
 .slot .slot-t b{font-size:var(--text-md)}
-.slot .meta{font-size:var(--text-sm);font-weight:var(--w-regular);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot .meta{font-size:var(--text-sm);font-weight:var(--w-regular);color:var(--ink-3);white-space:normal;overflow-wrap:break-word}   /* wraps: the cash at the end tells same-named labs apart */
 .slot .tick{width:24px;height:24px;border-radius:50%;border:2px solid var(--line-strong);flex:none;display:grid;place-items:center;color:transparent}
 .slot .tick .ico{width:14px;height:14px}
 .btn.slot.sel{background:var(--brand-tint);border-color:var(--brand-bright)}
@@ -485,6 +485,7 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #hud .strip .st-hold{flex:none;margin-left:auto;display:flex;align-items:center;gap:5px;color:var(--good)}
 #hud .strip .st-hold b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);color:var(--good)}
 #hud .strip .st-hold i{display:none;width:40px;height:4px;border-radius:2px;background:var(--sunken);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+#hud .strip.blocked .st-k{display:none}   /* room for the blocked-hold chip */
 #hud .strip .st-block{color:var(--warn)}#hud .strip .st-block b{color:var(--warn)}
 #hud .strip .st-hold i::before{content:"";display:block;height:100%;width:calc(var(--v,0) * 1%);background:var(--good)}
 /* the hold count takes the label's room; the hold bar shows only where it fits */
@@ -525,6 +526,7 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #sheet .close{position:absolute;top:6px;right:10px;z-index:3;display:grid;place-items:center;width:var(--tap);height:var(--tap);padding:0;border:0;border-radius:50%;background:var(--raised);color:var(--ink-2);transition:background-color var(--dur-1)}
 #sheet .close .ico{width:20px;height:20px}
 #sheet .close:active{background:var(--raised-2);color:var(--ink)}
+#sheetBody:focus{outline:none}
 #dim{position:fixed;inset:0;z-index:var(--z-dim);display:none;background:var(--scrim)}
 #dim.on{display:block;animation:screen-in var(--dur-2) var(--ease-out)}
 /* read-only lists some sheets reuse the floor row for (the lobby news): no chevron, no press */
@@ -982,7 +984,7 @@ body.hq-back #toast{top:auto;bottom:calc(var(--hud-clear-bottom) + var(--tap) + 
     <div class="car-code" id="carExport" hidden></div>
     <section class="set-group car-import" aria-labelledby="impH">
       <h3 class="set-h" id="impH"><i data-icon="import"></i>Import a save code</h3>
-      <div class="field"><label for="impCode">Save code</label><textarea id="impCode" rows="3" autocomplete="off" spellcheck="false" placeholder="Paste a code that starts with FR1."></textarea></div>
+      <div class="field"><label for="impCode">Save code</label><textarea id="impCode" rows="3" autocomplete="off" spellcheck="false" placeholder="Paste a save code (it starts with FR1.)"></textarea></div>
       <div class="field"><label>Import into</label></div>
       <div id="impSlots" class="slots"></div>
       <p class="hint warn car-err" id="impErr" role="alert" hidden></p>
