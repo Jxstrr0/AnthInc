@@ -268,8 +268,21 @@ class Run {
     await this.until(() => FR.ui.sheetId === 'memo' && document.getElementById('sheet').classList.contains('on'), null, 5000, 'the memo sheet after End Turn');
     await sleep(350);
     if (opts.shot) await this.shot(opts.shot);
-    await this.page.click('#sheet [data-fp="noted"]');
-    await this.until(() => !FR.ui.sheetId, null, 4000, 'the memo to close');
+    const go = opts.go ? await this.page.locator('#sheet [data-fp="go"]').first().getAttribute('data-v').catch(() => null) : null;
+    if (go) {
+      // the memo's next step: rides to the floor if needed, glides to the object and opens its panel
+      await this.page.click('#sheet [data-fp="go"]');
+      const fid = go.split('.')[0];
+      await this.until((f) => FR.ui.sheetId === 'fp:' + f && !FR.elevator.riding && FR.r.current.id === f, fid, 15000, `the memo's next step (${go})`);
+      await sleep(350);
+      if (opts.goShot) await this.shot(opts.goShot);
+      this.stepGo = go;
+      await this.closeSheet();
+      await this.settle();
+    } else {
+      await this.page.click('#sheet [data-fp="noted"]');
+      await this.until(() => !FR.ui.sheetId, null, 4000, 'the memo to close');
+    }
     await sleep(380);
   }
 }
@@ -370,7 +383,8 @@ const SECTIONS = {
     await T.closeSheet();
     // ten weeks through the dock
     const w0 = await T.ev(() => ({ turn: FR.state.turn, cash: FR.state.money.cash }));
-    for (let i = 0; i < 10; i++) await T.endTurn({ shot: i === 0 ? 'memo-week1' : i === 9 ? 'memo-week10' : null });
+    for (let i = 0; i < 10; i++) await T.endTurn({ shot: i === 0 ? 'memo-week1' : i === 9 ? 'memo-week10' : null, go: i === 0, goShot: 'memo-next-step' });
+    if (!T.stepGo) T.note('the first memo offered no next step');
     const w1 = await T.ev(() => ({ turn: FR.state.turn, cash: FR.state.money.cash, status: FR.state.status, week: document.getElementById('hudWeek').textContent, hist: FR.state.history.length, proj: FR.state.projects.active.length + FR.state.projects.done.length }));
     assert(w1.turn === w0.turn + 10, `turn went ${w0.turn} → ${w1.turn}, expected +10`);
     assert(w1.cash !== w0.cash, 'cash did not change over 10 weeks');
@@ -433,6 +447,7 @@ const SECTIONS = {
   async save(T) {
     await T.load(); await T.toMenu();
     await T.newCareer('Save Check Labs');
+    await T.ride('training'); // the save keeps the floor the player last rode to
     await T.endTurn(); await T.endTurn();
     const ok = await T.ev(() => FR.cmd.save());
     assert(ok !== false, 'FR.cmd.save() failed');
@@ -451,6 +466,8 @@ const SECTIONS = {
     const b = await T.ev(() => ({ turn: FR.state.turn, cash: FR.state.money.cash, lab: FR.state.lab.name, slot: FR.state.slot, sliders: FR.state.sliders, seed: FR.state.seed }));
     assert(b.turn === a.turn && b.cash === a.cash, `after reload: turn ${b.turn} cash ${b.cash}, saved turn ${a.turn} cash ${a.cash}`);
     assert(b.lab === a.lab && b.slot === a.slot && b.seed === a.seed && JSON.stringify(b.sliders) === JSON.stringify(a.sliders), 'the loaded lab differs from the saved one');
+    const fl = await T.ev(() => FR.r.current && FR.r.current.id);
+    assert(fl === 'training', `Continue opened on ${fl}, the lab was saved on training`);
     await T.shot('continued');
     // Save and quit, then Careers: copy slot 1's code, import it into slot 2, continue slot 2
     await T.page.click('#hMenu');
@@ -540,6 +557,18 @@ const SECTIONS = {
     await T.shot('end-won');
     await T.page.click('#endMenu');
     await T.until(() => document.getElementById('menu').classList.contains('on'), null, 5000, 'the menu from the end screen');
+    // a closed lab is a record: no Continue; Careers shows it as Closed with a Result button that reopens the end screen
+    const menu = await T.ev(() => !document.getElementById('mContinue').hidden);
+    assert(!menu, 'Continue offers a closed lab');
+    await T.page.click('#mCareers');
+    await T.until(() => document.getElementById('careers').classList.contains('on'), null, 5000, 'the careers screen');
+    const slot = await T.ev(() => FR.state.slot);
+    const row = await T.ev((i) => { const b = document.querySelector(`#carList [data-load="${i}"]`); return b ? { label: b.textContent.trim(), meta: b.closest('.car-slot').textContent } : null; }, slot);
+    assert(row && /Result/.test(row.label) && /Closed/.test(row.meta), 'careers row for the closed lab: ' + JSON.stringify(row));
+    await T.page.click(`#carList [data-load="${slot}"]`);
+    await T.until(() => document.getElementById('end').classList.contains('on'), null, 5000, 'the end screen from Careers');
+    const again = await T.ev(() => ({ kicker: document.getElementById('endKicker').textContent, rows: document.querySelectorAll('#endParts tr').length }));
+    assert(/Final incident/.test(again.kicker) && again.rows > 1, 'the result from Careers reads ' + JSON.stringify(again));
     T.noErrors();
   }
 };
