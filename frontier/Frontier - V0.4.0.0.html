@@ -2453,8 +2453,6 @@ window.FR_VERSION="0.4.0.0";
 
   // ---- reads ----
   A.fee = (tier, turn) => Math.round(tier * K.feeBase * (1 + K.feeYear * FR.year(turn)) / 1000) * 1000;
-  // after-V0.4 owner call: a renewal settled while the account's sector is hot carries the hot fee for its new term
-  A.renewFee = (s, a, tier, turn) => A.swing(s, a.sector) === 'hot' ? cap$(A.fee(tier, turn) * K.sector.hotFee) : A.fee(tier, turn);
   A.maxActive = (s) => s.money && s.money.roundsDone.indexOf('b') >= 0 ? K.maxActiveB : K.maxActive;
   // fee started and not leaving: PF reserved, fee paid. An account below the churn line is off the book at once.
   A.live = (s) => (s.accounts ? s.accounts.active : []).filter(a => a.starts <= s.turn && !out(s, a));
@@ -2600,7 +2598,7 @@ window.FR_VERSION="0.4.0.0";
     const lc = (x) => x.charAt(0).toLowerCase() + x.slice(1);
     // the terms a renewal at `tier` would carry (what resolve() writes): fee repriced to the week after ends, PF scaled
     const terms = (tier) => { const pf = scalePF(a.pfPerWeek, a.tier, tier), d = pf - a.pfPerWeek;
-      return money(A.renewFee(s, a, tier, a.ends + 1)) + (A.swing(s, a.sector) === 'hot' ? ' (hot sector +' + Math.round((K.sector.hotFee - 1) * 100) + '%, if still hot then)' : '') + ' a week from ' + FR.dateLabel(a.ends + 1) + ', ' + pf + ' PF' + (d ? ' (' + (d > 0 ? '+' : '') + d + ')' : '') + ', ' + wk(K.turns[tier - 1]); };
+      return money(A.fee(tier, a.ends + 1)) + ' a week from ' + FR.dateLabel(a.ends + 1) + ', ' + pf + ' PF' + (d ? ' (' + (d > 0 ? '+' : '') + d + ')' : '') + ', ' + wk(K.turns[tier - 1]); };
     const stands = renewOk ? 'renews at tier ' + a.tier : 'ends: renewal needs mood ' + renewNeed;
     const upText = up > 3 ? 'Push up: tier 3 is the top tier; it renews at tier 3.'
       : !reqUp.ok ? 'Push up to tier ' + up + ' ' + lc(reqUp.why) + '. As things stand it ' + stands + '.'
@@ -2655,11 +2653,10 @@ window.FR_VERSION="0.4.0.0";
       return;
     }
     const was = a.feePerWeek, pf0 = a.pfPerWeek, up = tier > a.tier;
-    const hot = A.swing(s, a.sector) === 'hot';
-    a.pfPerWeek = scalePF(pf0, a.tier, tier); a.tier = tier; a.feePerWeek = A.renewFee(s, a, tier, T + 1); a.ends = T + K.turns[tier - 1]; a.turns = K.turns[tier - 1];
-    a.meeting = null; a.ask = null; delete a.hot; delete a.cut; if (hot) a.hot = true;
-    report.events.push({ type: 'account:renewed', id: a.id, name: a.name, tier, up, hot });
-    L.push({ p: 1, kind: 'good', text: a.name + ' renews' + (up ? ' at tier ' + tier : '') + (hot ? ' in a hot sector' : '') + ' for ' + wk(K.turns[tier - 1]) + ' at ' + money(a.feePerWeek) + ' a week, ' +
+    a.pfPerWeek = scalePF(pf0, a.tier, tier); a.tier = tier; a.feePerWeek = A.fee(tier, T + 1); a.ends = T + K.turns[tier - 1]; a.turns = K.turns[tier - 1];
+    a.meeting = null; a.ask = null; delete a.hot;
+    report.events.push({ type: 'account:renewed', id: a.id, name: a.name, tier, up });
+    L.push({ p: 1, kind: 'good', text: a.name + ' renews' + (up ? ' at tier ' + tier : '') + ' for ' + wk(K.turns[tier - 1]) + ' at ' + money(a.feePerWeek) + ' a week, ' +
       (a.feePerWeek === was ? 'unchanged' : (a.feePerWeek > was ? 'up' : 'down') + ' from ' + money(was)) + (a.pfPerWeek !== pf0 ? ', reserving ' + a.pfPerWeek + ' PF, up from ' + pf0 : '') +
       ', through ' + FR.dateLabel(a.ends) + '. Mood ' + mood + '.' + (pick ? note : ' No answer to the renewal meeting: same tier.') });
   }
@@ -2874,7 +2871,7 @@ window.FR_VERSION="0.4.0.0";
     report.events.push({ type: 'account:sector', name, kind, until });
     L.push({ p: 3, kind: kind === 'hot' ? 'good' : 'flag', text: kind === 'hot'
       ? name + ' turns hot through ' + FR.dateLabel(until) + ': ' + name + ' offers come ' + S.hotWeight + '× as often at fees ' + Math.round((S.hotFee - 1) * 100) +
-        '% higher for their term, renewals settled while hot included; ' + name + ' accounts gain ' + S.hotMood + ' more mood a week (top ' + S.hotTop + '). Client work trains ' + skill + '.'
+        '% higher for their term; ' + name + ' accounts gain ' + S.hotMood + ' more mood a week (top ' + S.hotTop + '). Client work trains ' + skill + '.'
       : name + ' turns cold through ' + FR.dateLabel(until) + ': no new ' + name + ' offers; ' + name + ' accounts lose ' + S.coldMood +
         ' mood a week unless every safety is within ' + (FR.sim && FR.sim.K ? FR.sim.K.safeMargin : 5) + ' of capability, and their renewals need ' + K.meet.coldAdd + ' more mood.' });
   }
@@ -4125,27 +4122,6 @@ window.FR_VERSION="0.4.0.0";
     return need > 0 && isFinite(need) ? Object.assign({}, p, { shift: p.shift - Math.min(need, 0.16 * H()) / H() }) : p;
   }
 
-  // a stay target's pose once nothing covers the scene: its focus with the lighter `rest` lens shift. On a wide screen
-  // (landscape, desktop) the portrait-framed close-up would leave the object a small patch mid-screen: there the focus's
-  // `fit` box is fitted into the HUD-safe rect (the fov narrows, a lens shift centres it), never zooming out past the pose.
-  R.restPose = function (t) {
-    const p = Object.assign(norm(t.focus), { shift: t.focus.rest }), b = t.focus.fit;
-    if (!b || W() / H() <= R.FIT_ASPECT) return p;
-    if (!fitCam) fitCam = new THREE.PerspectiveCamera();
-    fitCam.position.set(p.pos[0], p.pos[1], p.pos[2]); fitCam.lookAt(p.look[0], p.look[1], p.look[2]); fitCam.updateMatrixWorld(true);
-    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
-    for (let i = 0; i < 8; i++) {
-      _v.set(i & 1 ? b[3] : b[0], i & 2 ? b[4] : b[1], i & 4 ? b[5] : b[2]).applyMatrix4(fitCam.matrixWorldInverse); if (_v.z > -0.1) return p;
-      const u = _v.x / -_v.z, v = _v.y / -_v.z; if (u < u0) u0 = u; if (u > u1) u1 = u; if (v < v0) v0 = v; if (v > v1) v1 = v;
-    }
-    const top = R.SAFE_TOP + R.TAG_ROOM, sw = W() - 48, sh = H() - top - R.SAFE_BOTTOM - 16;
-    if (!(u1 > u0 && v1 > v0) || sw <= 0 || sh <= 0) return p;
-    const s = Math.max(H() / (2 * Math.tan(effFov(p.fov) * Math.PI / 360)), Math.min(sw / (u1 - u0), sh / (v1 - v0)));
-    const ys = (top + H() - R.SAFE_BOTTOM) / 2;
-    return { pos: p.pos, look: p.look, fov: 2 * Math.atan(H() / (2 * s)) * 180 / Math.PI,
-      shift: (H() / 2 - (v0 + v1) / 2 * s - ys) / H(), shiftX: (u0 + u1) / 2 * s / W() };
-  };
-
   // ---------- picking ----------
   function toScreen(x, y, z, out) {
     const cam = R.camera; _v.set(x, y, z).applyMatrix4(cam.matrixWorldInverse);
@@ -4515,7 +4491,7 @@ window.FR_VERSION="0.4.0.0";
     // (a stay target keeps the camera: Back / Escape / an empty tap leave it; one with focus.rest
     // eases to that lighter lens shift, since nothing covers the lower screen any more)
     if (R.mode === 'focus') { if (R.paused) covered = true; else if (covered && !glide) { covered = false; const t = byId[R.focusId];
-      if (!(t && t.stay)) R.home(); else if (t.focus && t.focus.rest != null) R.glideTo(R.restPose(t), R.HOME_MS * 0.6); } }
+      if (!(t && t.stay)) R.home(); else if (t.focus && t.focus.rest != null) R.glideTo(Object.assign({}, t.focus, { shift: t.focus.rest }), R.HOME_MS * 0.6); } }
     applyPose(); stepFlash(now); syncUi();
     R.renderer.render(R.scene, R.camera); countFps(raw);
   };
@@ -5365,10 +5341,8 @@ window.FR_VERSION="0.4.0.0";
   // the close-up frames the name plate and the rows of plaques in use (two rows minimum), so a short book reads large
   function clientFocus(n) {
     const rows = Math.max(2, Math.ceil(n / PLQ.cols)), top = 3.82, bot = PLQ.y0 - (rows - 1) * PLQ.dy - PLQ.h / 2 - 0.08;
-    // rest: once the Serving sheet closes, the close-up stays (a stay target) with the lens centred on the wall; fit: the
-    // plate and plaques in use, which a wide screen's rest pose fills into the HUD-safe rect (R.restPose)
-    return Object.assign(aim([PLQ.x, (top + bot) / 2, -6.9], 0, 6, fitD(2.5, top - bot)),
-      { rest: 0.04, fit: [PLQ.x - PLQ.dx - PLQ.w / 2 - 0.04, bot, -6.9, PLQ.x + PLQ.dx + PLQ.w / 2 + 0.04, top, -6.9] });
+    // rest: once the Serving sheet closes, the close-up stays (a stay target) with the lens centred on the wall
+    return Object.assign(aim([PLQ.x, (top + bot) / 2, -6.9], 0, 6, fitD(2.5, top - bot)), { rest: 0.04 });
   }
   R.floors.serving = { build(id) {
     const g = start(), scr = [];
