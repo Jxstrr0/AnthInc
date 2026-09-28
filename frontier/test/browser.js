@@ -78,7 +78,7 @@ class Run {
   async shot(label) {
     if (SKIP_SHOTS) return;
     const n = String(++this.shotN).padStart(2, '0');
-    await sleep(120); // let the last frame and CSS transitions land
+    await sleep(400); // let the last frame and the 320 ms screen / sheet animations land
     await this.page.screenshot({ path: path.join(SHOTS, `${this.idx}-${this.name}-${n}-${label}.png`) });
   }
   ev(fn, arg) { return this.page.evaluate(fn, arg); }
@@ -197,9 +197,15 @@ class Run {
     return how;
   }
   // visible buttons under `sel` smaller than 44px on either side (a note, not a failure)
+  // (an absolutely placed ::before / ::after with negative insets widens the hit area, as the tap-tips' 18px dot does)
   async smallTargets(sel, where) {
     const s = await this.ev((q) => Array.from(document.querySelectorAll(q)).filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; })
-      .map(el => { const r = el.getBoundingClientRect(); return { t: (el.id ? '#' + el.id : '') + ((el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24)), w: Math.round(r.width), h: Math.round(r.height) }; })
+      .map(el => {
+        const r = el.getBoundingClientRect(); let w = r.width, h = r.height;
+        ['::before', '::after'].forEach(p => { const c = getComputedStyle(el, p); if (c.content === 'none' || c.position !== 'absolute' || c.pointerEvents === 'none') return; const n = (v) => (/px$/.test(v) ? -parseFloat(v) : 0);
+          w = Math.max(w, r.width + n(c.left) + n(c.right)); h = Math.max(h, r.height + n(c.top) + n(c.bottom)); });
+        return { t: (el.id ? '#' + el.id + ' ' : '') + ((el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 24)), w: Math.round(w), h: Math.round(h) };
+      })
       .filter(o => o.w < 44 || o.h < 44), sel);
     if (s.length) this.note(`${where}: ${s.length} target(s) under 44px: ${s.slice(0, 6).map(o => `"${o.t}" ${o.w}x${o.h}`).join(', ')}`);
     return s;
@@ -211,9 +217,11 @@ class Run {
         const b = el.getBoundingClientRect(); if (!b.width || !b.height) return;
         if (b.left < -1 || b.right > W + 1) out.push(((el.id && '#' + el.id) || el.textContent.trim().slice(0, 20)) + ` [${Math.round(b.left)}..${Math.round(b.right)}]`);
       });
-      return { W, sw: document.documentElement.scrollWidth, out };
+      const sb = document.querySelector('#sheet.on #sheetBody');
+      return { W, sw: document.documentElement.scrollWidth, out, sheet: sb ? [sb.scrollWidth, sb.clientWidth] : null };
     });
     assert(r.sw <= r.W, `${where}: page scrolls sideways (${r.sw}px wide at ${r.W}px)`);
+    assert(!r.sheet || r.sheet[0] <= r.sheet[1] + 1, `${where}: the sheet content is ${r.sheet && r.sheet[0]}px wide in a ${r.sheet && r.sheet[1]}px sheet`);
     assert(!r.out.length, `${where}: controls cross the screen edge: ${r.out.slice(0, 4).join(', ')}`);
   }
 
@@ -396,13 +404,26 @@ const SECTIONS = {
       assert(d.targets.indexOf('elevator') >= 0, `${f} has no elevator target`);
       assert(d.objects > 0, `${f} built an empty scene`);
       await T.shot(f + '-room');
+      await T.smallTargets('#tags.on .tag:not(.off)', f + ' tags');
       const how = await T.openPanel(f);
       seen.push(f + ':' + how.split(' ')[0]);
       await T.shot(f + '-panel');
-      await T.smallTargets('#sheet.on button', f + ' panel');
+      await T.smallTargets('#sheet.on button, #sheet.on summary', f + ' panel');
+      await T.fitsWidth(f + ' panel');
       await T.closeSheet();
     }
     log('panels: ' + seen.join(' '));
+    // the small phone: the densest panels and every boardroom tab
+    await T.page.setViewportSize(SMALL);
+    await sleep(400);
+    for (const [hot, tab] of [['research.offers'], ['safety.evals'], ['boardroom.table', 'money'], ['boardroom.team', 'team'], ['boardroom.compute', 'compute'], ['boardroom.rivals', 'rivals']]) {
+      await T.ev((h) => FR.ui.panel(h), hot);
+      await T.until(([h, t]) => FR.ui.sheetId === 'fp:' + h.split('.')[0] && (!t || FR.ui.panels.debug().tab === t), [hot, tab || null], 4000, 'the ' + hot + ' panel at 360');
+      await sleep(350);
+      await T.fitsWidth(hot + ' panel at 360x740');
+      if (hot === 'boardroom.compute') await T.shot('compute-360');
+    }
+    await T.closeSheet();
     const rides = await T.ev(() => FR.elevator.rides);
     assert(rides >= 9, `only ${rides} elevator rides for nine floors`);
     T.noErrors();
@@ -434,6 +455,7 @@ const SECTIONS = {
     // Save and quit, then Careers: copy slot 1's code, import it into slot 2, continue slot 2
     await T.page.click('#hMenu');
     await T.until(() => FR.ui.sheetId === 'menu', null, 4000, 'the game menu');
+    await T.smallTargets('#sheet.on button', 'game menu');
     await T.page.click('#gmQuit');
     await T.until(() => document.getElementById('menu').classList.contains('on'), null, 5000, 'the main menu after Save and quit');
     await T.page.click('#mCareers');
