@@ -192,9 +192,13 @@
     const r = m.offer.round; m.offer = null; m.lockedUntil = s.turn + K.reofferTurns;
     return done(null, RN(r) + ' offer declined. Investors expect to return ' + FR.dateLabel(m.lockedUntil) + '.');
   };
+  // hires ordered this week (they all join on the same turn)
+  M.hiredThisWeek = (s) => s.staff.hiring.reduce((t, h) => t + (h.arrives === s.turn + K.hireTurns ? h.n : 0), 0);
+  M.hireRoom = (s) => Math.max(0, K.maxHire - M.hiredThisWeek(s));
   M.hire = function (s, n) {
-    n = int(n);
+    n = int(n); const room = M.hireRoom(s);
     if (!Number.isInteger(n) || n < 1 || n > K.maxHire) return no('Hire a whole number from 1 to ' + K.maxHire);
+    if (n > room) return no('At most ' + K.maxHire + ' hires a week; ' + room + ' left this week');
     if (s.staff.headcount + pending(s) + n > K.maxHead) return no('Headcount is capped at ' + K.maxHead);
     const fee = n * K.hireFee;
     if (s.money.cash < fee) return no('Recruiting ' + n + ' costs ' + money(fee) + ', cash is ' + money(s.money.cash));
@@ -231,10 +235,20 @@
     report.memo.push({ kind: 'change', text: n + (n === 1 ? ' hire joins' : ' hires join') + ' next week. Headcount ' + st.headcount + ', payroll ' + money(M.payroll(s)) + ' a week.' });
   }
 
+  // next week's projection (the HUD's forecast): the week just closed has its own bills, which may include projects that
+  // have finished or failed and the rent price before this week's drift
+  function nextWeek(s) {
+    const nx = Object.assign({}, s, { turn: s.turn + 1 });
+    const burn = M.burnEstimate(nx), revenue = FR.sim && FR.sim.allocate && s.compute ? M.revenue(nx, FR.sim.allocate(nx).serving.pf) : s.money.revenue;
+    return { burn, revenue: Math.round(revenue), weeks: weeksOf(s.money.cash, revenue - burn) };
+  }
   function runwayMemo(s, was, report) {
-    const m = s.money, w = M.runway(s), W = K.runwayWarn, band = (x) => W.filter(t => x < t).length;
+    const m = s.money, W = K.runwayWarn, band = (x) => W.filter(t => x < t).length;
+    if (!(m.cash > 0)) return;
+    const f = nextWeek(s), w = f.weeks;
     if (!(w < W[W.length - 1]) && band(w) <= band(was)) return;
-    let text = 'Runway ' + w + ' weeks at current burn: ' + money(M.burnEstimate(s)) + ' a week out, ' + money(m.revenue) + ' in, cash ' + money(m.cash) + '.';
+    const lead = w === 0 ? 'Cash runs out next week' : 'Runway ' + w + (w === 1 ? ' week' : ' weeks');
+    let text = lead + ' at current burn: ' + money(f.burn) + ' a week out, ' + money(f.revenue) + ' in, cash ' + money(m.cash) + '.';
     if (m.offer) text += ' ' + RN(m.offer.round) + ' offer open until ' + FR.dateLabel(m.offer.expires) + '.';
     report.memo.push({ kind: 'flag', text });
   }
@@ -252,11 +266,11 @@
   M.bankrupt = function (s, report) { if (s.status === 'playing' && s.money.cash <= 0) bankrupt(s, report); return s.status === 'dead'; };
 
   M.step = function (s, alloc, rng, report) {
-    const m = s.money, next = s.turn + 1;
-    const was = weeksOf(m.cash, m.net);                 // runway as it stood coming into the turn
+    const m = s.money, next = s.turn + 1, cash0 = m.cash;
     const served = alloc && alloc.serving ? Math.max(0, alloc.serving.pf) : 0, demand = M.demandPF(s);
     const p = M.burnParts(s), burn = Math.round(p.payroll + p.ops + p.compute + p.projects), revenue = Math.round(M.revenue(s, served));
     m.revenue = revenue; m.burn = burn; m.net = revenue - burn; m.cash += m.net;
+    const was = weeksOf(cash0, m.net);                  // runway coming into the week, on the week's own bills
     report.flows.money = { revenue, burn, net: m.net, payroll: p.payroll, ops: p.ops, compute: Math.round(p.compute), projects: Math.round(p.projects),
       servedPF: FR.round(Math.min(served, demand), 1), demandPF: FR.round(demand, 1), price: Math.round(M.pricePerPF(avg(s))), cash: m.cash };
     arrivals(s, next, report);

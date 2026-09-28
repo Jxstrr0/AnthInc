@@ -104,6 +104,8 @@ assert.notStrictEqual(J(scripted(5, 3)[2]), J(A[2]), 'a different seed plays dif
   const viaApply = S.endTurn(n, []), viaEnd = S.endTurn(s, [{ type: 'sliders', training: 10, serving: 10, safety: 70, research: 10 }, { type: 'rent', pf: 55 }, { type: 'acceptRound' }]);
   assert.ok(viaApply.memo.lines.some(m => /^Seed round closed/.test(m.text)) && viaEnd.memo.lines.some(m => /^Seed round closed/.test(m.text)));
   assert.strictEqual(ev(viaEnd, 'money:round').length, 1); assert.strictEqual(viaApply.pendingMemo.length, 0);
+  assert.strictEqual(ev(viaApply, 'money:round').length, 1, 'an event from a command applied at once rides on the next End Turn');
+  assert.deepStrictEqual(viaApply.pendingEvents, []);
   const strip = (x) => Object.assign({}, x, { lastReport: null });
   assert.strictEqual(J(strip(viaApply)), J(strip(viaEnd)), 'applied now or at End Turn, the week resolves the same');
   assert.strictEqual(S.endTurn(Object.assign(FR.clone(s), { status: 'dead' }), []).turn, s.turn, 'a finished run does not move'); }
@@ -134,7 +136,7 @@ assert.notStrictEqual(J(scripted(5, 3)[2]), J(A[2]), 'a different seed plays dif
   assert.strictEqual(s.status, 'dead'); assert.strictEqual(s.end.cause, 'cash'); assert.strictEqual(ev(s, 'money:bankrupt').length, 1);
   assert.ok(s.money.cash <= 0 && ev(s, 'run:dead')[0].cause === 'cash'); assert.strictEqual(S.score(s).parts[0].value, s.turn);
   let t = S.applyCommands(game(9), [{ type: 'declineRound' }, { type: 'sliders', training: 50, serving: 0, safety: 0, research: 50 }]).state;
-  t.model.skills.coding.cap = 90; t.model.skills.coding.safe = 20;   // incident chance 100%
+  t.model.skills.coding.cap = 90; t.model.skills.coding.safe = 20; t.model.skills.coding.warned = true;   // incident chance 100%
   t.money.cash = FR.money.burnEstimate(t) + 1000;                        // survives the money step, not the incident bill
   t = S.endTurn(t, []);
   assert.ok(ev(t, 'model:incident').length === 1 && t.lastReport.flows.money.cash > 0);
@@ -154,7 +156,27 @@ assert.notStrictEqual(J(scripted(5, 3)[2]), J(A[2]), 'a different seed plays dif
   assert.strictEqual(ev(s, 'run:won').length, 1); assert.ok(S.score(s).parts.some(p => /safely for a year/.test(p.label)));
   assert.strictEqual(S.endTurn(s, []), s, 'no turns after the end'); }
 
-// 9. the sim files stay pure
+// 9. review regressions: slider junk, declined deal memo, hold memos name the cause, score never rewards a later win
+{ const s = game(2);
+  [[1e308, 1], [Infinity, 1], [NaN, 5], [-5, 250]].forEach(([a, b]) => {
+    const r = S.applyCommands(s, [{ type: 'sliders', training: a, serving: b, safety: 0, research: 0 }]);
+    const v = FR.ALLOCS.map(k => r.state.sliders[k]); assert.ok(v.every(Number.isInteger) && v.reduce((x, y) => x + y) === 100, J(v)); });
+  const d = FR.clone(s); d.market.dealOffer = { rivalId: 'deepfield', kind: 'compute', pf: 45, revShare: 0.15, turns: 26, expires: 5 };
+  const n = S.endTurn(d, [{ type: 'declineDeal' }]);
+  assert.ok(n.memo.lines.some(m => m.text === 'DeepField compute share declined: 45 PF for 26 weeks at 15% of revenue.'));
+  // a hold that breaks on safety while still leading says so, even after one week
+  let h = S.applyCommands(game(11), [{ type: 'acceptRound' }]).state;
+  const lift = (x) => { const top = FR.market.best(x).avgCap + 2; SK.forEach(k => { const q = x.model.skills[k]; q.cap = Math.max(q.cap, top); q.safe = q.cap; }); };
+  lift(h); h = S.endTurn(h, []); assert.ok(h.memo.lines.some(m => m.text === 'The lab is at the frontier with safety in step. Hold it for ' + S.K.winTurns + ' weeks.'));
+  lift(h); h.model.skills.coding.safe = h.model.skills.coding.cap - 8; h = S.endTurn(h, []);
+  assert.ok(h.memo.lines.some(m => /^Coding safety [\d.]+ against capability [\d.]+\. Safety more than 5 below capability\. The 52-week hold restarts after 1 week\.$/.test(m.text)), J(h.memo.lines));
+  // scoring: the same run won later scores less; the founder stake is capped
+  const w = FR.clone(h); w.status = 'won'; w.win.best = 52; const late = FR.clone(w); late.turn = w.turn + 100;
+  assert.ok(S.score(w).total > S.score(late).total, 'winning sooner scores more');
+  const rich = FR.clone(w); rich.money.valuation = 1e15;
+  assert.strictEqual(S.score(rich).parts.find(p => /Founder stake/.test(p.label)).value, S.K.score.stakeMax); }
+
+// 10. the sim files stay pure
 ['02_sim.js', '03_model.js', '04_compute.js', '05_money.js', '06_market.js', '07_projects.js'].forEach(f => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8').split('\n').filter(l => !l.startsWith('})(typeof window')).join('\n');
   ['Math.random', 'Date.now', 'document.', 'window.', 'localStorage', 'performance.', 'FR.emit', 'FR.on('].forEach(w => assert.ok(!src.includes(w), f + ' uses ' + w));

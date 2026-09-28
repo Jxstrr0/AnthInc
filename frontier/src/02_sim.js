@@ -6,8 +6,13 @@
     winTurns: 52,          // consecutive turns safely at the frontier to win
     safeMargin: 5,         // "safely": every safe >= cap - safeMargin
     newsKeep: 60, historyKeep: 312, doneKeep: 20,
-    allocExp: 0.36, staffExp: 0.24   // out = base * pf^allocExp * (staff+1)^staffExp (modules read these). Sum < 1: returns
+    allocExp: 0.36, staffExp: 0.24,  // out = base * pf^allocExp * (staff+1)^staffExp (modules read these). Sum < 1: returns
                                      // to scale fall, so a raise buys less than proportional progress
+    startSliders: { training: 40, serving: 20, safety: 25, research: 15 },
+    // end-of-run score. Weeks count up to `horizon`; the win bonus shrinks by `winFast` per week the win took, so a later win
+    // never outscores an earlier one; the founder stake is log-compressed and capped so a cash pile cannot outgrow a win
+    score: { horizon: 312, capPer: 10, firstWon: 150, firstLost: -50, incident: -60, holdPer: 5, win: 2000, winFast: 10,
+      exit: 500, stakePer: 100, stakeUnit: 1e6, stakeMax: 500 }
   };
   const mods = () => [FR.model, FR.compute, FR.money, FR.market, FR.projects];
 
@@ -22,10 +27,10 @@
       version: FR.VERSION, seed, rngState: (seed ^ 0x5eed1234) >>> 0 || 1, slot: slot || 0,
       lab: { name: labName || 'Prairie Blue Labs' },
       turn: 1, status: 'playing', end: null,
-      sliders: { training: 40, serving: 20, safety: 25, research: 15 }, target: 'coding',
+      sliders: Object.assign({}, S.K.startSliders), target: 'coding',
       win: { streak: 0, best: 0 }, news: [], memo: { turn: 0, lines: [] }, history: [],
       stats: { incidents: 0, warnings: 0, firstsWon: 0, firstsLost: 0, projectsDone: 0, peakValuation: 0 },
-      pendingMemo: [], lastReport: null
+      pendingMemo: [], pendingEvents: [], lastReport: null
     };
     const rng = FR.rng(s.rngState);
     mods().forEach(m => m && m.init && m.init(s, rng));
@@ -37,14 +42,14 @@
   S.migrate = function (d) {
     if (!d.stats) d.stats = { incidents: 0, warnings: 0, firstsWon: 0, firstsLost: 0, projectsDone: 0, peakValuation: 0 };
     if (!d.win) d.win = { streak: 0, best: 0 };
-    if (!d.history) d.history = []; if (!d.news) d.news = []; if (!d.pendingMemo) d.pendingMemo = [];
+    if (!d.history) d.history = []; if (!d.news) d.news = []; if (!d.pendingMemo) d.pendingMemo = []; if (!d.pendingEvents) d.pendingEvents = [];
     if (d.projects && !d.projects.spend) d.projects.spend = { turn: 0, cash: 0 };
     if (d.compute && !d.compute.bill) d.compute.bill = { turn: 0, cash: 0 };
     return d;
   };
 
   function normSliders(c) {
-    const v = FR.ALLOCS.map(k => Math.max(0, Math.round(+c[k] || 0)));
+    const v = FR.ALLOCS.map(k => { const x = +c[k]; return Number.isFinite(x) ? FR.clamp(Math.round(x), 0, 100) : 0; });
     let tot = v.reduce((a, b) => a + b, 0);
     if (tot <= 0) return { training: 25, serving: 25, safety: 25, research: 25 };
     const out = {}; let sum = 0;
@@ -55,11 +60,19 @@
   }
 
   // one command → {ok, why} (modules may add `event` and `memo`). Mutates s. A command's memo line waits in
-  // s.pendingMemo for the next weekly memo; its event goes out with End Turn, or from 99_main when applied at once.
+  // s.pendingMemo for the next weekly memo and its event waits in s.pendingEvents for the next report.events, so an event
+  // from a command applied at once (FR.cmd.do) still reaches the bus with End Turn.
   function apply1(s, c) {
     const r = run1(s, c);
     if (r && r.ok && r.memo) (s.pendingMemo || (s.pendingMemo = [])).push(r.memo);
+    if (r && r.ok && r.event && r.event.type) (s.pendingEvents || (s.pendingEvents = [])).push(r.event);
     return r;
+  }
+  const rivalName = (s, id) => { const r = s.market && s.market.rivals.find(x => x.id === id); return r ? r.name : String(id); };
+  function declineDeal(s) {
+    const o = s.market.dealOffer; if (!o) return { ok: false, why: 'No deal on the table' };
+    s.market.dealOffer = null;
+    return { ok: true, memo: { kind: 'change', text: rivalName(s, o.rivalId) + ' compute share declined: ' + o.pf + ' PF for ' + o.turns + ' weeks at ' + FR.fmtPct(o.revShare) + ' of revenue.' } };
   }
   function run1(s, c) {
     if (!c || !c.type) return { ok: false, why: 'Unknown command' };
@@ -70,7 +83,7 @@
       case 'rent': return FR.compute.setRent(s, c.pf);
       case 'buy': return FR.compute.buy(s, c.offerId);
       case 'acceptDeal': return FR.compute.acceptDeal(s);
-      case 'declineDeal': if (!s.market.dealOffer) return { ok: false, why: 'No deal on the table' }; s.market.dealOffer = null; return { ok: true };
+      case 'declineDeal': return declineDeal(s);
       case 'endDeal': return FR.compute.endDeal(s, c.rivalId);
       case 'hire': return FR.money.hire(s, c.n);
       case 'layoff': return FR.money.layoff(s, c.n);
@@ -109,7 +122,8 @@
     const report = { turn: s.turn, events: [], memo: [], news: [], flows: {}, commands: [] };
     report.commands = (commands || []).map(c => apply1(s, c));
     report.memo = (s.pendingMemo || []).slice(); s.pendingMemo = [];
-    report.commands.forEach(r => { if (!r.ok) report.memo.push({ kind: 'flag', text: 'Not done: ' + r.why + '.' }); else if (r.event) report.events.push(r.event); });
+    report.events = (s.pendingEvents || []).slice(); s.pendingEvents = [];
+    report.commands.forEach(r => { if (!r.ok) report.memo.push({ kind: 'flag', text: 'Not done: ' + r.why + '.' }); });
     const before = { cash: s.money.cash, trust: s.market.trust, cap: {}, safe: {} };
     FR.SKILLS.forEach(k => { before.cap[k] = s.model.skills[k].cap; before.safe[k] = s.model.skills[k].safe; });
 
@@ -124,8 +138,8 @@
 
     // win check
     if (s.status === 'playing') {
-      if (S.safelyAtFrontier(s)) { s.win.streak++; if (s.win.streak === 1) report.memo.push({ kind: 'good', text: 'The lab is at the frontier with safety in step. Hold it for 52 weeks.' }); }
-      else { if (s.win.streak >= 4) report.memo.push({ kind: 'flag', text: 'Frontier position lost after ' + s.win.streak + ' weeks. The count restarts.' }); s.win.streak = 0; }
+      if (S.safelyAtFrontier(s)) { s.win.streak++; if (s.win.streak === 1) report.memo.push({ kind: 'good', text: 'The lab is at the frontier with safety in step. Hold it for ' + S.K.winTurns + ' weeks.' }); }
+      else { if (s.win.streak >= 1) report.memo.push({ kind: 'flag', text: holdLost(s) }); s.win.streak = 0; }
       s.win.best = Math.max(s.win.best, s.win.streak);
       if (s.win.streak >= S.K.winTurns) {
         s.status = 'won'; s.end = { turn: s.turn, cause: 'win', text: s.lab.name + ' held the frontier safely for a full year.' };
@@ -152,6 +166,18 @@
     return s;
   };
 
+  // why a safe frontier hold broke: the lead, or the skills whose safety fell out of step
+  function holdLost(s) {
+    const n = s.win.streak, tail = ' The ' + S.K.winTurns + '-week hold restarts after ' + n + (n === 1 ? ' week.' : ' weeks.');
+    if (!S.atFrontier(s)) {
+      const b = FR.market.best(s);
+      return 'Frontier position lost: average capability ' + FR.round(S.avgCap(s), 1) + ' against ' + rivalName(s, b.rivalId) + ' ' + FR.round(b.avgCap, 1) + '.' + tail;
+    }
+    const out = FR.SKILLS.filter(k => s.model.skills[k].safe < s.model.skills[k].cap - S.K.safeMargin).map(k => FR.SKILL_NAME[k] + ' safety ' +
+      FR.round(s.model.skills[k].safe, 1) + ' against capability ' + FR.round(s.model.skills[k].cap, 1));
+    return out.join('; ') + '. Safety more than ' + S.K.safeMargin + ' below capability.' + tail;
+  }
+
   // next-turn projection with no randomness (UI previews). Never mutates.
   S.forecast = function (state) {
     const s = FR.clone(state), alloc = S.allocate(s);
@@ -164,17 +190,18 @@
 
   // end-of-run sheet. Plain, explainable parts.
   S.score = function (s) {
+    const Q = S.K.score, stake = (s.money.valuation || 0) * (s.money.founderPct || 0) / 100;
     const parts = [
-      { label: 'Weeks operated', value: s.turn },
-      { label: 'Peak average capability', value: Math.round((s.model.peakCap || 0) * 10) },
-      { label: 'Frontier records set', value: (s.stats.firstsWon || 0) * 150 },
-      { label: 'Frontier records lost to rivals', value: -(s.stats.firstsLost || 0) * 50 },
-      { label: 'Incidents', value: -(s.stats.incidents || 0) * 60 },
-      { label: 'Founder stake at peak valuation', value: Math.round((s.stats.peakValuation || 0) * (s.money.founderPct || 0) / 100 / 1e7) },
-      { label: 'Longest safe frontier hold (weeks)', value: (s.win.best || 0) * 5 }
+      { label: 'Weeks operated', value: Math.min(s.turn, Q.horizon) },
+      { label: 'Peak average capability', value: Math.round((s.model.peakCap || 0) * Q.capPer) },
+      { label: 'Frontier records set', value: (s.stats.firstsWon || 0) * Q.firstWon },
+      { label: 'Frontier records lost to rivals', value: (s.stats.firstsLost || 0) * Q.firstLost },
+      { label: 'Incidents', value: (s.stats.incidents || 0) * Q.incident },
+      { label: 'Founder stake at the end', value: Math.min(Q.stakeMax, Math.round(Q.stakePer * Math.log10(1 + stake / Q.stakeUnit))) },
+      { label: 'Longest safe frontier hold (weeks)', value: (s.win.best || 0) * Q.holdPer }
     ];
-    if (s.status === 'won') parts.push({ label: 'Held the frontier safely for a year', value: 2000 });
-    if (s.status === 'exited') parts.push({ label: 'Acquired', value: 500 });
+    if (s.status === 'won') parts.push({ label: 'Held the frontier safely for a year', value: Q.win + Q.winFast * Math.max(0, Q.horizon - s.turn) });
+    if (s.status === 'exited') parts.push({ label: 'Acquired', value: Q.exit });
     return { total: parts.reduce((t, p) => t + p.value, 0), parts };
   };
 

@@ -119,9 +119,11 @@ function turn(s, a, rng) { const r = rep(s.turn); P.step(s, a || alloc(0, 0, P.p
   add(s, { tpl: 'preorder', name: 'Chip pre-order', skill: null, turns: 1, pfPerTurn: 0, payoff: { fx: { rentDiscount: 0.2, turns: 5 } } }); turn(s);
   const e = s.projects.effects; assert.deepStrictEqual([e.demandMult, e.priceMult, e.rentDiscount, e.until], [1.3, 1, 0.2, T + 4]);
   assert.deepStrictEqual(P.fx(s), { demandMult: 1.3, priceMult: 1, rentDiscount: 0.2, until: T + 4 });
-  turn(s); turn(s); const r3 = turn(s);
+  turn(s); const r3a = turn(s), r3 = turn(s);
   assert.strictEqual(s.projects.effects.demandMult, 1); assert.strictEqual(s.projects.effects.rentDiscount, 0.2);
-  assert.ok(r3.memo.some(m => m.text === 'Product launch effect ended: demand +30%.'));
+  // announced after the last week it applies, not a week late
+  assert.ok(r3a.memo.some(m => m.text === 'Product launch effect ends: demand +30% no longer applies from next week.'));
+  assert.ok(!r3.memo.some(m => /Product launch effect/.test(m.text)));
   // data deal: trust risk rolls on completion
   trusts = []; add(s, { tpl: 'data', name: 'Agents data licensing deal', skill: 'agents', turns: 1, payoff: { cap: 3, safe: -0.5, trustRisk: { chance: 0.35, trust: 4 } } }); turn(s, null, fake([0]));
   assert.deepStrictEqual(trusts, [-4]); }
@@ -140,6 +142,23 @@ function turn(s, a, rng) { const r = rep(s.turn); P.step(s, a || alloc(0, 0, P.p
     return n; };
   const n1 = count(1); assert.strictEqual(n1[3], 0); assert.ok(n1[1] > n1[2] * 2, 'tier 1: mostly tier 1, some tier 2 teasers');
   const n3 = count(3); assert.ok(n3[3] > n3[2] && n3[2] > n3[1] && n3[1] > 0, 'tier 3: weighted to the top tier'); }
+
+// review regressions: a zero-progress cancel returns the card (no free reroll); only locked teasers left refreshes the
+// board; a safety payoff above today's ceiling is shown and reported
+{ const s = fresh(), ids = s.projects.offers.filter(o => o.tier <= s.research.tier).map(o => o.id), refreshAt = s.projects.refreshAt;
+  ids.forEach(id => { assert.ok(P.greenlight(s, id).ok || true); });
+  s.projects.active.slice().forEach(p => assert.ok(P.cancel(s, p.uid).ok));
+  assert.deepStrictEqual(s.projects.offers.map(o => o.id).sort(), ids.slice().sort()); assert.strictEqual(s.projects.done.length, 0);
+  const o = s.projects.offers.find(x => x.id === ids[0]), again = fresh().projects.offers.find(x => x.id === ids[0]);
+  assert.deepStrictEqual(o, again, 'the returned card is the card that was dealt');
+  turn(s); assert.strictEqual(s.projects.refreshAt, refreshAt, 'no fresh board from cancels');
+  s.projects.offers.forEach(x => { x.tier = 3; }); turn(s, null, FR.rng(5)); assert.ok(s.projects.offers.some(x => x.tier <= s.research.tier), 'teasers only: fresh board');
+  const t = fresh(); t.model.skills.coding.safe = 21;   // cap 20: ceiling 23, room 2
+  const card = { tpl: 'evals', name: 'Coding safety eval suite', kind: 'safety', skill: 'coding', tier: 1, turns: 1, pfPerTurn: 1, cost: 1e5, risk: 0, payoff: { safe: 5 } };
+  assert.strictEqual(P.describe(card), 'Coding safety +5.');
+  assert.strictEqual(P.describe(card, t), 'Coding safety +5 (+2 at today\'s levels: safety stops at capability + 3).');
+  add(t, card); const r = turn(t);
+  assert.ok(r.memo.some(m => /Coding safety up 2 to 23\. 3 of the safety payoff unused: safety stops at capability \+ 3\.$/.test(m.text)), JSON.stringify(r.memo)); }
 
 // debug and purity
 { const s = fresh(); add(s, {}); const d = P.debug(s);

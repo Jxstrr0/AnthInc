@@ -40,12 +40,8 @@
   };
 
   M.gap = (state, skill) => { const sk = state.model.skills[skill]; return Math.max(0, sk.cap - sk.safe); };
-  // weighted mean of the gaps, on the gap scale (0..100); agents weigh most
-  M.pressure = function (state) {
-    let t = 0, w = 0;
-    FR.SKILLS.forEach(k => { const wk = K.pressureW[k] || 1; t += wk * M.gap(state, k); w += wk; });
-    return t / w;
-  };
+  // total pressure: weighted sum of the gaps (handoff §4.2); agents weigh most
+  M.pressure = (state) => FR.SKILLS.reduce((t, k) => t + (K.pressureW[k] || 1) * M.gap(state, k), 0);
   M.incidentChance = (g) => g > K.incidentGap ? FR.clamp(K.incidentBase + (g - K.incidentGap) * K.incidentSlope, 0, 1) : 0;
   // incidents on a skill that still count toward the final rule at resolution turn `at`
   const recent = (sk, at) => sk.incidents.filter(t => t > at - K.incidentWindow);
@@ -117,11 +113,13 @@
     if (g > K.incidentGap) text += ', incident risk ' + Math.round(M.incidentChance(g) * 100) + '% a week';
     text += '.';
     if (turnsToFinal) text += ' Final incident ' + weeks(turnsToFinal) + ' unless the gap falls to ' + K.critGap + ' or below.';
+    let stand = '';
     if (lastStand) {
       const n = rec.length, last = Math.min.apply(null, rec.slice(-(K.finalIncidents - 1))) + K.incidentWindow - 1;
-      text += ' ' + n + ' incidents in the past ' + K.incidentWindow + ' weeks. One more by ' + FR.dateLabel(last) + ' ends the lab.';
+      stand = n + ' incidents in the past ' + K.incidentWindow + ' weeks. One more by ' + FR.dateLabel(last) + ' ends the lab.';
+      text += ' ' + stand;
     }
-    return { level, gap: g, turnsToFinal, text, incidents: rec.length };
+    return { level, gap: g, turnsToFinal, text, stand, incidents: rec.length };
   }
   M.outlook = (state, skill) => look(state, skill, state.turn);
 
@@ -156,19 +154,22 @@
       sk.warnStreak = g > K.warnGap ? sk.warnStreak + 1 : 0;
       if (g <= K.warnGap) sk.warned = false;
       sk.critStreak = g > K.critGap ? sk.critStreak + 1 : 0;
+      // warnings come first: a gap that jumps past the incident line unwarned is warned now and rolls from next week
+      const armed = sk.warned;
       let newWarn = false, hit = false;
-      if (!sk.warned && sk.warnStreak >= K.warnTurns) {
+      if (!sk.warned && (sk.warnStreak >= K.warnTurns || g > K.incidentGap)) {
         sk.warned = newWarn = true;
         if (state.stats) state.stats.warnings = (state.stats.warnings || 0) + 1;
         report.events.push({ type: 'model:warning', skill: k, gap: r1(g) });
       }
-      if (g > K.incidentGap && rng.chance(M.incidentChance(g))) { hit = true; incident(state, k, g, report); }
+      if (armed && g > K.incidentGap && rng.chance(M.incidentChance(g))) { hit = true; incident(state, k, g, report); }
       if (sk.critStreak >= K.critTurns) { final(state, k, g, 'gap ' + fmtGap(g) + ', above ' + K.critGap + ' for ' + sk.critStreak + ' weeks', report); return; }
       if (recent(sk, T).length >= K.finalIncidents) { final(state, k, g, ordinal(K.finalIncidents) + ' incident in ' + K.incidentWindow + ' weeks, gap ' + fmtGap(g), report); return; }
       // forewarning: the status line for the next turn whenever the skill is in danger
       const o = look(state, k, T + 1);
-      if (newWarn || hit || g > K.incidentGap || (o.incidents >= K.finalIncidents - 1 && g > K.warnGap))
+      if (newWarn || hit || g > K.incidentGap || (o.stand && g > K.warnGap))
         report.memo.push({ kind: 'flag', text: o.text + (newWarn ? ' Safety review requested.' : '') });
+      else if (o.stand) report.memo.push({ kind: 'flag', text: NAME(k) + ': ' + o.stand });   // gap in hand, the count still stands
     }
   };
 

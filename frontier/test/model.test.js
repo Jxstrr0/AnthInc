@@ -60,14 +60,25 @@ const turn = (s, rng) => { const r = rep(); M.ladder(s, rng, r); if (s.status ==
   assert.ok(r.events.some(e => e.type === 'model:final' && e.skill === 'agents')); assert.ok(s.end.text.length > 10); }
 
 // third incident on a skill within 52 turns ends the run; one outside the window does not
-{ const s = fresh(80); set(s, 'reasoning', 45, 22); s.model.skills.reasoning.incidents = [29, 60];
+{ const s = fresh(80); set(s, 'reasoning', 45, 22); s.model.skills.reasoning.incidents = [29, 60]; s.model.skills.reasoning.warned = true;
   const r = turn(s, YES); assert.strictEqual(s.status, 'dead'); assert.strictEqual(s.end.skill, 'reasoning');
   assert.ok(/third incident in 52 weeks/.test(s.end.text));
-  const s2 = fresh(81); set(s2, 'reasoning', 45, 22); s2.model.skills.reasoning.incidents = [29, 60];
+  const s2 = fresh(81); set(s2, 'reasoning', 45, 22); s2.model.skills.reasoning.incidents = [29, 60]; s2.model.skills.reasoning.warned = true;
   const r2 = turn(s2, YES); assert.strictEqual(s2.status, 'playing'); assert.deepStrictEqual(s2.model.skills.reasoning.incidents, [29, 60, 81]);
   // after the roll at 81, incidents 60 and 81 count through turn 111; the memo says one more ends the lab
   assert.ok(r2.memo.some(m => m.text.includes('2 incidents in the past 52 weeks. One more by ' + FR.dateLabel(111) + ' ends the lab.')));
   assert.strictEqual(M.outlook(s2, 'reasoning').level, 'critical'); }
+
+// warnings come first: a gap that jumps past 20 unwarned is warned that week and rolls only from the next
+{ const s = fresh(); set(s, 'coding', 30, 21); turn(s, YES); set(s, 'coding', 40, 18);
+  let r = turn(s, YES); assert.deepStrictEqual(r.events.map(e => e.type), ['model:warning']); assert.strictEqual(s.stats.incidents, 0);
+  assert.ok(r.memo.some(m => /Gap 22, incident risk \d+% a week\. Safety review requested\.$/.test(m.text)));
+  r = turn(s, YES); assert.deepStrictEqual(r.events.map(e => e.type), ['model:incident']); }
+// two incidents inside the year: the memo flags it every week even with the gap in hand
+{ const s = fresh(40); set(s, 'reasoning', 30, 21); s.model.skills.reasoning.incidents = [30, 35];
+  const r = turn(s, NO); assert.ok(r.memo.some(m => m.kind === 'flag' && m.text === 'Reasoning: 2 incidents in the past 52 weeks. One more by ' + FR.dateLabel(81) + ' ends the lab.')); }
+// pressure is the weighted sum of the gaps
+{ const s = fresh(); FR.SKILLS.forEach(k => set(s, k, 20, 10)); assert.strictEqual(M.pressure(s), 10 * (K.pressureW.coding + K.pressureW.reasoning + K.pressureW.agents)); }
 
 // safety: spread toward the biggest gap, never above cap + safeLead (training, spread and boost)
 { const s = fresh(); set(s, 'coding', 30, 10); set(s, 'reasoning', 30, 28); set(s, 'agents', 30, 28);
