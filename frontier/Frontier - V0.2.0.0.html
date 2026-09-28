@@ -6885,7 +6885,7 @@ window.FR_VERSION="0.2.0.0";
     return `<div class="card" data-focus="milestone"><div class="card-head">${ico('record')}<b class="card-title">${esc(roundName(ms.round))} milestone</b>${pr.met ? badge('Met', 'good', 'check') : badge(pr.weeksLeft <= 0 ? 'Due now' : wks(pr.weeksLeft) + ' left', pr.weeksLeft <= 4 ? 'warn' : '', 'clock')}</div>
       <p class="card-meta">${esc(ms.text)}</p>
       <div class="pl-mrow-l"><span>${esc(label)}</span><span class="num"><b>${fmt(pr.current)}</b> of ${fmt(pr.value)}</span></div>${meter(pr.value > 0 ? pr.current / pr.value * 100 : 0, pr.met ? 'good' : 'gold')}
-      ${pr.met ? '' : paceNote(s, ms)}${note(pr.met ? 'check' : 'alert', said)}</div>`;
+      ${pr.met ? '' : paceNote(s, ms)}${ms.kind === 'revenue' && !pr.met && accOn() ? kv('building', `Weekly revenue counts open-market serving and account fees. ${unlocked(s) ? `The book holds ${(accOf(s).active || []).length} of ${maxActive(s)} accounts.` : 'Account offers open on the Serving floor at average capability ' + AK().unlockCap + ' and public trust ' + AK().unlockTrust + '.'}`) : ''}${note(pr.met ? 'check' : 'alert', said)}</div>`;
   }
   // FR.money.pace: where today's settings leave a capability milestone by its due week
   const paceOf = (s, ms) => has('money', 'pace') ? tryr(() => FR.money.pace(s, ms), null) : null;
