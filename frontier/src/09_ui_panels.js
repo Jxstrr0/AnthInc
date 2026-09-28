@@ -364,8 +364,9 @@
     const left = Math.max(0, a.ends - s.turn + 1), pending = a.starts != null && a.starts > s.turn, mood = Math.round(+a.mood || 0), hue = moodHue(mood);
     const short = a.starts != null && a.starts < s.turn && a.served != null && a.served < a.pfPerWeek - 0.05;
     const tag = mood < AK().watchMood ? badge('At risk', 'bad', 'alert') : left <= 8 ? badge(mood >= AK().renewMood ? 'Renews' : 'Ends', mood >= AK().renewMood ? 'good' : 'warn', 'clock') : pending ? badge('Onboarding', 'info', 'clock') : '';
-    return `<div class="fp-acc"><div class="fp-acc-h"><b>${esc(a.name)}</b>${badge('Tier ' + a.tier, 'brand')}${tag}<span class="num fp-acc-fee">${kmoney(a.feePerWeek)}<small>/wk</small></span></div>
-      <p class="fp-acc-s">${esc(a.sector || '')} · <span class="num">${trim1(a.pfPerWeek)} PF</span> · <span class="num">${wks(left)}</span> left${pending ? ` · fee from ${esc(when(a.starts))}` : ''}</p>
+    // name and fee on the first line (the name gets the width), tier and status badges lead the second
+    return `<div class="fp-acc"><div class="fp-acc-h"><b>${esc(a.name)}</b><span class="num fp-acc-fee">${kmoney(a.feePerWeek)}<small>/wk</small></span></div>
+      <p class="fp-acc-s">${badge('Tier ' + a.tier, 'brand')}${tag}<span>${esc(a.sector || '')} · <span class="num">${trim1(a.pfPerWeek)} PF</span> · <span class="num">${wks(left)}</span> left${pending ? ` · fee from ${esc(when(a.starts))}` : ''}</span></p>
       <div class="fp-acc-m"><span>Mood</span><div class="meter ${hue}" style="--v:${clamp(mood, 0, 100)}" role="img" aria-label="Mood ${mood} of 100"><i></i></div><b class="num tone-${hue === 'cap' ? 'cap' : hue}">${mood}</b></div>
       ${short ? `<p class="fp-acc-w">${ico('alert')}<span>Served ${n1(a.served)} of ${trim1(a.pfPerWeek)} PF last week. Each short week costs ${AK().mood.unserved} mood.</span></p>` : ''}</div>`;
   }
@@ -1240,7 +1241,7 @@
       '.fp-acc-h>b{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--text-md)}',
       '.fp-acc-h .badge{flex:none}',
       '.fp-acc-fee{flex:none;margin-left:auto;font-size:var(--text-md);font-weight:var(--w-medium);color:var(--gold)}.fp-acc-fee small{font-size:var(--text-xs);color:var(--ink-3)}',
-      '.fp-acc-s{margin:2px 0 6px;font-size:var(--text-sm);color:var(--ink-3)}',
+      '.fp-acc-s{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin:4px 0 6px;font-size:var(--text-sm);color:var(--ink-3)}.fp-acc-s .badge{flex:none}',
       '.fp-acc-m{display:grid;grid-template-columns:44px minmax(0,1fr) 30px;align-items:center;gap:8px;font-size:var(--text-xs);color:var(--ink-3)}',
       '.fp-acc-m .meter{height:6px;margin:0}.fp-acc-m>b{font-family:var(--font-num);font-size:var(--text-sm);font-weight:var(--w-medium);text-align:right}',
       '.fp-acc-w{display:flex;align-items:flex-start;gap:6px;margin:6px 0 0;font-size:var(--text-sm);line-height:var(--lh-snug);color:var(--warn)}.fp-acc-w .ico{flex:none;width:16px;height:16px;margin-top:1px}',
