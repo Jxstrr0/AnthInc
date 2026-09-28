@@ -3,6 +3,8 @@
 - **Version:** 0.2.0.0 (published 2026-09-28)
 - **Artifact URL:** https://claude.ai/artifact/AFXyxwEKHRKuKf9oMy5Ms5 (title "Frontier", label = version; republish dist/game.artifact.html to it)
 - **Repo:** `Jxstrr0/AnthInc`, folder `frontier/`. Design: `docs/frontier-handoff-v0.1.html`. Contracts: `plan/contracts.md` (sim), `plan/contracts_ui.md` (HQ + UI).
+- **GitHub Pages:** https://jxstrr0.github.io/AnthInc/ serves `/index.html` at the repo root = the last PUBLISHED build.
+  On every publish, also copy `frontier/dist/game.html` to `/index.html` (never a work-in-progress build).
 - **Build:** `node build.js` → `dist/game.html`, `dist/game.artifact.html`, `Frontier - V<ver>.html`
 - **Tests:** `node test/run.js [name]` (node, sim) · `node tools/balance.js --seeds 20` (bot probe) · `NODE_PATH=$(npm root -g) node test/browser.js` (Playwright; `SECTION=boot|flow|floors|save|end|review`, `SKIP_SHOTS=1`; three.js served from `tools/vendor/`)
 - **HQ reference:** the owner's Mogul game (artifact V8LMpKH1RBp2UTiFcz7m77). Local split copy in `.ref/mogul/src`
