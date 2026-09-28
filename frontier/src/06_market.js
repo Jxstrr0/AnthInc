@@ -201,7 +201,7 @@
     const hit = rng.int(K.incTrust[0], K.incTrust[1]), shield = FR.sim && FR.sim.inStep ? FR.sim.inStep(s) : false;
     const lost = -M.nudgeTrust(s, -(shield ? hit * K.incShield : hit), r.name + ' incident', report), t = Math.round(s.market.trust);
     const what = r.name + ' ' + FR.SKILL_NAME[k].toLowerCase() + ' incident';
-    report.events.push({ type: 'market:rivalIncident', rivalId: r.id, trust: r2(lost), shielded: shield });
+    report.events.push({ type: 'market:rivalIncident', rivalId: r.id, trust: FR.round(lost, 1), shielded: shield });
     if (shield) {
       report.news.push({ kind: 'incident', text: sub(rng.pick(INC[k]), { R: r.name }) + ' Public trust in AI labs down ' + hit + '.' });
       report.memo.push({ kind: 'change', text: 'Public trust ' + t + ' after the ' + what + ', which cost AI labs ' + hit + ' points. Our evaluations are current; trust impact limited to ' + FR.round(lost, 1) + '.' });

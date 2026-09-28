@@ -131,7 +131,8 @@
 
   // the Safety floor gauge: weighted pressure against K.pressureBands, never calmer than the worst skill's own outlook
   const LEVELS = ['ok', 'watch', 'warning', 'critical'], LEVEL_TEXT = { ok: 'in hand', watch: 'watch', warning: 'warning', critical: 'critical' };
-  const fmtP = (v) => K.pressureBands.some(t => (v > t) !== (Math.round(v) > t)) ? v.toFixed(1) : String(Math.round(v));
+  // whole numbers, with a decimal under 1 or when rounding would cross a band
+  const fmtP = (v, th) => v > 0 && v < 1 ? v.toFixed(1) : th.some(t => (v > t) !== (Math.round(v) > t)) ? v.toFixed(1) : String(Math.round(v));
   M.pressureLevel = function (state) {
     const value = FR.round(M.pressure(state), 1);
     let i = K.pressureBands.filter(b => value > b).length;
@@ -139,8 +140,8 @@
     const level = LEVELS[i];
     const top = FR.SKILLS.reduce((b, k) => M.weight(k) * M.gap(state, k) > M.weight(b) * M.gap(state, b) ? k : b, FR.SKILLS[0]);
     const g = M.gap(state, top);
-    const text = 'Pressure ' + fmtP(value) + ', ' + LEVEL_TEXT[level] + '. ' + (g > 0.05 ?
-      NAME(top) + ' carries the most: gap ' + fmtGap(g) + ' at weight ' + M.weight(top) + '.' : 'Safety is at or above capability on every skill.');
+    const text = 'Pressure ' + fmtP(value, K.pressureBands) + ', ' + LEVEL_TEXT[level] + '. ' + (g > 0 ?
+      NAME(top) + ' carries the most: gap ' + fmtP(FR.round(g, 1), TH()) + ' at weight ' + M.weight(top) + '.' : 'Safety is at or above capability on every skill.');
     return { value, level, text };
   };
 

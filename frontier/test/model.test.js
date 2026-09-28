@@ -102,6 +102,8 @@ const turn = (s, rng) => { const r = rep(); M.ladder(s, rng, r); if (s.status ==
   set(s, 'agents', 8, 8); set(s, 'coding', 29, 8); assert.strictEqual(P().value, 21); assert.strictEqual(P().level, 'warning', 'coding gap 21 alone is past the incident line');
   set(s, 'coding', 40, 8); assert.strictEqual(P().level, 'critical'); assert.strictEqual(P().value, 32);
   set(s, 'coding', 23.4, 8); assert.ok(/^Pressure 15\.4, watch\./.test(P().text), P().text);   // a decimal when rounding would cross a band
+  set(s, 'coding', 8.4, 8); assert.strictEqual(P().text, 'Pressure 0.4, in hand. Coding carries the most: gap 0.4 at weight 1.');   // and under 1
+  set(s, 'coding', 30.4, 10); assert.ok(P().text.endsWith('gap 20.4 at weight 1.'), P().text);
   assert.strictEqual(M.debug(s).pressureLevel, P().level); }
 
 // safety: spread toward the biggest gap, never above cap + safeLead (training, spread and boost)
