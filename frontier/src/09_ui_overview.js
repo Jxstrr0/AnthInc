@@ -65,10 +65,12 @@
     // enterprise accounts (V0.3; shown once the module exists)
     if (s.accounts && FR.accounts) {
       const A = FR.accounts, acts = s.accounts.active || [], unlocked = !!(s.accounts.unlocked || acts.length || (s.accounts.offers || []).length);
-      const dbg = tryr(() => A.debug(s), {}), maxA = tryr(() => A.maxActive(s), 4);
+      const dbg = tryr(() => A.debug(s), {}), maxA = tryr(() => A.maxActive(s), 4), MK = (A.K && A.K.mood) || { watch: 45, churn: 30 };
+      const risk = acts.filter(a => +a.mood < MK.watch), am = dbg.avgMood || 0, moodCls = !acts.length ? '' : am < MK.churn ? 'neg' : am < MK.watch ? 'tone-warn' : '';
       out += sec('serving', 'Accounts', unlocked ? `Contracted ${km(tryr(() => A.contracted(s), dbg.contracted || 0))} a week · backlog ${km(tryr(() => A.backlog(s), 0))}.`
         : 'Enterprise buyers open talks once average capability reaches 20 and public trust is 45 or more.',
-        unlocked ? `<div class="stats">${stat('Active', acts.length + ' of ' + maxA)}${stat('Offers', (s.accounts.offers || []).length)}${stat('Avg mood', acts.length ? Math.round(dbg.avgMood || 0) : '—')}</div>` : '', 'serving:serving.accounts');
+        unlocked ? `<div class="stats">${stat('Active', acts.length + ' of ' + maxA)}${stat('Offers', (s.accounts.offers || []).length)}${stat('Avg mood', acts.length ? Math.round(dbg.avgMood || 0) : '—', '', moodCls)}</div>`
+          + (risk.length ? `<p class="ov-line tone-warn">${risk.length === 1 ? esc(risk[0].name) + ' is' : risk.length + ' accounts are'} below mood ${MK.watch}; under ${MK.churn} an account leaves the next week.</p>` : '') : '', 'serving:serving.accounts', risk.length ? 'warn' : '');
     }
 
     // funding

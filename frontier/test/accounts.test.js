@@ -32,7 +32,7 @@ function live(s, tier, extra) {
 // ---- K and names: first-pass numbers from the handoff; ~30 fictional names, no repeats ----
 assert.strictEqual(K.unlockCap, 20); assert.strictEqual(K.unlockTrust, 45); assert.strictEqual(K.refreshTurns, 8);
 assert.deepStrictEqual(K.turns, [52, 104, 156]); assert.strictEqual(K.signCost, 150000); assert.strictEqual(K.signWeeks, 2);
-assert.strictEqual(K.maxActive, 4); assert.strictEqual(K.maxActiveB, 6);
+assert.strictEqual(K.maxActive, 5); assert.strictEqual(K.maxActiveB, 6);
 assert.ok(K.NAMES.length >= 28 && K.NAMES.length <= 34, 'about 30 names');
 assert.strictEqual(new Set(K.NAMES.map(n => n[0])).size, K.NAMES.length, 'no duplicate names');
 assert.ok(K.NAMES.every(n => /^[A-Z][A-Za-z&' ]+$/.test(n[0]) && n[1]), 'plain names with a sector');
@@ -42,8 +42,8 @@ assert.strictEqual(A.fee(3, 105), Math.round(3 * K.feeBase * 1.3 / 1000) * 1000)
 
 // ---- init shape and 0.2 save migration ----
 let s = FR.sim.newGame({ seed: 2 });
-assert.deepStrictEqual(Object.keys(s.accounts).sort(), ['active', 'boost', 'lost', 'offers', 'readyUntil', 'refreshAt', 'unlocked', 'used']);
-assert.strictEqual(s.accounts.unlocked, false); assert.strictEqual(A.reservedPF(s), 0); assert.strictEqual(A.maxActive(s), 4);
+assert.deepStrictEqual(Object.keys(s.accounts).sort(), ['active', 'boost', 'cool', 'lost', 'offers', 'readyUntil', 'refreshAt', 'unlocked', 'used']);
+assert.strictEqual(s.accounts.unlocked, false); assert.strictEqual(A.reservedPF(s), 0); assert.strictEqual(A.maxActive(s), K.maxActive);
 const old = FR.clone(s); delete old.accounts; delete old.money.revMarket; delete old.money.revContracts;
 const mig = FR.sim.migrate(old);
 assert.ok(mig.accounts && Array.isArray(mig.accounts.active) && mig.accounts.unlocked === false); assert.strictEqual(mig.money.revContracts, 0);
@@ -81,7 +81,7 @@ s = game(); s.accounts.unlocked = true;
 let o = offer(s, 2);
 setCap(s, 29); assert.deepStrictEqual(A.qualifies(s, o), { ok: false, why: 'Needs average capability 30; the lab is at 29' });
 setCap(s, 30, 8); assert.strictEqual(A.qualifies(s, o).ok, false); assert.ok(/within 7 of capability; the widest gap is 8/.test(A.qualifies(s, o).why));
-setCap(s, 30, 7); s.market.trust = 49; assert.strictEqual(A.qualifies(s, o).ok, false);
+setCap(s, 30, 7); s.market.trust = K.minTrust[1] - 0.1; assert.strictEqual(A.qualifies(s, o).ok, false);
 s.market.trust = 60; assert.deepStrictEqual(A.qualifies(s, o), { ok: true, why: '' });
 s.market.trust = 60; const cash0 = s.money.cash, tr0 = s.market.trust;
 let c = cmd(s, { type: 'signAccount', id: o.id }); assert.ok(c.r.ok, c.r.why); s = c.s;
@@ -92,7 +92,7 @@ assert.deepStrictEqual([a.tier, a.mood, a.signed, a.starts, a.ends], [2, 70, s.t
 assert.deepStrictEqual(s.pendingEvents.slice(-1), [{ type: 'account:signed', id: o.id, name: o.name, tier: 2 }]);
 assert.ok(/^Signed Test Buyer 0 \(Banking, tier 2\): 20 PF reserved and \$\d+k a week from Year \d+, Week \d+ for 104 weeks\. Onboarding \$300k\. Public trust up 1\.$/
   .test(s.pendingMemo.slice(-1)[0].text), s.pendingMemo.slice(-1)[0].text);
-assert.ok(s.accounts.used.indexOf(o.name) >= 0);
+assert.ok(s.accounts.used.indexOf(o.name) < 0, 'used = churned names only'); assert.strictEqual(s.pendingMemo.slice(-1)[0].key, 'accounts:' + s.turn);
 // tier 3 signs for +2 trust; declining costs nothing and takes the card off the board
 o = offer(s, 3); setCap(s, 45, 4); s.market.trust = 60;
 c = cmd(s, { type: 'signAccount', id: o.id }); assert.ok(c.r.ok, c.r.why); near(c.s.market.trust, 62); s = c.s;
@@ -105,13 +105,13 @@ assert.strictEqual(cmd(s, { type: 'declineAccount', id: 'nope' }).r.ok, false);
 // not enough cash
 o = offer(s, 1); s.money.cash = 100; assert.ok(/^Onboarding .* costs \$150k/.test(cmd(s, { type: 'signAccount', id: o.id }).r.why));
 
-// ---- maxActive: 4, and 6 once the Series B has closed ----
+// ---- maxActive: 5, and 6 once the Series B has closed ----
 s = game(); s.accounts.unlocked = true; setCap(s, 45);
-for (let i = 0; i < 4; i++) live(s, 1);
+for (let i = 0; i < K.maxActive; i++) live(s, 1);
 o = offer(s, 1); c = cmd(s, { type: 'signAccount', id: o.id });
-assert.strictEqual(c.r.ok, false); assert.strictEqual(c.r.why, 'The book is full: at most 4 accounts at once');
+assert.strictEqual(c.r.ok, false); assert.strictEqual(c.r.why, 'The book is full: at most ' + K.maxActive + ' accounts at once');
 s.money.roundsDone = ['seed', 'a', 'b']; assert.strictEqual(A.maxActive(s), 6);
-c = cmd(s, { type: 'signAccount', id: o.id }); assert.ok(c.r.ok); s = c.s; live(s, 1);
+c = cmd(s, { type: 'signAccount', id: o.id }); assert.ok(c.r.ok); s = c.s; for (let i = s.accounts.active.length; i < K.maxActiveB; i++) live(s, 1);
 o = offer(s, 1); assert.strictEqual(cmd(s, { type: 'signAccount', id: o.id }).r.why, 'The book is full: at most 6 accounts at once');
 
 // ---- reserved PF: contract PF of live accounts comes out of serving before the open market ----
@@ -194,15 +194,20 @@ s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = 999;
 a = live(s, 1, { ends: s.turn, mood: 65 }); const b = live(s, 2, { ends: s.turn, mood: 55 });
 q = step(1000);
 assert.strictEqual(a.tier, 2); assert.strictEqual(a.feePerWeek, A.fee(2, s.turn + 1)); assert.strictEqual(a.ends, s.turn + K.turns[1]);
+assert.strictEqual(a.pfPerWeek, 19, 'reserved PF scaled into tier 2 (10 of 8-14 -> 19 of 16-26): the fee per PF holds');
 assert.ok(s.accounts.active.indexOf(a) >= 0); assert.ok(s.accounts.active.indexOf(b) < 0);
 assert.deepStrictEqual(s.accounts.lost.map(x => [x.name, x.why]), [[b.name, 'expired']]);
 assert.ok(q.events.some(e => e.type === 'account:churned' && e.why === 'expired'));
-assert.ok(q.memo.some(m => m.text.indexOf(a.name + ' renews for 104 weeks at ') === 0));
+assert.ok(q.memo.some(m => m.text.indexOf(a.name + ' renews at tier 2 for 104 weeks at ') === 0 && /reserving 19 PF, up from 10/.test(m.text)), JSON.stringify(q.memo));
 assert.strictEqual(q.memo.filter(m => /renews|without renewal/.test(m.text)).length, 2);
 // a tier 3 renews at tier 3 (this year's fee)
 s.turn = 60; a.tier = 3; a.ends = 60; a.mood = 70; step(1000); assert.strictEqual(a.tier, 3); assert.strictEqual(a.ends, 60 + 156);
 // the renewal-due line 8 weeks out
 a.ends = s.turn + K.dueWarn + 1; s.turn++; q = step(1000); assert.ok(q.memo.some(m => m.kind === 'due' && m.text.indexOf(a.name + ' contract ends') === 0));
+// a lab short of the next tier's minimums renews at the same tier (this year's fee, same PF): no tier-3 fee for a tier-1 book
+s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = 999; s.market.trust = K.minTrust[1] - 1;
+a = live(s, 1, { ends: s.turn, mood: 70, pfPerWeek: 8 }); step(1000);
+assert.deepStrictEqual([a.tier, a.pfPerWeek, a.feePerWeek, a.ends], [1, 8, A.fee(1, s.turn + 1), s.turn + K.turns[0]]);
 
 // ---- at most two account memo lines a week, the urgent ones first ----
 s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = s.turn + 1;
@@ -249,6 +254,64 @@ FR.projects.step(s, FR.sim.allocate(s), FR.rng(4), rep(s.turn)); assert.strictEq
 s.accounts.offers = []; setCap(s, 20); s.accounts.refreshAt = s.turn + 1;
 let tiers = []; for (let i = 0; i < 6 && tiers.length < 3; i++) { s.accounts.refreshAt = s.turn + 1; step(0); tiers = tiers.concat(s.accounts.offers.map(x => x.tier)); }
 assert.deepStrictEqual(tiers.slice(0, 3), [2, 2, 1]); assert.strictEqual(s.accounts.boost, 0);
+
+// ---- review round (V0.3): regressions ----
+// a leaving account (below 30) is off the book at once: no PF reserved, no fee, no backlog, the week it is announced
+s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = 999; a = live(s, 2, { mood: 25, name: 'Halden Mutual' });
+assert.strictEqual(A.reservedPF(s), 0); assert.strictEqual(A.feeRevenue(s), 0); assert.strictEqual(A.backlog(s), 0);
+assert.strictEqual(FR.money.revenueSplit(s, 40).contracts, 0);
+// 'leaves next week' binds: readiness work finishing that week does not keep it
+a.mood = 35; a.leaving = true; A.lift(s, 10, 26); step(100); assert.strictEqual(s.accounts.active.length, 0);
+// the backlog counts only live contracts (signing the week a milestone is met cannot lift the round's terms)
+s = game(); s.accounts.unlocked = true; o = offer(s, 2); s = cmd(s, { type: 'signAccount', id: o.id }).s;
+assert.strictEqual(A.backlog(s), 0, 'onboarding: no backlog'); s.turn += 2; assert.ok(A.backlog(s) > 0);
+// sign and decline in one week share one memo line (key accounts:<turn>), which takes one of the two account places
+s = game(); s.accounts.unlocked = true; setCap(s, 45, 2);
+const o1 = offer(s, 1), o2 = offer(s, 2), o3 = offer(s, 1, { name: 'Test Buyer X' });
+s = FR.sim.applyCommands(s, [{ type: 'signAccount', id: o1.id }, { type: 'signAccount', id: o2.id }, { type: 'declineAccount', id: o3.id }]).state;
+assert.strictEqual(s.pendingMemo.filter(m => m.key === 'accounts:' + s.turn).length, 1);
+assert.ok(/^Signed Test Buyer 0 \(tier 1\) and Test Buyer 1 \(tier 2\): 30 PF reserved and \$\d+k a week from Year \d+, Week \d+\. Onboarding \$450k\. Public trust up 2\. Declined Test Buyer X\.$/
+  .test(s.pendingMemo.slice(-1)[0].text), s.pendingMemo.slice(-1)[0].text);
+// a declined name rests for K.cooldown weeks, then may be dealt again; a churned name never is
+assert.deepStrictEqual(s.accounts.cool.map(c => [c.name, c.why, c.until]), [['Test Buyer X', 'declined', s.turn + K.cooldown]]);
+s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = 999;
+o = offer(s, 1, { name: 'Halden Mutual', sector: 'Insurance' }); s = cmd(s, { type: 'declineAccount', id: o.id }).s;
+let seenH = false, T0 = s.turn;
+for (let i = 0; i < 90; i++) { s.accounts.refreshAt = s.turn + 1; step(0); if (s.accounts.offers.some(x => x.name === 'Halden Mutual')) { seenH = true; assert.ok(s.turn + 1 >= T0 + K.cooldown); break; } s.accounts.offers = []; s.turn++; }
+assert.ok(seenH, 'a declined buyer returns after the cooldown');
+// an empty board says why
+s = game(); s.accounts.unlocked = true; s.accounts.used = K.NAMES.map(x => x[0]); s.accounts.refreshAt = s.turn + 1; q = step(0);
+assert.strictEqual(s.accounts.offers.length, 0); assert.ok(q.memo.some(m => /^Account board: no new buyers this round\./.test(m.text)));
+// no board line while the book is full
+s = game(); s.accounts.unlocked = true; for (let i = 0; i < K.maxActive; i++) live(s, 1); s.accounts.refreshAt = s.turn + 1; q = step(1000);
+assert.ok(s.accounts.offers.length > 0); assert.ok(!q.memo.some(m => /^Account board/.test(m.text)));
+// tiers are dealt within reach of trust too: at trust 50 no tier 3 (needs 52, reach 2 -> 50 is in reach; 49.9 is not)
+s = game(); s.accounts.unlocked = true; setCap(s, 45, 2); s.market.trust = K.minTrust[2] - K.trustReach - 0.1;
+let t3 = 0; for (let i = 0; i < 30; i++) { s.accounts.refreshAt = s.turn + 1; step(1000); t3 += s.accounts.offers.filter(x => x.tier === 3).length; s.accounts.offers = []; s.market.trust = K.minTrust[2] - K.trustReach - 0.1; }
+assert.strictEqual(t3, 0, 'no tier 3 out of trust reach');
+// the Reference program boost waits when the next tier is beyond the wider reach (tier 2 at cap 19: 11 short)
+s = game(); s.accounts.unlocked = true; setCap(s, 19, 2); s.market.trust = 60; s.accounts.boost = 1; s.accounts.refreshAt = s.turn + 1; step(1000);
+assert.ok(s.accounts.offers.every(x => x.tier === 1)); assert.strictEqual(s.accounts.boost, 1);
+// contracts going live the same week share one line; a short first week is a flag
+s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = 999; live(s, 1, { pfPerWeek: 10 }); live(s, 1, { pfPerWeek: 12 });
+q = step(30); assert.ok(q.memo.some(m => m.kind === 'good' && /^Live Buyer 0 and Live Buyer 1 contracts live: 22 PF reserved/.test(m.text)), JSON.stringify(q.memo));
+s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = 999; live(s, 1, { pfPerWeek: 10 });
+q = step(0); assert.ok(q.memo.some(m => m.kind === 'flag' && /^Live Buyer 0 contract live but short: 0 of 10 reserved PF served/.test(m.text)), JSON.stringify(q.memo));
+// shock: the plural says "contracts"; a book over 3 is summarised by its average
+s = game(); for (let i = 0; i < 4; i++) live(s, 1, { mood: 35 });
+q = rep(s.turn); q.events.push({ type: 'market:rivalIncident', rivalId: 'opal' }); A.shock(s, q);
+assert.ok(/^Account mood down 10 after the Opal AI incident: average 25 across 4 accounts\. Below 30, Live Buyer 0, Live Buyer 1, Live Buyer 2 and Live Buyer 3 end their contracts next week\.$/.test(q.memo[0].text), q.memo[0].text);
+assert.ok(s.accounts.active.every(x => x.leaving));
+// through endTurn the urgent shock line is not lost to lower-priority lines written earlier in the week
+s = game(); s.accounts.unlocked = true; s.accounts.refreshAt = s.turn + 1;
+live(s, 1, { mood: 33, name: 'Halden Mutual' }); live(s, 1, { starts: s.turn + 1, signed: s.turn - 1 });
+s.sliders = { training: 30, serving: 40, safety: 20, research: 10 }; s.compute.rentPF = 300;
+const ev = { type: 'market:rivalIncident', rivalId: 'opal', trust: 2, shielded: false };
+s.pendingEvents = [ev];   // counts as this week's rival incident
+s = FR.sim.endTurn(s, []);
+const acc = s.lastReport.memo.filter(m => /Account|contract|Halden|Live Buyer/.test(m.text));
+assert.ok(acc.some(m => /Below 30, Halden Mutual ends its contract next week\./.test(m.text)), JSON.stringify(acc));
+assert.ok(acc.length <= K.memoMax);
 
 // ---- debug ----
 const d = A.debug(s);

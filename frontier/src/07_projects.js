@@ -33,8 +33,8 @@
         blurb: 'Publish evaluation results and known limits for the current model.', news: '{L} publishes a model card with evaluation results for its current model.' },
       { id: 'paper', tier: 1, kind: 'research', skill: 'all', name: 'Alignment research paper', turns: [3, 5], pf: [2, 4], cost: [2e5, 4e5], risk: 0.15, pay: { safe: 1, trust: 3 },
         blurb: 'Write up the lab\'s alignment work for peer review.', news: '{L} publishes alignment research for peer review.' },
-      { id: 'enterprise', tier: 1, kind: 'business', skill: null, name: 'Enterprise contract', turns: [4, 6], pf: [3, 5], cost: [1.5e5, 2.5e5], risk: 0.2, pay: { cash: 6e5 },
-        blurb: 'A fixed-scope deployment for one large customer. Paid on delivery.' },
+      { id: 'enterprise', tier: 1, kind: 'business', skill: null, name: 'Fixed-scope deployment', turns: [4, 6], pf: [3, 5], cost: [1.5e5, 2.5e5], risk: 0.2, pay: { cash: 6e5 },
+        blurb: 'A one-off deployment for one large customer, outside the account book. Paid on delivery.' },
       { id: 'data', tier: 1, kind: 'business', skill: 'one', name: '{S} data licensing deal', turns: [2, 3], pf: [1, 2], cost: [2e5, 4e5], risk: 0.1, pay: { cap: 3, drift: 0.2, trustRisk: [0.35, 4] },
         blurb: 'License a large {s} dataset from a broker. Provenance is uncertain.' },
 
@@ -55,7 +55,7 @@
       { id: 'readiness', tier: 2, kind: 'business', skill: null, name: 'Enterprise readiness work', needs: 'accounts', turns: [4, 6], pf: [4, 8], cost: [6e5, 1e6],
         risk: 0.1, pay: { accounts: { mood: 10, turns: 26 } },
         blurb: 'Support rotas, uptime commitments and audit trails for enterprise buyers.' },
-      { id: 'reference', tier: 2, kind: 'business', skill: null, name: 'Reference customer program', needs: 'accounts', turns: [3, 5], pf: [1, 3], cost: [3e5, 6e5],
+      { id: 'reference', tier: 2, kind: 'business', skill: null, name: 'Reference customer program', needs: 'accounts', room: true, turns: [3, 5], pf: [1, 3], cost: [3e5, 6e5],
         risk: 0.1, pay: { refs: 2 },
         blurb: 'Case studies and site visits with current customers. Larger buyers take the next meetings.' },
       { id: 'platform', tier: 2, kind: 'business', skill: null, name: 'Enterprise platform deal', turns: [6, 8], pf: [8, 14], cost: [5e5, 9e5], risk: 0.25, pay: { cash: 2.5e6 },
@@ -158,7 +158,9 @@
       turns: rng.int(t.turns[0], t.turns[1]), pfPerTurn: Math.round(rng.range(t.pf[0], t.pf[1]) * g),
       cost: Math.round((rng.range(t.cost[0], t.cost[1]) * g + (t.perRev || 0) * Math.max(0, (s.money && s.money.revenue) || 0)) / 1e4) * 1e4, risk: t.risk, payoff: pay(s, t.pay, sk, g), blurb: fill(t.blurb, sk) };
   }
-  const open = (s, t) => t.needs !== 'accounts' || !!(s.accounts && s.accounts.unlocked);
+  // room: dealt only while the account book has a free place (the program's offers could not be signed otherwise)
+  const open = (s, t) => (t.needs !== 'accounts' || !!(s.accounts && s.accounts.unlocked)) &&
+    (!t.room || !FR.accounts || !s.accounts || FR.accounts.maxActive(s) - s.accounts.active.length > 0);
   // a tier's weight is shared by its templates, so the board's tier mix follows tierW whatever the template counts
   // (templates gated on accounts count only once they can be dealt)
   const weight = (t, tier, s) => (t.tier <= tier ? K.tierW[tier - t.tier] || 0 : t.tier === tier + 1 ? K.teaserW : 0) /
@@ -196,7 +198,8 @@
     if (q.fx) b.push(fxText(q.fx) + ' for ' + wk(q.fx.turns));
     if (q.trustRisk) b.push(Math.round(q.trustRisk.chance * 100) + '% chance of losing ' + q.trustRisk.trust + ' points of public trust');
     if (q.accounts) b.push('mood +' + q.accounts.mood + ' on every enterprise account, unserved-PF penalty halved for ' + wk(q.accounts.turns));
-    if (q.refs) b.push('the next ' + q.refs + ' account offers arrive one tier higher');
+    if (q.refs) b.push('the next ' + q.refs + ' account offers arrive one tier higher, once that tier is within ' +
+      ((FR.accounts ? FR.accounts.K.reach : 5) * 2) + ' of the lab\'s average capability');
     return b.length ? cap1(b.join(', ')) + '.' : '';
   };
 

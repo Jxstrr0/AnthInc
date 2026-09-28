@@ -32,7 +32,7 @@ function throughA(seed) {
 let s = throughA(4);
 let ms = s.money.milestone;
 assert.deepStrictEqual([ms.round, ms.kind, ms.skill], ['b', 'revenue', null]);
-assert.strictEqual(ms.value, sig2(Math.max(K.ms.bRevMin, s.money.revenue * K.ms.bRevMult)));
+assert.strictEqual(ms.value, sig2(Math.max(K.ms.bRevMin, M.trailRevenue(s) * K.ms.bRevMult)));
 assert.strictEqual(ms.due, s.turn + K.msTurns);
 assert.ok(new RegExp('^Series B opens if weekly revenue reaches \\$[\\d.]+[kM] by ' + DATE + '\\.$').test(ms.text), ms.text);
 assert.ok(new RegExp('^Series A closed: \\$[\\d.]+M for \\d+%\\. Series B opens if weekly revenue reaches').test(s.pendingMemo.slice(-1)[0].text));
@@ -46,9 +46,10 @@ assert.ok(s.money.offer && s.money.offer.round === 'b', 'B offered once weekly r
 assert.ok(s.money.revenue >= ms.value);
 assert.deepStrictEqual(ev(s, 'money:milestone'), [{ type: 'money:milestone', round: 'b', hit: true }]);
 let o = s.money.offer;
-assert.ok(o.pct >= 0.10 && o.pct <= 0.20); assert.ok(Math.abs(o.amount / o.valuation - o.pct) < 1e-3); assert.ok(o.amount >= K.rounds.b.amount);
+// in bounds, or (at this forced high valuation) the capped amount for under 10%
+assert.ok(o.pct <= 0.20 && (o.pct >= 0.10 || o.amount === K.rounds.b.amount * K.amountCap), JSON.stringify(o)); assert.ok(Math.abs(o.amount / o.valuation - o.pct) < 1e-3); assert.ok(o.amount >= K.rounds.b.amount);
 assert.strictEqual(o.expires, s.turn + K.offerTurns - 1);
-assert.ok(memo(s, new RegExp('^Series B milestone met: weekly revenue \\$[\\d.]+[kM] against \\$[\\d.]+[kM]\\. Series B offer: \\$[\\d.]+[MB] for \\d+% at a \\$[\\d.]+[MB] valuation\\. Open until ' + DATE + '\\.$')),
+assert.ok(memo(s, new RegExp('^Series B milestone met: weekly revenue \\$[\\d.]+[kM] against \\$[\\d.]+[kM]\\. Series B offer: \\$[\\d.]+[MB] for [\\d.]+% at a \\$[\\d.]+[MB] valuation\\. Open until ' + DATE + '\\.$')),
   s.lastReport.memo.map(m => m.text).join(' | '));
 const offered = FR.clone(s);
 
@@ -82,7 +83,7 @@ assert.ok(r.results[0].ok);
 assert.strictEqual(d.money.cash, s.money.cash); assert.strictEqual(d.money.founderPct, s.money.founderPct);
 assert.strictEqual(d.market.trust, s.market.trust); assert.strictEqual(d.money.valuation, s.money.valuation);
 assert.deepStrictEqual(d.money.roundsDone, ['seed', 'a']); assert.deepStrictEqual(d.money.milestone, s.money.milestone);
-assert.strictEqual(d.money.lockedUntil, s.turn + K.reofferTurns); assert.strictEqual(FR.accounts.maxActive(d), 4);
+assert.strictEqual(d.money.lockedUntil, s.turn + K.reofferTurns); assert.strictEqual(FR.accounts.maxActive(d), FR.accounts.K.maxActive);
 assert.strictEqual(FR.sim.endTurn(d, []).market.raised, 0, 'declining the B leaves the rivals as they were');
 assert.ok(new RegExp('^Series B offer declined\\. Investors expect to return ' + DATE + '\\.$').test(r.results[0].memo.text));
 let t = d;
@@ -107,6 +108,21 @@ for (let i = 1; i < 25; i++) {   // fresh B milestones never draw another kind
   const g = FR.clone(afterA); g.money.milestone = null; g.money.lockedUntil = g.turn + 1; g.rngState = i * 7919;
   const q = FR.sim.endTurn(g, []); assert.strictEqual(q.money.milestone.kind, 'revenue');
 }
+
+// a fresh B milestone after a miss is trailing revenue × bRevAgain: one starved week cannot rig it
+{ const g = FR.clone(afterA); g.money.milestone = null; g.money.lockedUntil = g.turn + 1;
+  g.history = []; for (let i = 0; i < 8; i++) g.history.push({ turn: g.turn - 8 + i, revenue: i === 7 ? 0 : 2e6 });
+  g.money.revenue = 0; const q = FR.sim.endTurn(g, []);
+  assert.strictEqual(q.money.milestone.value, sig2(Math.max(K.ms.bRevMin, (7 * 2e6 / 8) * K.ms.bRevAgain)), JSON.stringify(q.money.milestone)); }
+// a 0.2 save past its Series A (no B in 0.2): migrate opens the B on a trailing-revenue milestone, with its memo line
+{ const g = FR.clone(afterA); g.money.milestone = null; g.money.lockedUntil = 0; delete g.money.passes; delete g.accounts; g.pendingMemo = [];
+  g.history = [{ turn: g.turn - 1, revenue: 3e6 }];
+  const mg = FR.sim.migrate(g); assert.strictEqual(mg.money.passes, 0);
+  assert.deepStrictEqual([mg.money.milestone.round, mg.money.milestone.kind, mg.money.milestone.value], ['b', 'revenue', sig2(3e6 * K.ms.bRevAgain)]);
+  assert.ok(/^Series B opens if weekly revenue reaches \$3\.9M by /.test(mg.pendingMemo.slice(-1)[0].text), mg.pendingMemo.slice(-1)[0].text);
+  const nx = FR.sim.endTurn(mg, []); assert.ok(!nx.lastReport.memo.some(m => /Investors are back/.test(m.text)));
+  // a 0.3 save locked after a missed B is left alone
+  const L = FR.clone(afterA); L.money.milestone = null; L.money.lockedUntil = L.turn + 30; FR.sim.migrate(L); assert.strictEqual(L.money.milestone, null); }
 
 // ---- founder stake after seed + A + B in the balance bots' runs, and a run that declines the B still reaches the frontier ----
 const bal = require('../tools/balance.js'), noB = Object.assign({}, bal.BOTS.balanced, { lastRound: 'a' });

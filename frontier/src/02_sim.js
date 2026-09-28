@@ -48,8 +48,14 @@
     if (d.compute && !d.compute.bill) d.compute.bill = { turn: 0, cash: 0 };
     // V0.3: enterprise accounts and the revenue split (0.2 saves have neither)
     if (d.money && !d.accounts && FR.accounts) FR.accounts.init(d);
-    if (d.accounts) ['active', 'offers', 'lost', 'used'].forEach(k => { if (!d.accounts[k]) d.accounts[k] = []; });
+    if (d.accounts) ['active', 'offers', 'lost', 'used', 'cool'].forEach(k => { if (!d.accounts[k]) d.accounts[k] = []; });
     if (d.money && d.money.revMarket == null) { d.money.revMarket = d.money.revenue || 0; d.money.revContracts = 0; }
+    if (d.money && d.money.passes == null) d.money.passes = 0;
+    // a 0.2 save past its Series A: the B opens on a revenue milestone set from the trailing revenue (not 'Investors are back')
+    if (d.money && d.money.roundsDone && FR.money.openB) {
+      const m = FR.money.openB(d);
+      if (m) d.pendingMemo.push({ kind: 'change', text: m.text });
+    }
     return d;
   };
 
@@ -136,7 +142,7 @@
     if (state.status !== 'playing') return state;
     const s = FR.clone(state);
     const rng = FR.rng(s.rngState);
-    const report = { turn: s.turn, events: [], memo: [], news: [], flows: {}, commands: [] };
+    const report = { turn: s.turn, events: [], memo: [], news: [], flows: {}, commands: [], deferAccounts: true };
     report.commands = (commands || []).map(c => apply1(s, c));
     report.memo = (s.pendingMemo || []).slice(); s.pendingMemo = [];
     report.events = (s.pendingEvents || []).slice(); s.pendingEvents = [];
@@ -153,6 +159,7 @@
     if (s.status === 'playing') FR.model.ladder(s, rng, report);
     if (s.status === 'playing' && s.money.cash <= 0) FR.money.bankrupt(s, report);   // an incident bill can empty the bank
     if (s.status === 'playing' && FR.accounts) FR.accounts.shock(s, report);          // this week's incidents move account mood
+    if (FR.accounts && FR.accounts.flush) FR.accounts.flush(report);                    // the week's account lines, most urgent first
 
     // win check
     if (s.status === 'playing') {

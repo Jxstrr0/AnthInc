@@ -1,6 +1,6 @@
 // Bot probe: plays seeds through the real sim with five strategies (race, safe, balanced, revenue-first, customer-first)
 // and prints one table per bot plus a summary line. Usage: node tools/balance.js [--seeds N] [--turns N] [--bot name]
-// [--noB] (adds 'balanced-noB': balanced, but it declines the Series B every time it is offered). The summary line gives the
+// [--noB] (adds 'balanced-noB': balanced, but it declines the Series B every time it is offered; and 'balanced-lateB': declines the B until week 80, then takes it). The summary line gives the
 // median first-frontier week (runs that reached it), the B (runs that took it: median week, amount, pct) and the founder stake.
 // [--set module.key=value,...]   e.g. --set model.trainBase=0.08,money.rounds.seed.amount=12e6 (tries a tuning without editing K)
 const FR = require('../test/_load')();
@@ -123,6 +123,8 @@ const BOTS = {
 };
 BOTS.race.accounts = 'all';   // the racer signs what it can and loses it to incidents
 if (NOB) BOTS['balanced-noB'] = Object.assign({}, BOTS.balanced, { lastRound: 'a' });
+// balanced that declines the B until week 80 and then takes it: waiting out the B must not buy a bigger, better round
+if (NOB) BOTS['balanced-lateB'] = Object.assign({}, BOTS.balanced, { bFrom: 80 });
 // account offers: 'all' signs every offer it qualifies for; 'sensible' signs when the book can be served, the lab holds
 // safety in step (so mood rises) and the onboarding fee is small against cash
 function accounts(bot, s, cash, cmds) {
@@ -140,7 +142,8 @@ function chasing(s) { const ms = s.money.milestone, p = ms && FR.money.progress(
 function decide(bot, s) {
   const cmds = []; let m = s.money, cash = m.cash + (m.offer ? m.offer.amount : 0);
   // rounds up to bot.lastRound; a later round is declined each time it is offered (the B is optional)
-  const past = bot.lastRound && m.offer && FR.money.K.order.indexOf(m.offer.round) > FR.money.K.order.indexOf(bot.lastRound);
+  const past = m.offer && ((bot.lastRound && FR.money.K.order.indexOf(m.offer.round) > FR.money.K.order.indexOf(bot.lastRound)) ||
+    (bot.bFrom && m.offer.round === 'b' && s.turn < bot.bFrom));
   if (m.offer) cmds.push({ type: past ? 'declineRound' : 'acceptRound' });
   if (past) cash = m.cash;
   // a card-reading player takes the DeepField compute share when its revenue cut costs less than half of renting the PF
