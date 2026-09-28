@@ -7,8 +7,8 @@
     trustMultBase: 0.5, trustMultPer: 0.01,             // trustMult = 0.5 + trust / 100  (0.5 .. 1.5)
     // rival weekly gain per skill = gainBase × speed × (1 + ramp × years) × weight × (1 − cap/100)^dimExp;
     // a `steady` share arrives every week, the rest in releases (chance `ship` a week) so the expected pace is the same
-    gainBase: 0.38, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
-    startJitter: 1.5, safeJitter: 2, speedJitter: 0.06,  // start cap ± points, start safe ± points, base speed ± fraction
+    gainBase: 0.42, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
+    startJitter: 1.5, safeJitter: 2, speedJitter: 0.12,  // start cap ± points, start safe ± points, base speed ± fraction
     speedMin: 0.85, speedMax: 1.15,                     // speed bounds, multiples of the rival's base speed
     fundLift: 0.02, incSlow: 0.015,                     // a funding line speeds a rival up 2%; its own incident slows it 1.5%
     safeFollow: 0.1,                                    // rival safe closes 10% of the way to cap − margin each week, never falls

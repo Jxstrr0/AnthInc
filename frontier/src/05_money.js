@@ -4,14 +4,14 @@
   const M = FR.money = {};
   const K = M.K = {
     startCash: 5000000, startHead: 10,       // about 47 weeks of runway at the starting burn, before any round
-    minHead: 2, maxHire: 50, maxHead: 1000,
+    minHead: 2, maxHire: 20, maxHead: 1000,  // maxHire: most recruits in one week
     wage: 5000,                              // $ per head per week, fully loaded
     hireFee: 20000, hireTurns: 4,            // recruiting fee per head, paid at hire; hires join 4 turns later
     severanceWeeks: 4,                       // layoffs pay 4 weeks of wages per head
     layoffTrustPer: 0.1, layoffTrust: [0.5, 3],   // trust cost of a layoff = clamp(n × per, lo, hi)
     opsBase: 8000, opsPerHead: 800,          // offices, legal, tooling: $ per week
-    priceBase: 500, priceExp: 1.6,           // $ per PF-week served = priceBase × (avgCap / 10)^priceExp
-    demandBase: 8, demandExp: 2,             // demand PF = demandBase × (avgCap / 10)^demandExp × trustMult^demandTrustExp
+    priceBase: 1100, priceExp: 1.84,         // $ per PF-week served = priceBase × (avgCap / 10)^priceExp
+    demandBase: 22, demandExp: 0.86,         // demand PF = demandBase × (avgCap / 10)^demandExp × trustMult^demandTrustExp
     demandTrustExp: 0.5,
     trustLo: 0.5, trustHi: 1.5,              // fallback trust multiplier (no 06_market): lo..hi over trust 0..100
     zetaDrag: 0.01, zetaMax: 0.25,           // fallback Zeta price pressure: −1% per point Zeta is ahead, at most −25%
@@ -25,8 +25,8 @@
     offerTurns: 8, offerWarn: [3, 1],        // an offer stays open 8 turns; memo when 3 and 1 remain
     reofferTurns: 13,                        // a lapsed or declined offer returns 13 turns later on the same milestone
     lockTurns: 52,                           // a missed milestone closes rounds for 52 turns, then a fresh milestone
-    msTurns: 30, msWarn: [8, 4, 1],          // milestone window; memo when 8, 4 and 1 weeks remain
-    ms: { capFrac: 0.25, avgFrac: 0.18, revMin: 50000, revMult: 2.5, trustAdd: 10, trustMax: 80 },
+    msTurns: 36, msWarn: [8, 4, 1],          // milestone window; memo when 8, 4 and 1 weeks remain
+    ms: { capFrac: 0.12, avgFrac: 0.18, revMin: 50000, revMult: 2.5, trustAdd: 10, trustMax: 80 },
     msKinds: [['cap', 4], ['avgCap', 3], ['revenue', 2], ['trust', 1]],   // weights for a fresh milestone after a miss
     runwayWarn: [26, 13, 6]                  // memo flag on crossing each; every week below the last
   };

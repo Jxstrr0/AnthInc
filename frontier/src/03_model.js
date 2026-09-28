@@ -4,12 +4,12 @@
   const M = FR.model = {};
   const K = M.K = {
     startCap: 8, startSafe: 8,
-    trainBase: 0.1,        // training output = sim.output(trainBase, pf, staff) × noise × dim(cap)
+    trainBase: 0.11,       // training output = sim.output(trainBase, pf, staff) × noise × dim(cap)
     spill: 0.25,           // share of training output that also lands on each non-target skill
     dimExp: 2,             // diminishing returns: gain × (1 − level/100)^dimExp, for cap and for safe
     trainNoise: 0.2,       // training output × uniform(1 − n, 1 + n); forecasts use 1
     drift: 0.2,            // safe on a skill drops by this fraction of its cap gain
-    safeBase: 0.2,         // safety output = sim.output(safeBase, pf, staff), spread over skills
+    safeBase: 0.36,        // safety output = sim.output(safeBase, pf, staff), spread over skills
     safeLead: 3,           // safe never above cap + safeLead
     spreadFloor: 2,        // safety spread weight per skill = gap + spreadFloor
     warnGap: 10, warnTurns: 2,

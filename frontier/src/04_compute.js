@@ -3,7 +3,7 @@
 (function (FR) {
   const C = FR.compute = {};
   const K = C.K = {
-    startRent: 20, maxRent: 500,              // PF rented at the start; the most the spot market will rent you
+    startRent: 20, maxRent: 1000,             // PF rented at the start; the most the spot market will rent you
     basePrice: 2000,                          // $ per PF-week the spot price reverts to
     priceVol: 0.02, priceRevert: 0.1,         // weekly noise (fraction of base); pull back toward base per week
     priceMin: 0.75, priceMax: 1.9,            // spot price bounds, multiples of base
