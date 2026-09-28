@@ -19,7 +19,9 @@
     // dealt, so their return stays near 1.5x at most whatever the lab earns
     // templates. skill: 'one' picks a skill per offer, 'all' pays on every skill, null none. turns, pf (per week) and cost
     // (total $) are ranges. pay: cap (with drift = share of the cap gain lost from safe), safe, trust, cash,
-    // trustRisk [chance, points], fx {demandMult, priceMult, rentDiscount, turns}. news: wire line on completion ({L} = lab).
+    // trustRisk [chance, points], fx {demandMult, priceMult, rentDiscount, turns}, accounts {mood, turns} (mood on every
+    // enterprise account and the unserved-PF penalty halved for turns), refs (the next n account offers one tier higher).
+    // news: wire line on completion ({L} = lab). needs: 'accounts' = dealt only once enterprise accounts have unlocked.
     T: [
       { id: 'train', tier: 1, kind: 'training', skill: 'one', name: '{S} training run', turns: [5, 7], pf: [4, 8], cost: [3e5, 5e5], risk: 0.15, pay: { cap: 5, drift: 0.3 },
         blurb: 'A dedicated run on {s} data. Capability rises faster than the slider gives; safety drifts with it.' },
@@ -50,6 +52,12 @@
         blurb: 'Commit to chip supply ahead of need at a fixed discount on rent.' },
       { id: 'fellowship', tier: 2, kind: 'safety', skill: 'all', name: 'Safety fellowship', turns: [8, 10], pf: [2, 4], cost: [6e5, 1e6], risk: 0.1, pay: { safe: 2.5, trust: 2 },
         blurb: 'Fund outside safety researchers for a term inside the lab.', news: '{L} funds a safety fellowship for outside researchers.' },
+      { id: 'readiness', tier: 2, kind: 'business', skill: null, name: 'Enterprise readiness work', needs: 'accounts', turns: [4, 6], pf: [4, 8], cost: [6e5, 1e6],
+        risk: 0.1, pay: { accounts: { mood: 10, turns: 26 } },
+        blurb: 'Support rotas, uptime commitments and audit trails for enterprise buyers.' },
+      { id: 'reference', tier: 2, kind: 'business', skill: null, name: 'Reference customer program', needs: 'accounts', turns: [3, 5], pf: [1, 3], cost: [3e5, 6e5],
+        risk: 0.1, pay: { refs: 2 },
+        blurb: 'Case studies and site visits with current customers. Larger buyers take the next meetings.' },
       { id: 'platform', tier: 2, kind: 'business', skill: null, name: 'Enterprise platform deal', turns: [6, 8], pf: [8, 14], cost: [5e5, 9e5], risk: 0.25, pay: { cash: 2.5e6 },
         blurb: 'A platform agreement with a large enterprise. Integration work up front, paid on delivery.' },
 
@@ -139,6 +147,8 @@
     if (q.cash) o.cash = Math.round(q.cash * g * (1 + (s.model ? FR.sim.avgCap(s) : 0) / K.cashCapDiv) / 1e4) * 1e4;
     if (q.trustRisk) o.trustRisk = { chance: q.trustRisk[0], trust: q.trustRisk[1] };
     if (q.fx) o.fx = Object.assign({}, q.fx);
+    if (q.accounts) o.accounts = Object.assign({}, q.accounts);
+    if (q.refs) o.refs = q.refs;
     return o;
   }
   const fill = (x, sk) => { const S = sk && sk !== 'all' ? FR.SKILL_NAME[sk] : ''; return x.replace('{S}', S).replace('{s}', S.toLowerCase()); };
@@ -148,15 +158,18 @@
       turns: rng.int(t.turns[0], t.turns[1]), pfPerTurn: Math.round(rng.range(t.pf[0], t.pf[1]) * g),
       cost: Math.round((rng.range(t.cost[0], t.cost[1]) * g + (t.perRev || 0) * Math.max(0, (s.money && s.money.revenue) || 0)) / 1e4) * 1e4, risk: t.risk, payoff: pay(s, t.pay, sk, g), blurb: fill(t.blurb, sk) };
   }
+  const open = (s, t) => t.needs !== 'accounts' || !!(s.accounts && s.accounts.unlocked);
   // a tier's weight is shared by its templates, so the board's tier mix follows tierW whatever the template counts
-  const weight = (t, tier) => (t.tier <= tier ? K.tierW[tier - t.tier] || 0 : t.tier === tier + 1 ? K.teaserW : 0) / K.T.filter(x => x.tier === t.tier).length;
+  // (templates gated on accounts count only once they can be dealt)
+  const weight = (t, tier, s) => (t.tier <= tier ? K.tierW[tier - t.tier] || 0 : t.tier === tier + 1 ? K.teaserW : 0) /
+    K.T.filter(x => x.tier === t.tier && open(s, x)).length;
   // a fresh board of K.board offers for `turn`, drawn without repeats, weighted to the unlocked tiers
   function refresh(s, rng, turn) {
-    const pj = s.projects, tier = s.research.tier, pool = K.T.filter(t => weight(t, tier) > 0);
+    const pj = s.projects, tier = s.research.tier, pool = K.T.filter(t => open(s, t) && weight(t, tier, s) > 0);
     pj.offers = [];
     for (let i = 0; i < K.board && pool.length; i++) {
-      let x = rng() * sum(pool, t => weight(t, tier)), j = 0;
-      while (j < pool.length - 1 && (x -= weight(pool[j], tier)) >= 0) j++;
+      let x = rng() * sum(pool, t => weight(t, tier, s)), j = 0;
+      while (j < pool.length - 1 && (x -= weight(pool[j], tier, s)) >= 0) j++;
       pj.offers.push(makeOffer(s, rng, pool.splice(j, 1)[0], turn, i));
     }
     pj.refreshAt = turn + K.refreshTurns;
@@ -182,6 +195,8 @@
     if (q.cash) b.push(money(q.cash) + ' on delivery');
     if (q.fx) b.push(fxText(q.fx) + ' for ' + wk(q.fx.turns));
     if (q.trustRisk) b.push(Math.round(q.trustRisk.chance * 100) + '% chance of losing ' + q.trustRisk.trust + ' points of public trust');
+    if (q.accounts) b.push('mood +' + q.accounts.mood + ' on every enterprise account, unserved-PF penalty halved for ' + wk(q.accounts.turns));
+    if (q.refs) b.push('the next ' + q.refs + ' account offers arrive one tier higher');
     return b.length ? cap1(b.join(', ')) + '.' : '';
   };
 
@@ -248,6 +263,11 @@
       s.projects.effects.grants.push(g);
       b.push(cap1(fxText(q.fx)) + ' through ' + FR.dateLabel(g.until));
     }
+    if (q.accounts && FR.accounts) {
+      FR.accounts.lift(s, q.accounts.mood, q.accounts.turns);
+      b.push('Account mood up ' + q.accounts.mood + '; unserved-PF penalty halved through ' + FR.dateLabel(s.turn + q.accounts.turns - 1));
+    }
+    if (q.refs && FR.accounts) { FR.accounts.refer(s, q.refs); b.push('The next ' + q.refs + ' account offers arrive one tier higher'); }
     if (q.trustRisk && rng.chance(q.trustRisk.chance)) {
       b.push('Press questions over the data source. ' + trustText(s, nudge(s, -q.trustRisk.trust, p.name, report)));
       report.news.push({ kind: 'you', text: s.lab.name + ' faces questions over the provenance of licensed training data.' });

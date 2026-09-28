@@ -464,6 +464,21 @@ body.reduce-motion .ticker-track{padding-left:var(--gutter);animation:none}
 #hud .top .hud-trust{--i:var(--icon-globe)}
 #hud .top .hud-trust.warn b{color:var(--warn)}
 #hud .top .hud-trust.bad b{color:var(--bad)}
+/* the revenue split card under the Cash chip (V0.3, once the lab has accounts): open market / contracts */
+#hud .hud-split{position:absolute;top:calc(var(--sp-2) + var(--safe-t) + var(--chip-h) + 6px);left:var(--sp-3);right:var(--sp-3);z-index:2;display:none;max-width:360px;padding:12px 14px;border:1px solid var(--glass-line);border-radius:var(--r-md);background:var(--surface);box-shadow:var(--sh-2),0 14px 36px rgba(0,0,0,.45);color:var(--ink-2);font-size:var(--text-sm);pointer-events:auto}
+#hud .hud-split.on{display:block;animation:hq-in var(--dur-2) var(--ease-out)}
+#hud .hud-split b{font-family:var(--font-num);font-weight:var(--w-medium);color:var(--ink);white-space:nowrap}
+#hud .hs-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 0 6px;font-size:var(--text-xs);font-weight:var(--w-bold);letter-spacing:var(--track-caps);text-transform:uppercase;color:var(--ink-3)}
+#hud .hs-h b{font-size:var(--text-lg);letter-spacing:0;color:var(--gold)}
+#hud .hs-r{display:flex;align-items:center;gap:8px;min-height:26px}
+#hud .hs-r span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#hud .hs-r .k,#hud .hs-bar i{display:block;flex:none;width:10px;height:10px;border-radius:2px}
+#hud .hs-bar{display:flex;height:8px;margin:6px 0 8px;border-radius:var(--r-pill);background:var(--sunken);overflow:hidden}
+#hud .hs-bar i{width:auto;height:100%;border-radius:0}
+#hud .hud-split .m{background:var(--gold)}#hud .hud-split .c{background:var(--brand-bright)}
+#hud .hs-n{margin:0 0 10px;font-size:var(--text-xs);line-height:var(--lh-snug);color:var(--ink-3)}
+#hud .hs-n b{color:var(--ink-2)}
+#hud .hud-split .btn{width:100%;min-height:48px;margin:0}
 /* phones: the chips drop their icons so every number fits whole (the aria-labels and the lines under them name them) */
 @media (max-width:429px){#hud .top .chip{grid-template-columns:minmax(0,1fr);padding-left:12px}#hud .top .chip::before{display:none}}
 @media (max-width:359px){#hud .top .chip{padding:5px 8px}#hud .top .chip b{font-size:var(--text-md)}}

@@ -451,6 +451,77 @@
     const row = (y, a, b, c) => { T(x, a, 28, y, 26, HX.ink3, 'left', 600); T(x, b, w - 28, y, 36, c || HX.ink, 'right', 500, MONO); };
     row(112, 'Capacity', fmtPF(d.cap), HX.brandT); row(170, 'Rented', fmtPF(d.rent)); row(228, 'Spot price', money(d.price) + '/PF'); row(286, 'Weekly bill', money(d.bill), HX.gold);
   }
+  // ---- client wall (V0.3): one plaque per active enterprise account on the back wall between the elevator and the status
+  // wall. Plaques are one InstancedMesh of quads over a 2 x 4 canvas atlas (a per-instance cell offset in the vertex shader),
+  // framed by a second InstancedMesh; refresh redraws the atlas and moves instances only when the book changes. A churned
+  // account's plaque stays up dark for the week after it leaves (state.accounts.lost), then goes.
+  const PLQ = { cols: 2, rows: 4, cw: 512, ch: 256, w: 1.0, h: 0.5, x: -2.45, dx: 0.56, y0: 3.12, dy: 0.58, max: 8 };
+  const TIER_COL = ['#4f93d9', '#4f93d9', '#9cc0ff', '#e6c15a'];
+  // mood: board blue at the renewal mark (60), amber below it, red under the watch line (45; the account leaves below 30)
+  const MOOD = () => Object.assign({ renew: 60, watch: 45 }, tryf(() => FR.accounts.K.mood, {}));
+  const moodCol = (m) => { const M = MOOD(); return m >= M.renew ? HX.brandB : m >= M.watch ? HX.warn : HX.bad; };
+  const kfmt = (n) => (FR.ui && FR.ui.kmoney ? FR.ui.kmoney(n) : money(n));
+  function drawPlaque(x, cx, cy, p) {
+    const W0 = PLQ.cw, H0 = PLQ.ch; x.save(); x.translate(cx, cy); x.clearRect(0, 0, W0, H0);
+    rect(x, 0, 0, W0, H0, p.dark ? '#0b0e12' : '#1a222c'); rect(x, 0, 0, W0, 3, p.dark ? '#151a20' : '#2f3c4a');
+    rect(x, 0, 0, 12, H0, p.dark ? '#2a1414' : TIER_COL[p.tier] || HX.brandB);
+    T(x, fit((x.font = fnt(700, 48, DISP), x), p.name, W0 - 64), 36, 60, 48, p.dark ? HX.ink3 : HX.ink, 'left', 700, DISP, W0 - 64);
+    T(x, p.dark ? 'LEFT ' + wk(p.left).toUpperCase() : (p.sector || 'Enterprise').toUpperCase() + ' · TIER ' + p.tier, 36, 110, 24, p.dark ? '#5d6875' : HX.ink3, 'left', 600, MONO, W0 - 64);
+    if (p.dark) { T(x, 'CONTRACT ENDED', 36, 172, 34, HX.bad, 'left', 700, MONO); x.restore(); return; }
+    T(x, fmtPF(p.pf) + ' · ' + kfmt(p.fee) + '/WK', 36, 160, 32, HX.gold, 'left', 500, MONO, W0 - 64);
+    if (p.pending) T(x, 'ONBOARDING', W0 - 28, 110, 22, HX.info, 'right', 700, MONO);
+    bar(x, 36, 204, W0 - 72, 14, clamp(p.mood / 100, 0, 1), moodCol(p.mood), 'rgba(255,255,255,.1)');
+    x.restore();
+  }
+  function drawClients(x, w, h, d) {
+    rect(x, 0, 0, w, h, '#1b232c');
+    T(x, 'CLIENTS', 26, h / 2, 60, HX.ink2, 'left', 700, DISP);
+    T(x, d.locked ? 'LOCKED' : d.n + ' / ' + d.max, w - 26, h / 2, 48, d.locked ? HX.ink3 : HX.brandT, 'right', 500, MONO);
+  }
+  function clientWall(g) {
+    const n = PLQ.max, cv = canvas(PLQ.cols * PLQ.cw, PLQ.rows * PLQ.ch), cx = cv.getContext('2d');
+    const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter; tex.anisotropy = 4;
+    const geo = new THREE.PlaneGeometry(PLQ.w, PLQ.h), cell = new THREE.InstancedBufferAttribute(new Float32Array(n * 2), 2);
+    geo.setAttribute('aCell', cell);
+    const mat = new THREE.MeshBasicMaterial({ map: tex });
+    mat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 aCell;')
+        .replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_UV\n\tvUv = vUv * vec2(' + (1 / PLQ.cols).toFixed(4) + ', ' + (1 / PLQ.rows).toFixed(4) + ') + aCell;\n#endif');
+    };
+    mat.customProgramCacheKey = () => 'fr-plaque-atlas';
+    const plq = inst(g, geo, mat, n, true), frm = inst(g, new THREE.BoxGeometry(PLQ.w + 0.06, PLQ.h + 0.06, 0.03), R.mat ? R.mat(0x2a3139) : new THREE.MeshLambertMaterial({ color: 0x2a3139 }), n);
+    plq.count = 0; frm.count = 0;
+    // the wall panel behind the grid and the name plate above it
+    R.box(g, 2.44, 2.5, 0.04, 0x1d242c, PLQ.x, 2.25, -HD + 0.03);
+    const head = csign(g, 2.3, 0.3, 768, 100, PLQ.x, 3.66, -HD + 0.11, 0, { bg: '#1b232c', glow: false });
+    return { plq, frm, cell, tex, cv, cx, head, sig: null, lit: 0, dark: 0, names: [] };
+  }
+  function clientList(s) {
+    const a = s && s.accounts; if (!a) return { locked: true, list: [], max: 4 };
+    const act = (a.active || []).slice().sort((p, q) => (p.signed || 0) - (q.signed || 0)).map(x => ({ name: x.name, sector: x.sector, tier: x.tier, pf: FR.round(+x.pfPerWeek || 0, 1),
+      fee: Math.round(+x.feePerWeek || 0), mood: Math.round(+x.mood || 0), pending: x.starts != null && x.starts > s.turn }));
+    // churned in the week just resolved: dark for this week (lost.turn is the week it left), gone after the next End Turn
+    const gone = (a.lost || []).filter(l => l && l.why === 'churn' && s.turn - l.turn <= 1 && !act.some(x => x.name === l.name)).map(l => ({ name: l.name, left: l.turn, tier: 0, dark: true }));
+    const max = tryf(() => FR.accounts.maxActive(s), 4);
+    return { locked: !(a.unlocked || act.length || (a.offers || []).length), list: act.concat(gone).slice(0, PLQ.max), max, n: act.length };
+  }
+  function paintClients(cw, s) {
+    const d = clientList(s), sig = JSON.stringify(d); if (cw.sig === sig) return; cw.sig = sig;
+    paint(cw.head, { locked: d.locked, n: d.n || 0, max: d.max }, drawClients);
+    const x = cw.cx; x.textBaseline = 'middle'; x.clearRect(0, 0, cw.cv.width, cw.cv.height);
+    d.list.forEach((p, i) => {
+      const c = i % PLQ.cols, r = Math.floor(i / PLQ.cols);
+      drawPlaque(x, c * PLQ.cw, r * PLQ.ch, p);
+      cw.cell.setXY(i, c / PLQ.cols, 1 - (r + 1) / PLQ.rows);
+      const px = PLQ.x + (c === 0 ? -PLQ.dx : PLQ.dx), py = PLQ.y0 - r * PLQ.dy;
+      place(cw.plq, i, px, py, -HD + 0.085); place(cw.frm, i, px, py, -HD + 0.06);
+      cw.plq.setColorAt(i, _col.setScalar(p.dark ? 0.55 : 1));
+    });
+    cw.plq.count = cw.frm.count = d.list.length; cw.cell.needsUpdate = true;
+    cw.plq.instanceMatrix.needsUpdate = cw.frm.instanceMatrix.needsUpdate = true; if (cw.plq.instanceColor) cw.plq.instanceColor.needsUpdate = true;
+    cw.tex.needsUpdate = true;
+    cw.lit = d.list.filter(p => !p.dark).length; cw.dark = d.list.length - cw.lit; cw.names = d.list.map(p => (p.dark ? '(dark) ' : '') + p.name);
+  }
   R.floors.serving = { build(id) {
     const g = start(), scr = [];
     const EX = -5.2, ev = R.elevatorBank(g, EX, -HD, H); deptSign(g, id, EX);
@@ -477,7 +548,9 @@
     frame(g, 3.0, 1.7, 7.9, 2.15, -3.0, -PI / 2).position.x = 7.95;
     const rent = csign(g, 3.0, 1.7, 640, 362, 7.88, 2.15, -3.0, -PI / 2, { bg: HX.sunken }, scr);
     R.box(g, 0.7, 0.95, 2.6, ASH, 7.4, 0.475, 4.6); R.box(g, 0.5, 0.5, 0.4, BLACK, 7.4, 1.2, 4.0);
-    plant(g, -7.3, 6.2); plant(g, 7.3, 6.3); plant(g, -2.6, -6.4, 0.9);
+    plant(g, -7.3, 6.2); plant(g, 7.3, 6.3); plant(g, 7.2, -6.3, 0.9);
+    // the client wall between the elevator and the status wall
+    const cw = clientWall(g);
     const pm = panels(g, [[-4.5, -3.5], [0, -3.5], [4.5, -3.5], [-4.5, 1.5], [0, 1.5], [4.5, 1.5], [0, 5.2], [4.5, 5.2]]);
     // people
     const stands = [[1.0, -5.4, PI], [3.6, -5.5, PI], [5.6, -5.3, PI + 0.3], [-5.4, -2.0, -PI / 2], [-5.4, 2.6, -PI / 2], [6.6, 4.3, -PI / 2 + 0.3], [-1.9, -4.6, PI * 0.85], [6.3, 5.4, PI * 0.8]];
@@ -487,7 +560,8 @@
       ev.target,
       { id: 'serving.wall', label: 'Status wall', box: [-1.3, 0.75, -7, 6.5, 3.8, -6.8], focus: aim([2.6, 2.15, -6.9], 0, 10, fitD(7.8, 2.8)) },
       { id: 'serving.racks', label: 'Rack row', box: [-6.85, 0, -4.4, -5.75, 2.3, 5.4], focus: aim([-6.3, 1.1, 0.5], 68, 18, 10.5) },
-      { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: aim([2.6, 0.8, -2.0], 0, 45, 11) }
+      { id: 'serving.ops', label: 'Ops desks', labelAt: [2.6, 1.5, 1.6], box: [-1.4, 0, -4.1, 6.6, 1.5, 2.3], focus: aim([2.6, 0.8, -2.0], 0, 45, 11) },
+      { id: 'serving.accounts', label: 'Client wall', box: [-3.55, 1.0, -7, -1.35, 3.85, -6.8], focus: aim([PLQ.x, 2.4, -6.9], 0, 8, fitD(2.5, 2.9)) }
     ];
     let act = 0, dark = false, nWalk = 0, split0 = { walk: 0, sit: 0, stand: 0 }, scroll = 0;
     const f = { group: g, elevator: ev, targets, get hint() { return dark ? 'An incident is under review. Serving earns half for 3 weeks. Tap the status wall for serving.' : 'Tap the status wall for the serving share, demand and rented compute.'; },
@@ -501,6 +575,7 @@
           : { pf: FR.round(p.pf, 1), demand: FR.round(demand, 1), rev: Math.round(rev) }, drawStatus);
         const c = s && s.compute, cap = capacityOf(s);
         paint(rent, { cap: FR.round(cap.total || 0, 1), rent: c ? c.rentPF : 0, price: c ? Math.round(c.rentPrice) : 0, bill: tryf(() => FR.compute.rentCost(s), c ? c.rentPF * c.rentPrice : 0), scarcity: c ? c.scarcity : 0 }, drawRent);
+        paintClients(cw, s);
         const nr = racksFor(cap.total, racks.n); racks.set(nr, dark ? 0 : nr * act);
         split0 = split(heads(p.staff), desks.n, stands.length, walk.length);
         sit.set(split0.sit); stand.set(split0.stand); nWalk = split0.walk; desks.set(Math.max(4, split0.sit + 2));
@@ -514,7 +589,8 @@
         if (dark) { const pulse = Math.pow(Math.max(0, Math.sin(t * 2.4)), 2); beacon.emissiveIntensity = 0.15 + 0.85 * pulse; washMat.opacity = 0.05 + 0.3 * pulse; rig(f, 0.2 + 0.16 * pulse, 0.25 + 0.55 * pulse); }
         else { beacon.emissiveIntensity = 0; washMat.opacity = 0; rig(f, 0.72 + 0.28 * act, 0); }
       },
-      debug() { return { dark, activity: +act.toFixed(2), people: split0, racks: racks.vis, racksLit: racks.lit, desks: desks.count, beacon: +beacon.emissiveIntensity.toFixed(2), targets: targets.map(t => t.id) }; }
+      debug() { return { dark, activity: +act.toFixed(2), people: split0, racks: racks.vis, racksLit: racks.lit, desks: desks.count, beacon: +beacon.emissiveIntensity.toFixed(2), targets: targets.map(t => t.id),
+        plaques: cw.plq.count, plaquesLit: cw.lit, plaquesDark: cw.dark, clients: cw.names.slice() }; }
     };
     return finish(f, id, scr);
   } };
