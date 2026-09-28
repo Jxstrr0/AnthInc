@@ -12,7 +12,8 @@
     opsBase: 8000, opsPerHead: 800,          // offices, legal, tooling: $ per week
     priceBase: 1100, priceExp: 1.84,         // $ per PF-week served = priceBase × (avgCap / 10)^priceExp
     demandBase: 22, demandExp: 0.86,         // demand PF = demandBase × (avgCap / 10)^demandExp × trustMult^demandTrustExp
-    demandTrustExp: 0.5,
+    demandTrustExp: 0.5,                     // price carries the capability premium: serving breaks even near cap 14 at the
+                                             //   base rent price, and a lab serving a fifth of its compute pays its way near 45
     trustLo: 0.5, trustHi: 1.5,              // fallback trust multiplier (no 06_market): lo..hi over trust 0..100
     zetaDrag: 0.01, zetaMax: 0.25,           // fallback Zeta price pressure: −1% per point Zeta is ahead, at most −25%
     valBase: 40e6, valCap: 2.2e6, valCapExp: 1.5,   // valuation = (valBase + valCap × avgCap^valCapExp

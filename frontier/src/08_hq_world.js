@@ -129,7 +129,7 @@
     const m = new THREE.InstancedMesh(geo, cols ? new THREE.MeshLambertMaterial({ color: 0xffffff }) : R.mat(color), Math.max(1, pts.length)); const o = new THREE.Object3D();
     pts.forEach((p, i) => { o.position.set(p[0], p[1], p[2]); o.rotation.set(p[3] || 0, p[4] || 0, p[5] || 0); o.scale.set(p[6] || 1, p[7] || 1, p[8] || 1); o.updateMatrix(); m.setMatrixAt(i, o.matrix); });
     if (cols) { const c = new THREE.Color(); cols.forEach((v, i) => m.setColorAt(i, c.set(v))); }
-    m.count = pts.length; parent.add(m); return m;
+    m.count = pts.length; m.frustumCulled = false; parent.add(m); return m;   // r128 culls instances by the base geometry's bounds
   };
   // world AABB of objects (tap target boxes): [x0,y0,z0,x1,y1,z1], padded; opaque meshes only (look halos and glows are transparent)
   const _ab = new THREE.Box3(), _am = new THREE.Box3();
@@ -158,11 +158,11 @@
         const s = spots[i] || spots[0]; o.position.set(s[0], 0, s[1]); o.rotation.set(0, s[2] || 0, 0); q.position.set(p[3], p[4], p[5]); o.updateMatrixWorld(true);
         m.setMatrixAt(i, q.matrixWorld); if (tint) m.setColorAt(i, c.set(p[6] === 'skin' ? R.SKIN[Math.floor(rnd() * R.SKIN.length)] : cols[Math.floor(rnd() * cols.length)]));
       }
-      m.count = spots.length; g.add(m); return m;
+      m.count = spots.length; m.frustumCulled = false; g.add(m); return m;
     });
     const blob = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.9, 0.7), new THREE.MeshBasicMaterial({ map: FR.look && FR.look.blobTex ? FR.look.blobTex() : null, color: FR.look && FR.look.blobTex ? 0xffffff : 0x000000, blending: THREE.MultiplyBlending, transparent: true, depthWrite: false }), n);
     for (let i = 0; i < n; i++) { const s = spots[i] || spots[0]; o.position.set(s[0], 0.035, s[1]); o.rotation.set(-Math.PI / 2, 0, 0); q.position.set(0, 0, 0); o.updateMatrixWorld(true); blob.setMatrixAt(i, q.matrixWorld); }
-    blob.count = spots.length; blob.userData.look = 1; g.add(blob); ims.push(blob);
+    blob.count = spots.length; blob.frustumCulled = false; blob.userData.look = 1; g.add(blob); ims.push(blob);
     return { max: spots.length, meshes: ims, get count() { return ims[0].count; },
       set(k) { k = Math.max(0, Math.min(spots.length, Math.round(k || 0))); for (let i = 0; i < ims.length; i++) ims[i].count = k; } };
   };

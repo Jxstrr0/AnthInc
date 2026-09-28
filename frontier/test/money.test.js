@@ -170,7 +170,7 @@ s = game(); const v0 = M.valuation(s); setCap(s, 30); const v1 = M.valuation(s);
 s.money.revenue = 1e5; assert.ok(v0 < v1 && v1 < v2 && v2 < M.valuation(s));
 
 // runway warnings: once on crossing 26 and 13, every week under 6
-s = game(); let b = M.burnEstimate(s); s.money.cash = Math.round(26.5 * b);
+s = game(); let b = -FR.sim.forecast(s).net; s.money.cash = Math.round(26.5 * b);   // b: the weekly loss, burn less revenue
 s = run(s, 1); assert.ok(memo(s, /^Runway 25 weeks at current burn/)); assert.ok(memo(s, /Seed round offer open until/));
 s = run(s, 1); assert.ok(!memo(s, /^Runway/));
 s.money.cash = Math.round(13.5 * b); s = run(s, 1); assert.ok(memo(s, /^Runway 12 weeks/));

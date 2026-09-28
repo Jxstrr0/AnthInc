@@ -15,6 +15,7 @@
 - After the 52-week safe frontier hold: **the run ends** (end-of-run sheet, then a new lab).
 - Accepting an acquisition: **exit with a score** (not a win, not a death). Acquisition deals are back-burner in v1.
 - Everything in the handoff §2 table.
+- First visual pass (2026-09-28): owner kept the HQ look as built; sliders move by dragging the thumb only; elevator LED in board blue.
 - PR flow: one PR per milestone; the owner merges once the game builds, passes tests and is published.
 
 ## Build log

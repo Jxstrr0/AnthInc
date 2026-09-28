@@ -97,7 +97,7 @@ const turn = (s, rng) => { const r = rep(); M.ladder(s, rng, r); if (s.status ==
   assert.ok(pa > M.pressure(s)); }
 
 // determinism with a fixed rng; no impure calls in the source
-{ const play = () => { const s = fresh(), rng = FR.rng(1234), a = alloc(60, 5, 8); const log = [];
+{ const play = () => { const s = fresh(), rng = FR.rng(1234), a = { training: { pf: 200, staff: 40 }, safety: { pf: 5, staff: 2 } }; const log = [];
     for (let i = 0; i < 60 && s.status === 'playing'; i++) { const r = rep(); s.target = FR.SKILLS[i % 3]; M.train(s, a, rng, r); M.ladder(s, rng, r); log.push(r); s.turn++; }
     return { s, log }; };
   const x = play(), y = play(); assert.deepStrictEqual(x.s, y.s); assert.deepStrictEqual(x.log, y.log);

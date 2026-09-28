@@ -246,7 +246,7 @@ Output of each allocation (Cobb-Douglas, *first pass*): `out = K.base × pf^0.6 
 'run:won' {}   'run:dead' {cause}
 'hq:floor' {floorId}   'hq:hotspot' {hotspotId}   'hq:view' {mode, targetId, floorId}
 'elevator:ride' {from, to}   'elevator:arrived' {floorId}
-'ui:sheet' {id|null}   'ui:toast' {text}
+'ui:sheet' {id|null}   'ui:toast' {text}   'ui:panel' {floorId, tab, hotspotId}
 ```
 
 ## 6. HQ floors (the Mogul HQ: one floor in memory, diorama camera, elevator between floors)
