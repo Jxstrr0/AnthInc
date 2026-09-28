@@ -13,10 +13,13 @@
     safeLead: 3,           // safe never above cap + safeLead
     spreadFloor: 2,        // safety spread weight per skill = gap + spreadFloor
     warnGap: 10, warnTurns: 2,
-    incidentGap: 20, incidentBase: 0.08, incidentSlope: 0.02,
-    incidentCash: 500000, incidentCashPct: 0.05, incidentTrust: 6,
+    incidentGap: 20, incidentBase: 0.08, incidentSlope: 0.02,   // incident chance = (base + (gap − 20) × slope) × weight
+    incidentCash: 500000, incidentCashPct: 0.05, incidentTrust: 6,  // trust lost = incidentTrust × weight
     critGap: 30, critTurns: 4, finalIncidents: 3, incidentWindow: 52,
-    pressureW: { coding: 1, reasoning: 1, agents: 1.5 }
+    // skill weights (handoff §4.2): pressure is the weighted sum of the gaps; an incident's odds and its trust cost scale
+    // with the skill's weight, so an agents gap bites hardest
+    weights: { coding: 1, reasoning: 1, agents: 1.5 },
+    pressureBands: [15, 30, 45]   // pressure above each: watch, warning, critical (the agents weight × 10, 20, 30)
   };
 
   const NAME = (k) => FR.SKILL_NAME[k] || k;
@@ -40,9 +43,12 @@
   };
 
   M.gap = (state, skill) => { const sk = state.model.skills[skill]; return Math.max(0, sk.cap - sk.safe); };
+  M.weight = (skill) => (K.weights && K.weights[skill]) || 1;
   // total pressure: weighted sum of the gaps (handoff §4.2); agents weigh most
-  M.pressure = (state) => FR.SKILLS.reduce((t, k) => t + (K.pressureW[k] || 1) * M.gap(state, k), 0);
-  M.incidentChance = (g) => g > K.incidentGap ? FR.clamp(K.incidentBase + (g - K.incidentGap) * K.incidentSlope, 0, 1) : 0;
+  M.pressure = (state) => FR.SKILLS.reduce((t, k) => t + M.weight(k) * M.gap(state, k), 0);
+  // weekly incident chance at gap g; with a skill, scaled by its weight (no skill: weight 1)
+  M.incidentChance = (g, skill) => g > K.incidentGap ? FR.clamp((K.incidentBase + (g - K.incidentGap) * K.incidentSlope) * (skill ? M.weight(skill) : 1), 0, 1) : 0;
+  M.incidentTrust = (skill) => FR.round(K.incidentTrust * M.weight(skill), 1);
   // incidents on a skill that still count toward the final rule at resolution turn `at`
   const recent = (sk, at) => sk.incidents.filter(t => t > at - K.incidentWindow);
 
@@ -110,7 +116,7 @@
     let text = NAME(skill) + ': capability ' + Math.round(sk.cap) + ', safety ' + Math.round(sk.safe) + '. Gap ' + fmtGap(g);
     if (g > K.critGap && sk.critStreak >= 1) text += ', ' + ordinal(sk.critStreak) + ' week above ' + K.critGap;
     else if (g > K.warnGap && g <= K.incidentGap && sk.warnStreak >= 1) text += ', ' + ordinal(sk.warnStreak) + ' week above ' + K.warnGap;
-    if (g > K.incidentGap) text += ', incident risk ' + Math.round(M.incidentChance(g) * 100) + '% a week';
+    if (g > K.incidentGap) text += ', incident risk ' + Math.round(M.incidentChance(g, skill) * 100) + '% a week';
     text += '.';
     if (turnsToFinal) text += ' Final incident ' + weeks(turnsToFinal) + ' unless the gap falls to ' + K.critGap + ' or below.';
     let stand = '';
@@ -123,19 +129,34 @@
   }
   M.outlook = (state, skill) => look(state, skill, state.turn);
 
+  // the Safety floor gauge: weighted pressure against K.pressureBands, never calmer than the worst skill's own outlook
+  const LEVELS = ['ok', 'watch', 'warning', 'critical'], LEVEL_TEXT = { ok: 'in hand', watch: 'watch', warning: 'warning', critical: 'critical' };
+  const fmtP = (v) => K.pressureBands.some(t => (v > t) !== (Math.round(v) > t)) ? v.toFixed(1) : String(Math.round(v));
+  M.pressureLevel = function (state) {
+    const value = FR.round(M.pressure(state), 1);
+    let i = K.pressureBands.filter(b => value > b).length;
+    FR.SKILLS.forEach(k => { i = Math.max(i, LEVELS.indexOf(M.outlook(state, k).level)); });
+    const level = LEVELS[i];
+    const top = FR.SKILLS.reduce((b, k) => M.weight(k) * M.gap(state, k) > M.weight(b) * M.gap(state, b) ? k : b, FR.SKILLS[0]);
+    const g = M.gap(state, top);
+    const text = 'Pressure ' + fmtP(value) + ', ' + LEVEL_TEXT[level] + '. ' + (g > 0.05 ?
+      NAME(top) + ' carries the most: gap ' + fmtGap(g) + ' at weight ' + M.weight(top) + '.' : 'Safety is at or above capability on every skill.');
+    return { value, level, text };
+  };
+
   // ---- the slow-burn ladder, once per turn after the market resolves ----
   function incident(state, k, g, report) {
-    const sk = state.model.skills[k], cash = state.money ? state.money.cash : 0;
+    const sk = state.model.skills[k], cash = state.money ? state.money.cash : 0, trust = M.incidentTrust(k);
     const cost = Math.round(K.incidentCash + Math.max(0, cash) * K.incidentCashPct);
     if (state.money) state.money.cash -= cost;
-    if (FR.market && FR.market.nudgeTrust) FR.market.nudgeTrust(state, -K.incidentTrust, NAME(k) + ' incident', report);
-    else if (state.market) state.market.trust = FR.clamp(state.market.trust - K.incidentTrust, 0, 100);
+    if (FR.market && FR.market.nudgeTrust) FR.market.nudgeTrust(state, -trust, NAME(k) + ' incident', report);
+    else if (state.market) state.market.trust = FR.clamp(state.market.trust - trust, 0, 100);
     sk.incidents.push(state.turn);
     if (state.stats) state.stats.incidents = (state.stats.incidents || 0) + 1;
     report.flows.incidentCost = (report.flows.incidentCost || 0) + cost;
-    report.events.push({ type: 'model:incident', skill: k, gap: r1(g), cost, trust: K.incidentTrust });
+    report.events.push({ type: 'model:incident', skill: k, gap: r1(g), cost, trust });
     report.news.push({ kind: 'incident', text: state.lab.name + ' discloses an incident in its ' + NAME(k).toLowerCase() + ' model. Review under way.' });
-    report.memo.push({ kind: 'flag', text: NAME(k) + ' incident at gap ' + fmtGap(g) + '. Cost ' + FR.fmtMoney(cost) + ' and ' + K.incidentTrust + ' points of public trust.' });
+    report.memo.push({ kind: 'flag', text: NAME(k) + ' incident at gap ' + fmtGap(g) + '. Cost ' + FR.fmtMoney(cost) + ' and ' + trust + ' points of public trust.' });
   }
 
   function final(state, k, g, why, report) {
@@ -162,7 +183,7 @@
         if (state.stats) state.stats.warnings = (state.stats.warnings || 0) + 1;
         report.events.push({ type: 'model:warning', skill: k, gap: r1(g) });
       }
-      if (armed && g > K.incidentGap && rng.chance(M.incidentChance(g))) { hit = true; incident(state, k, g, report); }
+      if (armed && g > K.incidentGap && rng.chance(M.incidentChance(g, k))) { hit = true; incident(state, k, g, report); }
       if (sk.critStreak >= K.critTurns) { final(state, k, g, 'gap ' + fmtGap(g) + ', above ' + K.critGap + ' for ' + sk.critStreak + ' weeks', report); return; }
       if (recent(sk, T).length >= K.finalIncidents) { final(state, k, g, ordinal(K.finalIncidents) + ' incident in ' + K.incidentWindow + ' weeks, gap ' + fmtGap(g), report); return; }
       // forewarning: the status line for the next turn whenever the skill is in danger
@@ -174,7 +195,7 @@
   };
 
   M.debug = function (state) {
-    const d = { target: state.target, pressure: r1(M.pressure(state)), peakCap: r1(state.model.peakCap || 0) };
+    const d = { target: state.target, pressure: r1(M.pressure(state)), pressureLevel: M.pressureLevel(state).level, peakCap: r1(state.model.peakCap || 0) };
     FR.SKILLS.forEach(k => {
       const sk = state.model.skills[k];
       d[k] = { cap: FR.round(sk.cap, 2), safe: FR.round(sk.safe, 2), gap: FR.round(M.gap(state, k), 2), warnStreak: sk.warnStreak,

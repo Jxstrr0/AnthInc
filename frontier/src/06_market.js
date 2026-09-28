@@ -7,13 +7,15 @@
     trustMultBase: 0.5, trustMultPer: 0.01,             // trustMult = 0.5 + trust / 100  (0.5 .. 1.5)
     // rival weekly gain per skill = gainBase × speed × (1 + ramp × years) × weight × (1 − cap/100)^dimExp;
     // a `steady` share arrives every week, the rest in releases (chance `ship` a week) so the expected pace is the same
-    gainBase: 0.42, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
+    gainBase: 0.43, dimExp: 1, gainNoise: 0.3, shipJitter: 0.4,
     startJitter: 1.5, safeJitter: 2, speedJitter: 0.12,  // start cap ± points, start safe ± points, base speed ± fraction
     speedMin: 0.85, speedMax: 1.15,                     // speed bounds, multiples of the rival's base speed
     fundLift: 0.02, incSlow: 0.015,                     // a funding line speeds a rival up 2%; its own incident slows it 1.5%
     safeFollow: 0.1,                                    // rival safe closes 10% of the way to cap − margin each week, never falls
     incBase: 0.004, incGap: 8, incSlope: 0.004,         // rival incident chance = risk × (incBase + (worst gap − incGap) × incSlope)
     incTrust: [2, 4], incPatch: 0.5,                    // trust points lost by everyone; share of the gap the rival then closes
+    incShield: 0.5,                                     // share of that hit a lab takes when every safe is within the sim's
+                                                        //   safeMargin of cap (its evaluations are current)
     marks: [30, 45, 60, 75, 90],                        // the frontier record
     newsMin: 1, newsMax: 3, newsRecent: 12,             // wire lines a week; no filler template repeats within 12 lines
     newsGrow: 0.3,                                      // money and user figures in wire lines grow 30% per game year
@@ -196,10 +198,17 @@
     r.incidents++;
     r.safe[k] = r2(cl(r.safe[k] + g * K.incPatch));
     bump(r, -K.incSlow);
-    const lost = -M.nudgeTrust(s, -rng.int(K.incTrust[0], K.incTrust[1]), r.name + ' incident', report), t = Math.round(s.market.trust);
-    report.events.push({ type: 'market:rivalIncident', rivalId: r.id });
-    report.news.push({ kind: 'incident', text: sub(rng.pick(INC[k]), { R: r.name }) + ' Public trust in AI labs down ' + Math.round(lost) + ' to ' + t + '.' });
-    report.memo.push({ kind: 'change', text: 'Public trust ' + t + ', down ' + Math.round(lost) + ' after the ' + r.name + ' ' + FR.SKILL_NAME[k].toLowerCase() + ' incident.' });
+    const hit = rng.int(K.incTrust[0], K.incTrust[1]), shield = FR.sim && FR.sim.inStep ? FR.sim.inStep(s) : false;
+    const lost = -M.nudgeTrust(s, -(shield ? hit * K.incShield : hit), r.name + ' incident', report), t = Math.round(s.market.trust);
+    const what = r.name + ' ' + FR.SKILL_NAME[k].toLowerCase() + ' incident';
+    report.events.push({ type: 'market:rivalIncident', rivalId: r.id, trust: r2(lost), shielded: shield });
+    if (shield) {
+      report.news.push({ kind: 'incident', text: sub(rng.pick(INC[k]), { R: r.name }) + ' Public trust in AI labs down ' + hit + '.' });
+      report.memo.push({ kind: 'change', text: 'Public trust ' + t + ' after the ' + what + ', which cost AI labs ' + hit + ' points. Our evaluations are current; trust impact limited to ' + FR.round(lost, 1) + '.' });
+    } else {
+      report.news.push({ kind: 'incident', text: sub(rng.pick(INC[k]), { R: r.name }) + ' Public trust in AI labs down ' + Math.round(lost) + ' to ' + t + '.' });
+      report.memo.push({ kind: 'change', text: 'Public trust ' + t + ', down ' + Math.round(lost) + ' after the ' + what + '.' });
+    }
   }
 
   function records(s, report) {

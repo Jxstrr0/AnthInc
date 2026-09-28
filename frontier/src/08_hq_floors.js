@@ -599,18 +599,31 @@
     T(x, d.final ? 'Final incident in ' + d.final + (d.final === 1 ? ' week' : ' weeks') : d.gap > 10 ? 'Above 10: warnings' : 'Within tolerance', w - 24, 282, 20, d.final ? HX.bad : d.gap > 10 ? HX.warn : HX.ink3, 'right', 600, SANS, 250);
     rect(x, 0, h - 26, w, 26, HX.surface); T(x, d.run ? 'EVAL SUITE RUNNING' : 'EVALS PAUSED · NO SAFETY COMPUTE', w / 2, h - 13, 16, d.run ? HX.good : HX.warn, 'center', 600, MONO);
   }
+  // the incident log (768 × 452): title and date, one row per skill, the pressure gauge (FR.ui.pressure, the safety panel's
+  // reading), warnings and incidents to date, the safe-hold bar. The gauge sits mid-screen: the focus view frames the
+  // screen just under the HUD strip, which covers the title row.
   function drawLog(x, w, h, d) {
     rect(x, 0, 0, w, h, HX.sunken);
-    T(x, 'INCIDENT LOG', 28, 42, 40, HX.ink, 'left', 700, DISP); T(x, d.date, w - 28, 42, 22, HX.ink3, 'right', 500, MONO);
-    rect(x, 28, 76, w - 56, 2, HX.raised);
+    T(x, 'INCIDENT LOG', 28, 40, 40, HX.ink, 'left', 700, DISP); T(x, d.date, w - 28, 40, 22, HX.ink3, 'right', 500, MONO);
+    rect(x, 28, 70, w - 56, 2, HX.raised);
+    const gap = d.pr ? 54 : 70, y0 = d.pr ? 104 : 118;
     d.rows.forEach((r, i) => {
-      const y = 118 + i * 70; T(x, r[0], 28, y, 30, HX.ink, 'left', 600, SANS, 200);
+      const y = y0 + i * gap; T(x, r[0], 28, y, 30, HX.ink, 'left', 600, SANS, 200);
       T(x, r[1].length ? r[1].map(t => wk(t) + ' Y' + FR.year(t)).slice(-3).join(', ') : 'None', 240, y, 24, r[1].length ? HX.bad : HX.ink3, 'left', 500, MONO, w - 280);
-      rect(x, 28, y + 32, w - 56, 1, HX.raised);
+      rect(x, 28, y + 26, w - 56, 1, HX.raised);
     });
-    T(x, 'Warnings to date ' + d.warnings + ' · Incidents ' + d.incidents, 28, 336, 24, HX.ink2, 'left', 500, SANS, w - 56);
-    T(x, 'Safe frontier hold', 28, 386, 24, HX.ink3, 'left', 600); T(x, d.streak + ' / 52 wks', w - 28, 386, 30, d.streak > 0 ? HX.good : HX.ink3, 'right', 500, MONO);
-    bar(x, 28, 410, w - 56, 14, d.streak / 52, HX.good);
+    let y = 336;
+    if (d.pr) {
+      const col = HX[d.pr.hue] || HX.warn; y = 282;
+      T(x, 'PRESSURE', 28, y, 24, HX.ink3, 'left', 600); T(x, cap1(d.pr.v), 214, y, 34, col, 'left', 500, MONO);
+      rrect(x, w - 198, y - 21, 170, 42, 21, col); T(x, d.pr.label, w - 113, y + 1, 22, HX.sunken, 'center', 700, MONO, 150);
+      bar(x, 28, y + 30, w - 56, 14, d.pr.pct / 100, col);
+      (d.pr.bands || []).forEach(b => rect(x, 28 + (w - 56) * b / 100 - 1, y + 26, 3, 22, HX.line));
+      y = 362;
+    }
+    T(x, 'Warnings to date ' + d.warnings + ' · Incidents ' + d.incidents, 28, y, 24, HX.ink2, 'left', 500, SANS, w - 56);
+    T(x, 'Safe frontier hold', 28, y + 44, 24, HX.ink3, 'left', 600); T(x, d.streak + ' / 52 wks', w - 28, y + 44, 30, d.streak > 0 ? HX.good : HX.ink3, 'right', 500, MONO);
+    bar(x, 28, y + 64, w - 56, 14, d.streak / 52, HX.good);
   }
   function scribble(x, w, h, seed, title, dark) { // whiteboard: title, boxes and arrows, marker lines
     const rnd = FR.rng(seed); rect(x, 0, 0, w, h, dark ? '#e9ecef' : '#f1f3f5');
@@ -676,7 +689,8 @@
           paint(skillScr[i], { name: FR.SKILL_NAME[k], cap: FR.round(sk.cap, 1), safe: FR.round(sk.safe, 1), gap: FR.round(gap, 1), level,
             inc: s ? (sk.incidents || []).filter(t => t > s.turn - 52).length : 0, final: o ? o.turnsToFinal : null, run: p.pf > 0 }, drawSkill);
         });
-        paint(log, { date: s ? FR.dateLabel(s.turn) : '', rows: FR.SKILLS.map(k => [FR.SKILL_NAME[k], s && s.model ? (s.model.skills[k].incidents || []).slice() : []]),
+        const pr = s && FR.ui && FR.ui.pressure ? tryf(() => FR.ui.pressure(s), null) : null;
+        paint(log, { date: s ? FR.dateLabel(s.turn) : '', pr: pr ? { v: FR.round(pr.value, 1), label: String(pr.label).toUpperCase(), hue: pr.hue, pct: Math.round(pr.pct), bands: pr.bands || [] } : null, rows: FR.SKILLS.map(k => [FR.SKILL_NAME[k], s && s.model ? (s.model.skills[k].incidents || []).slice() : []]),
           warnings: s && s.stats ? s.stats.warnings : 0, incidents: s && s.stats ? s.stats.incidents : 0, streak: s && s.win ? s.win.streak : 0 }, drawLog);
         sp = split(heads(p.staff), desks.n, stands.length, walk.length); sit.set(sp.sit); stand.set(sp.stand); nWalk = sp.walk; desks.set(Math.max(5, sp.sit + 2));
         desks.scrMat.color.setScalar(0.35 + 0.65 * act); racks.set(6, Math.round(6 * act)); racks.mat.color.setScalar(0.4 + 0.6 * act);
@@ -812,7 +826,7 @@
     return 'evals';
   }
   function payoffText(p) {
-    const d = tryf(() => FR.projects.describe(p), ''); if (d) return d;
+    const d = tryf(() => FR.projects.describe(p, S()), ''); if (d) return d;   // with the state: a safety payoff says what it adds today
     const v = p && p.payoff; if (v == null) return ''; if (typeof v === 'string') return v; if (typeof v === 'number') return '+' + v;
     const out = []; const add = (label, n) => { if (typeof n === 'number' && n) out.push(label + ' ' + (n > 0 ? '+' : '') + (Math.abs(n) >= 1000 ? money(n) : FR.round(n, 1))); };
     Object.keys(v).forEach(key => { const n = v[key]; if (key === 'text' && typeof n === 'string') { out.length = 0; out.push(n); return; }

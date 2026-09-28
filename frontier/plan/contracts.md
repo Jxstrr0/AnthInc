@@ -40,13 +40,16 @@ constants: they live in each module's `K` object so `tools/balance.js` tuning to
   },
 
   compute: {                         // 04_compute owns
-    rentPF,                          // player-set rented capacity (PF), applied immediately
+    rentPF,                          // player-set rented capacity (PF), applied immediately; 0..FR.compute.maxRent(state)
     rentPrice,                       // $ per PF-week, drifts
     scarcity,                        // turns of scarcity left (price shock), 0 = none
-    clusters: [ { id, name, pf, bought, cost } ],        // bought = turn bought; retire at bought + K.retireTurns
-    deals: [ { rivalId, kind: 'compute', pf, revShare, ends } ],
-    offers: [ { id, name, pf, cost, installTurns } ],    // clusters for sale this quarter
-    installing: [ { id, name, pf, ready, cost } ]       // bought, arrives at turn `ready`
+    clusters: [ { id, name, pf, bought, cost } ],        // bought = the turn it came online (= the installing `ready`
+                                                         //   turn); age counts from it; retires at bought + K.retireTurns
+    deals: [ { rivalId, kind: 'compute', pf, revShare, ends } ],   // live for turns up to `ends`
+    offers: [ { id, name, pf, cost, installTurns } ],    // clusters for sale this quarter; pf and cost × the year's ceiling
+    installing: [ { id, name, pf, ready, cost } ],      // bought, online from turn `ready`
+    bill: { turn, cash, revShare }   // written by compute.step: the compute bill ($) and revenue share for the week `turn`
+                                     //   just worked; FR.compute.cost/revShare return it for that turn (05_money charges it)
   },
 
   money: {                           // 05_money owns
@@ -66,10 +69,17 @@ constants: they live in each module's `K` object so `tools/balance.js` tuning to
 
   projects: {                        // 07_projects owns
     slots,                           // 3 at start
-    active: [ { uid, tpl, name, kind, skill, turnsLeft, turns, pfPerTurn, cost, risk, payoff, started, overrun } ],
+    active: [ { uid, tpl, name, kind, skill, turnsLeft, turns, pfPerTurn, cost, risk, payoff, started, overrun, progress } ],
+                                     //   progress: weeks of work done (research speeds it); turnsLeft: weeks at today's pace
     offers: [ { id, tpl, name, kind, skill, tier, turns, pfPerTurn, cost, risk, payoff, blurb } ],
+                                     //   skill: a skill id, 'all' or null. payoff: { cap?, safe?, trust?, cash?,
+                                     //   trustRisk?: {chance, trust}, fx?: {demandMult?, priceMult?, rentDiscount?, turns} }
     refreshAt,                       // turn the offer board refreshes
-    done: [ { name, turn, ok } ]     // last 20
+    done: [ { name, turn, ok, why, spent } ],   // last 20. why: 'done'|'failed'|'cancelled'; spent: $ spent
+    effects: { demandMult, priceMult, rentDiscount, until, grants: [ { name, until, demandMult?, priceMult?, rentDiscount? } ] },
+                                     //   live project effects (product launch, efficiency work, chip pre-order...), combined
+                                     //   and capped by K.fxMax; read through FR.projects.fx(state)
+    spend: { turn, cash }            // written by projects.step: project cash for the week `turn` just worked
   },
 
   market: {                          // 06_market owns
@@ -84,9 +94,17 @@ constants: they live in each module's `K` object so `tools/balance.js` tuning to
   news: [ { turn, text, kind } ],    // wire feed, newest last, keep last 60. kind: 'rival'|'you'|'market'|'incident'|'record'
   memo: { turn, lines: [ { kind, text } ] },   // the weekly memo of the turn just resolved. kind: 'change'|'flag'|'due'|'good'
   history: [ { turn, cash, revenue, burn, avgCap, avgSafe, trust, bestRival } ],  // one row per turn, keep last 312
-  stats: { incidents, warnings, firstsWon, firstsLost, projectsDone, peakValuation }
+  stats: { incidents, warnings, firstsWon, firstsLost, projectsDone, peakValuation },
+  pendingMemo: [ { kind, text } ],   // memo lines from commands applied since the last End Turn (FR.cmd.do); the next
+                                     //   End Turn puts them at the top of its memo, then empties the list
+  pendingEvents: [ { type, ... } ],  // bus events from those commands (e.g. money:round); the next End Turn puts them at the
+                                     //   front of report.events, then empties the list
+  lastReport                         // the report of the last End Turn (§2), null before the first. Not in save codes.
 }
 ```
+
+`FR.sim.migrate(d)` fills `stats`, `win`, `history`, `news`, `pendingMemo`, `pendingEvents`, `projects.spend` and
+`compute.bill` on old saves.
 
 Derived helpers (pure, in `02_sim.js`): `FR.sim.avgCap(state)`, `FR.sim.avgSafe(state)`.
 

@@ -16,8 +16,9 @@
                                              //   base rent price, and a lab serving a fifth of its compute pays its way near 45
     trustLo: 0.5, trustHi: 1.5,              // fallback trust multiplier (no 06_market): lo..hi over trust 0..100
     zetaDrag: 0.01, zetaMax: 0.25,           // fallback Zeta price pressure: −1% per point Zeta is ahead, at most −25%
-    valBase: 40e6, valCap: 2.2e6, valCapExp: 1.5,   // valuation = (valBase + valCap × avgCap^valCapExp
-    revMultiple: 20,                         //   + revMultiple × 52 × weekly revenue) × trustMult
+    valBase: 10e6, valCap: 1.25e6, valCapExp: 2,    // valuation = (valBase + valCap × avgCap^valCapExp
+    revMultiple: 20,                         //   + revMultiple × 52 × weekly revenue) × trustMult: $90M at the start (seed
+                                             //   20%), about $320M when the Series A milestone falls (A near 20-25%)
     rounds: {
       seed: { name: 'Seed round', amount: 18e6, pctMin: 0.1, pctMax: 0.3 },
       a: { name: 'Series A', amount: 75e6, pctMin: 0.1, pctMax: 0.35 }

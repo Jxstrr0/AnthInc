@@ -56,11 +56,30 @@ assert.deepStrictEqual(r.flows.trust, [{ delta: 50, why: 'test' }, { delta: -100
 
 // ---- rival incidents move trust for everyone ----
 withK(Object.assign({}, QUIET, { incBase: 10 }), () => {
-  s = game(); const t0 = s.market.trust; r = week(s, FR.rng(2));
+  s = game(); s.model.skills.agents.cap = 20; const t0 = s.market.trust; r = week(s, FR.rng(2));   // agents gap 12: not in step
+  assert.strictEqual(FR.sim.inStep(s), false);
   assert.strictEqual(r.events.filter(e => e.type === 'market:rivalIncident').length, 4);
   assert.strictEqual(r.news.filter(n => n.kind === 'incident').length, 4);
   assert.ok(s.market.rivals.every(x => x.incidents === 1));
   const lost = t0 - s.market.trust; assert.ok(lost >= 4 * K.incTrust[0] && lost <= 4 * K.incTrust[1], 'trust lost ' + lost);
+  assert.ok(r.events.every(e => e.type !== 'market:rivalIncident' || e.shielded === false));
+  assert.ok(r.memo.every(m => !/Our evaluations/.test(m.text)) && r.memo.some(m => /^Public trust \d+, down \d after the \w[\w ]* incident\.$/.test(m.text)));
+});
+// ---- a lab with every safe within the sim's safeMargin of cap takes half the hit, and the memo says so ----
+withK(Object.assign({}, QUIET, { incBase: 10 }), () => {
+  const x = game(), y = game(); x.model.skills.agents.cap = 20; y.model.skills.agents.cap = 8 + FR.sim.K.safeMargin;   // gap 12 vs gap 5
+  assert.strictEqual(FR.sim.inStep(y), true);
+  const rx = week(x, FR.rng(2)), ry = week(y, FR.rng(2));
+  const full = 50 - x.market.trust, half = 50 - y.market.trust;
+  assert.ok(Math.abs(half - full * K.incShield) < 1e-9, full + ' vs ' + half);
+  const hits = ry.events.filter(e => e.type === 'market:rivalIncident');
+  assert.strictEqual(hits.length, 4); assert.ok(hits.every(e => e.shielded === true && e.trust > 0));
+  const lines = ry.memo.filter(m => /Our evaluations are current; trust impact limited to [\d.]+\.$/.test(m.text));
+  assert.strictEqual(lines.length, 4, JSON.stringify(ry.memo));
+  lines.forEach((m, i) => assert.ok(new RegExp('^Public trust \\d+ after the .* incident, which cost AI labs \\d points\\. Our evaluations are current; trust impact limited to ' +
+    hits[i].trust + '\\.$').test(m.text), m.text));
+  assert.ok(ry.news.filter(n => n.kind === 'incident').every(n => /Public trust in AI labs down \d\.$/.test(n.text)));
+  assert.deepStrictEqual(ry.news.map(n => n.text.replace(/ Public trust.*$/, '')), rx.news.map(n => n.text.replace(/ Public trust.*$/, '')), 'same week otherwise');
 });
 
 // ---- frontier record: once per mark; player / rival / same-week tie-breaks ----

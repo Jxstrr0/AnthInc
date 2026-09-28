@@ -172,6 +172,12 @@ s = run(s, 1); assert.strictEqual(s.money.revenue, Math.round(d * pr)); assert.s
 // valuation rises with capability, trust and revenue
 s = game(); const v0 = M.valuation(s); setCap(s, 30); const v1 = M.valuation(s); s.market.trust = 70; const v2 = M.valuation(s);
 s.money.revenue = 1e5; assert.ok(v0 < v1 && v1 < v2 && v2 < M.valuation(s));
+// Series A near 20-25% dilution where a lab typically meets its first milestone (one skill at 20, average capability
+// near 14, $45-60k a week of revenue, trust 45-52), not at the pctMax cap
+[[14, 58000, 50], [14.3, 50000, 46], [14.5, 60000, 52], [15, 55000, 48]].forEach(([cap, rev, tr]) => {
+  const g = cmd(game(), { type: 'acceptRound' }); setCap(g, cap); g.money.revenue = rev; g.market.trust = tr;
+  const pct = K.rounds.a.amount / M.valuation(g); assert.ok(pct >= 0.2 && pct <= 0.25, cap + '/' + rev + '/' + tr + ': ' + pct);
+});
 
 // runway warnings: once on crossing 26 and 13, every week under 6
 s = game(); let b = -FR.sim.forecast(s).net; s.money.cash = Math.round(26.5 * b);   // b: the weekly loss, burn less revenue

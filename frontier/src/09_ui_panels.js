@@ -8,6 +8,8 @@
 //   FR.ui.memo()             the weekly memo (sheet id 'memo'): What changed, Flagged, Due, the wire, one next step
 //   FR.ui.panels.refresh()   re-render the open panel or memo in place (runs on 'state:changed' and 'turn:ended')
 //   FR.ui.panels.open(floorId, tab, focus)   FR.ui.panels.link(base, key, v)   FR.ui.panels.debug()
+//   FR.ui.pressure(state)    the warning-pressure reading {value, level, label, hue, text, pct} (FR.model.pressureLevel when
+//                            present); the Safety panel's gauge and the safety floor's incident-log screen both draw it
 // Emits 'ui:panel' {floorId, tab, hotspotId} when a panel opens (not on in-place refreshes).
 // Listens: 'state:changed', 'turn:ended', 'game:new', 'game:loaded', 'ui:sheet'.
 (function (FR) {
@@ -44,7 +46,7 @@
   const MK = () => Object.assign({ warnGap: 10, warnTurns: 2, incidentGap: 20, incidentBase: 0.08, incidentSlope: 0.02, incidentTrust: 6, critGap: 30,
     critTurns: 4, finalIncidents: 3, incidentWindow: 52, spill: 0.25, drift: 0.2, safeLead: 3 }, (FR.model && FR.model.K) || {});
   const PK = () => Object.assign({ tiers: [0, 100, 500], speedMax: 0.4, failShare: 0.35, overrunFrac: 0.5 }, (FR.projects && FR.projects.K) || {});
-  const MoK = () => Object.assign({ hireFee: 20000, wage: 5000, hireTurns: 4, severanceWeeks: 4, minHead: 2, maxHead: 1000, layoffTrustPer: 0.1,
+  const MoK = () => Object.assign({ hireFee: 20000, wage: 5000, hireTurns: 4, severanceWeeks: 4, minHead: 2, maxHead: 1000, maxHire: 20, layoffTrustPer: 0.1,
     layoffTrust: [0.5, 3], reofferTurns: 13, lockTurns: 52, demandTrustExp: 0.5 }, (FR.money && FR.money.K) || {});
   const CK = () => Object.assign({ maxRent: 500, basePrice: 2000, power: 400, retireTurns: 208, decayPerYear: 0.08, quarter: 13 }, (FR.compute && FR.compute.K) || {});
   const MaK = () => Object.assign({ trustMid: 50, trustRevert: 0.05, incTrust: [2, 4], marks: [30, 45, 60, 75, 90], RIVALS: {} }, (FR.market && FR.market.K) || {});
@@ -76,6 +78,45 @@
   const roundName = (r) => tryr(() => FR.money.K.rounds[r].name, r === 'a' ? 'Series A' : r === 'seed' ? 'Seed round' : String(r));
   const fxOf = (s) => tryr(() => FR.projects.fx(s), { demandMult: 1, priceMult: 1, rentDiscount: 0 });
   const bestSkill = (s) => SK().reduce((b, k) => s.model.skills[k].cap > s.model.skills[b].cap ? k : b, SK()[0]);
+  const has = (mod, fn) => !!(FR[mod] && typeof FR[mod][fn] === 'function');
+  // the spot market's rent ceiling for the state's year (grows each year); the flat K.maxRent before 04_compute has it
+  function maxRent(s) {
+    const v = has('compute', 'maxRent') ? tryr(() => +FR.compute.maxRent(s), NaN) : NaN;
+    return Number.isFinite(v) && v >= 0 ? Math.floor(v) : CK().maxRent;
+  }
+  // hires still allowed this week (FR.money.hireRoom; else K.maxHire less the hires already joining in hireTurns weeks)
+  function hireRoom(s) {
+    const K = MoK(), v = has('money', 'hireRoom') ? tryr(() => +FR.money.hireRoom(s), NaN) : NaN; if (Number.isFinite(v)) return Math.max(0, Math.floor(v));
+    return Math.max(0, K.maxHire - (s.staff.hiring || []).reduce((t, h) => t + (h.arrives === s.turn + K.hireTurns ? h.n : 0), 0));
+  }
+  // the payoff line; with the state, a safety payoff shows what it would add at today's levels
+  const describe = (x) => has('projects', 'describe') ? tryr(() => FR.projects.describe(x, S()), '') : '';
+  // warning pressure: FR.model.pressureLevel(s) → {value, level, text}; before it lands, the weighted gap sum from
+  // FR.model.pressure (or computed here) banded by K.pressureBands (fallback: every gap at 5 / 10 / 20).
+  // Returns {value, level, label, hue, text, pct, bands (meter %)} for the gauge. The meter runs to the top band × 4/3,
+  // so the bands sit at 25 / 50 / 75%.
+  const PHUE = { ok: 'good', watch: 'warn', warning: 'bad', critical: 'bad' };
+  const pressW = () => Object.assign({ coding: 1, reasoning: 1, agents: 1.5 }, MK().weights || MK().pressureW || {});
+  function pressBands() {
+    const b = MK().pressureBands; if (Array.isArray(b) && b.length && b.every(Number.isFinite)) return b.slice();
+    const W = pressW(), wsum = SK().reduce((t, k) => t + (+W[k] || 1), 0), K = MK();
+    return [wsum * 5, wsum * K.warnGap, wsum * K.incidentGap];
+  }
+  function pressure(s) {
+    const W = pressW(), bands = pressBands(), LV = ['ok', 'watch', 'warning', 'critical'];
+    let p = has('model', 'pressureLevel') ? tryr(() => FR.model.pressureLevel(s), null) : null;
+    if (!p || !Number.isFinite(+p.value)) {
+      const v = has('model', 'pressure') ? tryr(() => +FR.model.pressure(s), NaN) : NaN;
+      const value = Number.isFinite(v) ? v : SK().reduce((t, k) => t + (+W[k] || 1) * gapOf(s, k), 0);
+      p = { value, level: LV[Math.min(3, bands.filter(b => value > b).length)], text: '' };
+    }
+    const level = String(p.level || 'ok'), hue = PHUE[level] || 'warn', max = bands[bands.length - 1] * (bands.length + 1) / bands.length;
+    // the header already shows the value and the level: drop the text's leading "Pressure 12, watch." when it has one
+    const text = String(p.text || '').replace(/^Pressure [\d.,]+, [^.]*\.\s*/, '');
+    return { value: +p.value, level, label: LEVEL[level] || level.charAt(0).toUpperCase() + level.slice(1), hue, text,
+      pct: clamp(+p.value / max * 100, 0, 100), bands: bands.map(b => Math.round(b / max * 100)) };
+  }
+  U.pressure = (s) => { s = s || S(); return s && s.model ? pressure(s) : null; };   // the safety floor's log screen reads it too
 
   // ---------- markup helpers (Mogul's, on data-fp) ----------
   const tip = (text, what) => U.tip ? U.tip(text, what) : '';
@@ -109,11 +150,23 @@
     sliders: 'The four shares always total 100%. Moving one rescales the other three in proportion. They split the compute left after projects, and the staff.',
     runway: 'Weeks until cash reaches zero at next week’s forecast: revenue in; payroll, operations, compute and project costs out.',
     demand: 'Customer demand in PF a week. It grows with average capability and public trust. Serving more than demand earns nothing.',
-    stake: 'Your ownership of the lab. Each round sells part of it. The score counts your stake at the peak valuation.',
+    // FR.sim.score: min(stakeMax, round(stakePer × log10(1 + valuation × founderPct / 100 / stakeUnit))), read once at the end
+    get stake() {
+      const Q = Object.assign({ stakePer: 100, stakeUnit: 1e6, stakeMax: 500 }, tryr(() => FR.sim.K.score, {}));
+      const at = (pts) => { const v = Q.stakeUnit * (Math.pow(10, pts / Q.stakePer) - 1), [d, u] = v >= 999.5e6 ? [1e9, 'B'] : [1e6, 'M'], x = v / d;
+        return '$' + x.toFixed(x >= 10 ? 0 : 1).replace(/\.0$/, '') + u; };
+      return `Your ownership of the lab. Each round sells part of it. The score counts the stake once, at the end of the run: its value then (valuation × your share), compressed so each tenfold rise adds ${Q.stakePer} points (${at(Q.stakePer)} scores ${Q.stakePer}, ${at(2 * Q.stakePer)} scores ${2 * Q.stakePer}), capped at ${Q.stakeMax} points (${at(Q.stakeMax)}).`;
+    },
+    get pressure() {
+      const W = pressW(), b = pressBands(), nm = SK().map(k => `${SN(k)} ×${trim1(+W[k] || 1)}`).join(', ');
+      return `The weighted sum of the three gaps (capability minus safety): ${nm}.${MK().weights ? ' The same weights scale each skill’s incident odds and the trust an incident costs.' : ''}`
+        + ` Watch above ${trim1(b[0])}, warning above ${trim1(b[1])}, critical above ${trim1(b[2])}${has('model', 'pressureLevel') ? '; one skill’s own outlook can set a higher level' : ''}.`;
+    },
     revshare: 'A compute share takes this fraction of all revenue for as long as the deal runs.',
     get gap() {
       const K = MK();
-      return `Gap is capability minus safety. Above ${K.warnGap} for ${K.warnTurns} weeks: a warning, no cost. Above ${K.incidentGap}: each week a chance of an incident (${pct0(K.incidentBase)} plus ${pct0(K.incidentSlope)} per point above ${K.incidentGap}) that costs cash and ${K.incidentTrust} points of trust. Above ${K.critGap} for ${K.critTurns} weeks, or a ${ORD[K.finalIncidents - 1] || K.finalIncidents + 'th'} incident on one skill within ${K.incidentWindow} weeks: the final incident, and the lab closes.`;
+      const heavy = K.weights ? SK().filter(k => (+K.weights[k] || 1) !== 1).map(k => `${SN(k)} ×${trim1(+K.weights[k])}`) : [];
+      return `Gap is capability minus safety. Above ${K.warnGap} for ${K.warnTurns} weeks: a warning, no cost. Above ${K.incidentGap}: each week a chance of an incident (${pct0(K.incidentBase)} plus ${pct0(K.incidentSlope)} per point above ${K.incidentGap}) that costs cash and ${K.incidentTrust} points of trust${heavy.length ? `; ${heavy.join(', ')} on both the chance and the trust` : ''}. Above ${K.critGap} for ${K.critTurns} weeks, or a ${ORD[K.finalIncidents - 1] || K.finalIncidents + 'th'} incident on one skill within ${K.incidentWindow} weeks: the final incident, and the lab closes.`;
     },
     get risk() { const K = PK(); return `The chance of trouble at the halfway review. ${pct0(K.failShare)} of trouble is failure: the money spent is gone and there is no payoff. The rest is an overrun: ${pct0(K.overrunFrac)} more weeks and budget.`; },
     get tier() { return `Research points add up. Tier 2 opens at ${PK().tiers[1]} points, tier 3 at ${PK().tiers[2]}. Each tier adds larger projects to the board.`; }
@@ -228,20 +281,24 @@
   }
   function rentBox(s) {
     const c = s.compute, K = CK(), step = 5, disc = fxOf(s).rentDiscount || 0, per = c.rentPrice * (1 - disc);
-    const cost = tryr(() => FR.compute.rentCost(s), c.rentPF * per), lo = Math.max(0, c.rentPF - step), hi = Math.min(K.maxRent, c.rentPF + step), dead = !live(s);
+    const top = maxRent(s), cost = tryr(() => FR.compute.rentCost(s), c.rentPF * per), dead = !live(s);
+    const lo = Math.max(0, Math.min(top, c.rentPF - step)), hi = Math.min(top, c.rentPF + step);
+    // next year's ceiling (FR.compute.maxRent reads the turn): said only when it rises
+    const ny = FR.year(s.turn) + 1, nextTop = has('compute', 'maxRent') ? maxRent(Object.assign({}, s, { turn: (ny - 1) * 52 + 1 })) : top;
     const mkt = c.scarcity > 0 ? ` Chip shortage: the spot price stays high for about ${wks(c.scarcity)}.`
       : ` Spot price ${c.rentPrice > K.basePrice * 1.05 ? 'above' : c.rentPrice < K.basePrice * 0.95 ? 'below' : 'near'} its usual ${kmoney(K.basePrice)}.`;
+    const ceil = `The spot market rents at most <b class="num">${top} PF</b> in Year ${FR.year(s.turn)}${nextTop > top ? `, <b class="num">${nextTop} PF</b> from Year ${ny}` : ''}.`;
     return `<div class="pl-steps fp-rent"><div class="pl-step"><span><b>Rented</b><small class="num">${kmoney(per)} per PF-week${disc ? ` · ${pct0(disc)} off` : ''}</small></span>
       <button class="pl-sb" data-fp="rent" data-v="${lo}"${c.rentPF <= 0 || dead ? ' disabled' : ''} aria-label="Rent ${step} PF less">${ico('minus')}</button>
       <b class="num">${c.rentPF} PF</b>
-      <button class="pl-sb" data-fp="rent" data-v="${hi}"${c.rentPF >= K.maxRent || dead ? ' disabled' : ''} aria-label="Rent ${step} PF more">${ico('plus')}</button></div></div>
+      <button class="pl-sb" data-fp="rent" data-v="${hi}"${c.rentPF >= top || dead ? ' disabled' : ''} aria-label="Rent ${step} PF more, up to ${top} PF">${ico('plus')}</button></div></div>
       <div class="pl-tot"><span>Rent a week</span><b class="num">${kmoney(cost)}</b></div>
-      <p class="hint">Steps of ${step} PF, <span class="num">${kmoney(step * per)}</span> a week each. Changes apply at once and bill at End Turn.${mkt}</p>`;
+      ${c.rentPF >= top && !dead ? why(`Rent is at the ceiling of ${top} PF. Clusters add capacity beyond it.`, 'info') : ''}
+      <p class="hint">Steps of ${step} PF, <span class="num">${kmoney(step * per)}</span> a week each. Changes apply at once and bill at End Turn. ${ceil}${mkt}</p>`;
   }
   const KIND = { training: ['Training', 'training'], safety: ['Safety', 'safety'], research: ['Research', 'research'], product: ['Product', 'serving'], business: ['Business', 'coin'], compute: ['Compute', 'compute'] };
   const kindOf = (k) => KIND[k] || [String(k || 'Project').charAt(0).toUpperCase() + String(k || 'project').slice(1), 'project'];
   const skillOf = (x) => x.skill === 'all' ? 'All skills' : x.skill ? SN(x.skill) : '';
-  const describe = (x) => tryr(() => FR.projects.describe(x), '');
   function offerCard(s, o, f0, free) {
     const k = kindOf(o.kind), locked = o.tier > s.research.tier, risk = Math.round((o.risk || 0) * 100);
     let dis = '', pv = null;
@@ -311,6 +368,8 @@
     return intro('The wire, newest first. One to three lines a week.')
       + (n.length ? `<ul class="fp-news">${n.map(newsItem).join('')}</ul>` : empty('news', 'No wire lines yet', 'The first lines arrive when the week resolves. Set the sliders, then End Turn.', ''));
   };
+  // " (9 on Agents)": an incident's trust cost scales with the skill's weight (03_model K.weights)
+  const ownIncTrust = () => { const K = MK(); if (!K.weights) return ''; const h = SK().filter(k => (+K.weights[k] || 1) !== 1); return h.length ? ` (${h.map(k => `${trim1(K.incidentTrust * K.weights[k])} on ${SN(k)}`).join(', ')})` : ''; };
   LV.trust = function (s) {
     const t = s.market.trust, K = MaK(), mult = tryr(() => FR.market.trustMult(s), 1), dem = Math.pow(mult, MoK().demandTrustExp), hue = t < 20 ? 'bad' : t < 35 ? 'warn' : 'good';
     let out = `<div class="card fp-trust"><div class="pl-mrow-l"><span>Public trust</span><span class="num"><b class="fp-big tone-${hue}">${n1(t)}</b> of 100</span></div>${meter(t, hue)}
@@ -321,7 +380,7 @@
     out += sec('trend', 'Last week');
     out += mv.length ? mv.map(x => row(x.why === 'drift' ? 'globe' : x.delta < 0 ? 'alert' : 'trend', esc(x.why === 'drift' ? `Drift toward ${K.trustMid}` : x.why), '', `<span class="${x.delta < 0 ? 'neg' : 'pos'}">${sg1(x.delta)}</span>`)).join('')
       : '<p class="hint">No change last week.</p>';
-    out += `<p class="hint">Trust closes ${pct0(K.trustRevert)} of its distance to ${K.trustMid} each week. An incident at your lab costs ${MK().incidentTrust} points; a rival’s incident costs every lab ${K.incTrust[0]} to ${K.incTrust[1]}. Model cards, safety papers, bug bounties and eval partnerships add points.</p>`;
+    out += `<p class="hint">Trust closes ${pct0(K.trustRevert)} of its distance to ${K.trustMid} each week. An incident at your lab costs ${MK().incidentTrust} points${ownIncTrust()}; a rival’s incident costs every lab ${K.incTrust[0]} to ${K.incTrust[1]}${K.incShield != null && K.incShield < 1 ? `, and ${K.incShield === 0.5 ? 'half' : pct0(K.incShield) + ' of'} that when every skill’s safety is within ${tryr(() => FR.sim.K.safeMargin, 5)} of its capability` : ''}. Model cards, safety papers, bug bounties and eval partnerships add points.</p>`;
     return out;
   };
   LV.record = function (s) {
@@ -371,11 +430,20 @@
     return out;
   };
 
-  // Safety: the slider, per-skill cap / safe / gap with the outlook, the incident history
+  // the pressure gauge: value, level badge, meter, the sim's one-line reading
+  function pressureCard(s) {
+    const p = tryr(() => pressure(s), null); if (!p) return '';
+    return `<div class="card fp-press" data-focus="pressure"><div class="fp-press-h"><span class="kicker">Pressure</span>${tip(TIPS.pressure, 'pressure')}
+      <b class="num tone-${p.hue}">${n1(p.value)}</b>${badge(p.label, p.hue, p.hue === 'good' ? 'check' : 'alert')}</div>
+      <div class="fp-pm" role="img" aria-label="Pressure ${n1(p.value)}, ${esc(p.label)}"><div class="meter ${p.hue}" style="--v:${Math.round(p.pct)}"><i></i></div>${p.bands.map(b => `<span style="left:${b}%"></span>`).join('')}</div>
+      ${p.text ? `<p class="fp-out${p.hue === 'good' ? '' : ' ' + p.hue}">${esc(p.text)}</p>` : ''}</div>`;
+  }
+  // Safety: pressure, the slider, per-skill cap / safe / gap with the outlook, the incident history
   VIEWS.safety = function (s) {
     const f = fc(s), K = MK(), worst = SK().reduce((b, k) => gapOf(s, k) > gapOf(s, b) ? k : b, SK()[0]);
     let out = head('safety', `Floor ${esc(META('safety').n)} · safety <b class="num">${s.sliders.safety}%</b> · widest gap <b>${esc(SN(worst))} <span class="num">${gapTxt(gapOf(s, worst))}</span></b>`);
     out += intro(`Safety work lands where the gap is widest. Safety can run at most ${K.safeLead} above capability.`);
+    out += pressureCard(s);
     out += sliders('safety', s, f);
     out += sec('safety', 'Skills', 'change next week', 'skills', tip(TIPS.gap, 'the gap'));
     out += `<div class="card fp-skills">${SK().map(k => skillRow(s, k, f, 'safety')).join('')}</div>`;
@@ -479,7 +547,7 @@
   BV.money = function (s, f) {
     const m = s.money, bp = tryr(() => FR.money.burnParts(s), { payroll: 0, ops: 0, compute: 0, projects: 0 }), rw = f ? f.runway : Infinity;
     const rcls = rw === Infinity ? 'pos' : rw < 6 ? 'neg' : rw < 13 ? 'tone-warn' : '';
-    let out = `<div class="stats">${stat('Cash', kmoney(m.cash))}${stat('Runway', rw === Infinity ? 'Positive' : Math.max(0, rw) + ' wks', rw === Infinity ? 'revenue covers burn' : 'forecast', { tip: tip(TIPS.runway, 'runway'), cls: rcls })}${stat('Valuation', kmoney(m.valuation), 'stake ' + pctS(m.founderPct))}</div>`;
+    let out = `<div class="stats">${stat('Cash', kmoney(m.cash))}${stat('Runway', rw === Infinity ? 'Positive' : Math.max(0, rw) + ' wks', rw === Infinity ? 'revenue covers burn' : 'forecast', { tip: tip(TIPS.runway, 'runway'), cls: rcls })}${stat('Valuation', kmoney(m.valuation), 'stake ' + pctS(m.founderPct), { tip: tip(TIPS.stake, 'your stake') })}</div>`;
     if (f) {
       out += sec('coin', 'Next week', 'forecast');
       out += `<div class="pl-money">
@@ -500,10 +568,21 @@
     else if (!m.offer && !m.milestone && !locked) out += note('clock', 'Investors set the next milestone at End Turn.');
     return out;
   };
-  function hireBtn(s, n) {
-    const K = MoK(), fee = n * K.hireFee, pend = s.staff.hiring.reduce((t, x) => t + x.n, 0);
-    const dis = !live(s) ? 'The run is over.' : s.money.cash < fee ? `Recruiting ${n} costs ${kmoney(fee)}; cash is ${kmoney(s.money.cash)}.` : s.staff.headcount + pend + n > K.maxHead ? `Headcount is capped at ${K.maxHead}.` : '';
-    return btn2('hire', n, `Hire ${n}`, `${kmoney(fee)} now · +${kmoney(n * K.wage)} a week from ${esc(when(s.turn + K.hireTurns))}`, '', !!dis, 'hire') + (dis ? why(dis) : '');
+  // Hire 1 / 5 / all the room left this week, each clamped to FR.money.hireRoom; with no room the buttons stay, disabled,
+  // with the reason. A button the cash or the headcount cap cannot cover is disabled and the note says how many can join.
+  function hireBlock(s) {
+    const K = MoK(), room = hireRoom(s), pend = s.staff.hiring.reduce((t, x) => t + x.n, 0);
+    const headRoom = Math.max(0, K.maxHead - s.staff.headcount - pend), cashRoom = Math.floor(Math.max(0, s.money.cash) / K.hireFee);
+    const can = Math.min(room, headRoom, cashRoom);
+    const amounts = room > 0 ? [1, 5, K.maxHire].map(n => Math.min(n, room)).filter((n, i, a) => a.indexOf(n) === i) : [1, 5, K.maxHire].filter((n, i, a) => a.indexOf(n) === i);
+    const dis = !live(s) ? 'The run is over.'
+      : room <= 0 ? `At most ${K.maxHire} hires a week; all ${K.maxHire} are already recruiting. Hiring reopens after End Turn.`
+        : headRoom <= 0 ? `Headcount is capped at ${K.maxHead}, hires joining included.`
+          : cashRoom <= 0 ? `Recruiting one costs ${kmoney(K.hireFee)}; cash is ${kmoney(s.money.cash)}.` : '';
+    const part = !dis && amounts.some(n => n > can) ? (can < room ? (cashRoom < headRoom ? `Cash covers ${can} ${can === 1 ? 'hire' : 'hires'} at ${kmoney(K.hireFee)} each.` : `Headcount is capped at ${K.maxHead}: room for ${can} more.`) : '') : '';
+    return `<div class="fp-hire">${amounts.map(n => btn('hire', n, `Hire ${n}`, '', !!dis || n > can)).join('')}</div>`
+      + `<p class="hint">${kmoney(K.hireFee)} recruiting fee a head now. Each costs ${kmoney(K.wage)} a week from ${esc(when(s.turn + K.hireTurns))}, when they join.</p>`
+      + (dis ? why(dis, room <= 0 && live(s) ? 'info' : 'warn') : part ? why(part, 'info') : '');
   }
   function layoffBlock(s, n) {
     const K = MoK(), sev = n * K.wage * K.severanceWeeks, room = s.staff.headcount - K.minHead, tr = clamp(n * K.layoffTrustPer, K.layoffTrust[0], K.layoffTrust[1]);
@@ -523,8 +602,11 @@
     out += sec('clock', 'Hiring pipeline');
     out += st.hiring.length ? st.hiring.slice().sort((a, b) => a.arrives - b.arrives).map(x => row('hire', `${x.n} ${x.n === 1 ? 'hire' : 'hires'}`, `join ${esc(when(x.arrives))}`, wkS(x.arrives - s.turn))).join('')
       : `<p class="hint">Nobody in the pipeline. Hires join ${wks(K.hireTurns)} after the offer.</p>`;
-    out += sec('hire', 'Hire and lay off');
-    return out + hireBtn(s, 1) + hireBtn(s, 5) + layoffBlock(s, 5);
+    const room = hireRoom(s);
+    out += sec('hire', 'Hire', `${room} of ${K.maxHire} left this week`, 'hire');
+    out += hireBlock(s);
+    out += sec('trash', 'Lay off');
+    return out + layoffBlock(s, 5);
   };
   function dealCard(s) {
     const o = s.market.dealOffer, r = rival(s, o.rivalId), cut = (s.money.revenue || 0) * o.revShare, rentEq = o.pf * s.compute.rentPrice, open = o.kind === 'compute';
@@ -657,7 +739,7 @@
     if (/\brecord\b/i.test(t)) return 'record';
     if (/round|series a|milestone|investor/i.test(t)) return 'coin';
     if (/cluster|compute|PF/.test(t)) return 'compute';
-    if (/hire|headcount|laid off/i.test(t)) return 'hire';
+    if (/\bhir(e|es|ing)\b|headcount|laid off/i.test(t)) return 'hire';
     if (/project|complete|greenlit|started|cancelled|overran|failed/i.test(t)) return 'project';
     if (/trust/i.test(t)) return 'globe';
     return { flag: 'alert', due: 'clock', good: 'check', change: 'info' }[l.kind] || 'info';
@@ -707,6 +789,9 @@
     const flagged = lines.filter(l => l.kind === 'flag' || ((l.kind === 'good' || l.kind === 'change') && FLAGGY.test(l.text)));
     const dueL = lines.filter(l => l.kind === 'due'), changed = lines.filter(l => l.kind !== 'due' && flagged.indexOf(l) < 0);
     let out = `<div class="wk fp fp-memo"><span class="kicker">${esc(s.lab.name)} · to the board</span><h3>${esc(title)}</h3>`;
+    // decisions taken since this memo (the sim holds their lines in state.pendingMemo until End Turn); read-only
+    const pend = (s.pendingMemo || []).filter(l => l && l.text);
+    if (pend.length) out += sec('check', 'Decided this week', 'in the next memo') + `<ul class="wk-lines">${pend.map(l => li(l.kind === 'flag' ? 'flag' : l.kind === 'good' ? 'good' : 'change', lineIcon(l), esc(l.text))).join('')}</ul>`;
     // What changed: money, trust, then capability / safety / gap per skill
     const cash = cur ? cur.cash : s.money.cash, rev = cur ? cur.revenue : s.money.revenue, trust = cur ? cur.trust : s.market.trust;
     const burn = T > 0 ? (cur ? cur.burn : s.money.burn) : tryr(() => FR.money.burnEstimate(s), 0);
@@ -766,7 +851,7 @@
       case 'go': sfx('tap'); U.sheet(null); goTo(v); return;
       case 'target': if (s.target !== v) run({ type: 'target', skill: v }); return;
       case 'rent': run({ type: 'rent', pf: Math.round(+v) }); return;
-      case 'hire': said(run({ type: 'hire', n: Math.round(+v) })); return;
+      case 'hire': said(run({ type: 'hire', n: Math.max(1, Math.min(Math.round(+v) || 1, hireRoom(s))) })); return;
       case 'layoff': sfx('tap'); P.confirm = 'layoff'; render(true); return;
       case 'layoffOk': said(run({ type: 'layoff', n: Math.round(+v) })); return;
       case 'accept': { const r = run({ type: 'acceptRound' }, true); if (r.ok) sfx('good'); said(r); return; }
@@ -827,6 +912,16 @@
       '.fp .fp-big{font-size:var(--text-xl)}',
       '.fp .num,.fp-memo .num{white-space:nowrap}',
       '.fp .stat b.tone-warn{color:var(--warn)}',
+      /* hire amounts in one row */
+      '.fp-hire{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin:var(--sp-2) 0}',
+      '.fp-hire .btn{margin:0;min-height:48px;padding:8px 6px;white-space:nowrap}',
+      /* the pressure gauge (safety panel) */
+      '.fp-press{padding-top:10px;padding-bottom:12px}',
+      '.fp-press-h{display:flex;align-items:center;gap:8px;min-width:0}',
+      '.fp-press-h>b{margin-left:auto;font-size:var(--text-xl);font-weight:var(--w-medium)}',
+      '.fp-press-h>.badge{flex:none}',
+      '.fp-pm{position:relative;margin:10px 0 2px}.fp-pm .meter{margin:0}',
+      '.fp-pm>span{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;border-radius:1px;background:var(--line-strong)}',
       /* linked sliders */
       '.fp-sliders{padding-top:10px;padding-bottom:10px}',
       '.fp-cardh{display:flex;align-items:center;gap:8px}',

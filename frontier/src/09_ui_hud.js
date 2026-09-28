@@ -68,10 +68,11 @@
   // a plain memo sheet for builds without 09_ui_panels.js (the panels' FR.ui.memo replaces it)
   const MEMO_ICON = { change: 'info', flag: 'alert', due: 'clock', good: 'check' };
   function memoFallback() {
-    const s = FR.state; if (!s) return; const m = s.memo || { turn: 0, lines: [] }, lines = m.lines || [];
+    const s = FR.state; if (!s) return; const m = s.memo || { turn: 0, lines: [] }, lines = m.lines || [], pend = (s.pendingMemo || []).filter(l => l && l.text);
     const when = m.turn > 0 ? FR.dateLabel(m.turn) : 'Founding';
     U.sheet(`<div class="wk wk-memo"><span class="kicker">${esc(when)}</span><h3>Weekly memo</h3>`
       + (lines.length ? `<ul class="wk-lines">${lines.map(l => `<li class="${esc(l.kind || 'change')}">${ico(MEMO_ICON[l.kind] || 'info')}<span>${esc(l.text)}</span></li>`).join('')}</ul>` : '<p class="wk-lead">No changes to report.</p>')
+      + (pend.length ? `<p class="wk-lead">Decided this week, in the next memo:</p><ul class="wk-lines">${pend.map(l => `<li class="${esc(l.kind || 'change')}">${ico(MEMO_ICON[l.kind] || 'info')}<span>${esc(l.text)}</span></li>`).join('')}</ul>` : '')
       + `<div class="wk-stack"><button class="btn primary" id="memoOk">${ico('check')}Noted</button></div></div>`, 'memo');
     const b = $('memoOk'); if (b) b.addEventListener('click', () => { sfx('tap'); U.sheet(null); });
   }
