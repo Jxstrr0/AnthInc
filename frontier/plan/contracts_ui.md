@@ -136,7 +136,9 @@ save → reload → load → no console errors; screenshots at 390×844 into `te
   (`LinearMipmapLinearFilter`). A churned plaque darkens where it hung (`lost[].signed` keeps its slot) at 0.8 tint. An
   unlocked, empty book shows one placeholder plaque ("NO ACCOUNTS YET", offers on the board); `floorDebug.plaques` counts
   real plaques only (`placeholder` = 1 when shown). `serving.accounts` is a `stay` target with `focus.rest` 0.04: closing
-  the Serving sheet keeps the close-up.
+  the Serving sheet keeps the close-up. V0.5: on a wide screen (aspect > `R.FIT_ASPECT`) the rest pose
+  (`R.restPose(t)`) fits `focus.fit` (the name plate and the plaque rows in use) into the HUD-safe rect: the fov narrows
+  and a lens shift centres it, never zooming out past the focus pose. Portrait keeps the hand-framed rest.
 - Serving readout counts onboarding contracts: "Serving 38 PF · 14 reserved for accounts · 14 more from Week 26 · 10 open
   market", red "N PF short" on the total. Offer cards warn on live + onboarding + the offer. A full book shows its notice
   once (section note), not on every card.

@@ -560,8 +560,10 @@
   // the close-up frames the name plate and the rows of plaques in use (two rows minimum), so a short book reads large
   function clientFocus(n) {
     const rows = Math.max(2, Math.ceil(n / PLQ.cols)), top = 3.82, bot = PLQ.y0 - (rows - 1) * PLQ.dy - PLQ.h / 2 - 0.08;
-    // rest: once the Serving sheet closes, the close-up stays (a stay target) with the lens centred on the wall
-    return Object.assign(aim([PLQ.x, (top + bot) / 2, -6.9], 0, 6, fitD(2.5, top - bot)), { rest: 0.04 });
+    // rest: once the Serving sheet closes, the close-up stays (a stay target) with the lens centred on the wall; fit: the
+    // plate and plaques in use, which a wide screen's rest pose fills into the HUD-safe rect (R.restPose)
+    return Object.assign(aim([PLQ.x, (top + bot) / 2, -6.9], 0, 6, fitD(2.5, top - bot)),
+      { rest: 0.04, fit: [PLQ.x - PLQ.dx - PLQ.w / 2 - 0.04, bot, -6.9, PLQ.x + PLQ.dx + PLQ.w / 2 + 0.04, top, -6.9] });
   }
   R.floors.serving = { build(id) {
     const g = start(), scr = [];

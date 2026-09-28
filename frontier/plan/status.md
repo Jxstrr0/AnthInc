@@ -1,6 +1,6 @@
 # Frontier — status (read this first every session)
 
-- **Version:** 0.4.0.0 (published 2026-09-28 to the artifact and GitHub Pages)
+- **Version:** 0.5.0.0 (published 2026-09-28 to the artifact; GitHub Pages once PR #25 merges)
 - **Artifact URL:** https://claude.ai/artifact/AFXyxwEKHRKuKf9oMy5Ms5 (title "Frontier", label = version; republish dist/game.artifact.html to it)
 - **Repo:** `Jxstrr0/AnthInc`, folder `frontier/`. Design: `docs/frontier-handoff-v0.1.html`. Contracts: `plan/contracts.md` (sim), `plan/contracts_ui.md` (HQ + UI).
 - **GitHub Pages:** https://jxstrr0.github.io/AnthInc/ serves `/index.html` at the repo root = the last PUBLISHED build.
@@ -39,12 +39,17 @@
   sector swings, client work trains the sector's skill (map kept: coding = Banking, Retail, Energy, Telecoms; reasoning =
   Insurance, Pharma, Legal; agents = Logistics, Public sector). **An unanswered meeting renews at the same tier if mood
   allows (≥ 45, +10 in a cold sector), otherwise lapses.**
-- Open after V0.4 (fixer's owner questions): push up is nearly always sure at resting mood 80 (upSure 70) — move
-  upSure or resting mood?; a hot sector with a full book changes little; the cold fee-cut trade (−10 mood vs ~$0.5M).
-  Not fixed: landscape close-up framing of the client wall.
+- After-V0.4 owner calls (2026-09-28): push up stays as is (near-sure at resting mood 80 is the reward for a happy
+  client); **a hot sector raises renewal fees +25%** for renewals settled during the swing (done V0.5); the cold fee-cut trade
+  stays as is. Landscape close-up framing of the client wall: fixed in V0.5.
 - PR flow: one PR per milestone; the owner merges once the game builds, passes tests and is published.
 
 ## Build log
+- 0.5.0.0 — owner calls after V0.4. A renewal settled while its sector is hot carries the +25% hot fee for the new term
+  (`accounts.renewFee`; meeting card preview, memo "renews in a hot sector"). Landscape / desktop: the client wall's rest
+  close-up fits the plate and plaques into the HUD-safe band (`R.restPose`, `focus.fit`). Tests: test/v05.test.js; browser
+  accounts section checks the landscape close-up. Balance (20 seeds --noB) unchanged: balanced 20%, customer-first 5%, race
+  dies ~week 62. Node ALL PASS; browser 7 sections ALL PASS.
 - 0.4.0.0 — the late-game book (docs/frontier-handoff-v0.4.html). Renewal meetings (Renew / Push up / Let go; unanswered
   renews at the same tier if mood allows, else lapses), client asks (cap / inStep / peak / clean, cost in cold sectors),
   sector swings (hot 3x dealing, +25% fees; cold no offers, mood drift, +10 thresholds), client work trains the sector's
