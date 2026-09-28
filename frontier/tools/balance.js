@@ -4,7 +4,7 @@
 const FR = require('../test/_load')();
 const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 && argv[i + 1] != null ? argv[i + 1] : d; };
-const SEEDS = +arg('seeds', 10), TURNS = +arg('turns', 312), ONLY = arg('bot', null);
+const SEEDS = +arg('seeds', 10), TURNS = +arg('turns', 312), ONLY = arg('bot', null), DEALS = arg('deals', '1') !== '0';
 argv.forEach((a, i) => {
   if (a !== '--set') return;
   String(argv[i + 1] || '').split(',').filter(Boolean).forEach(kv => {
@@ -119,6 +119,9 @@ function chasing(s) { const ms = s.money.milestone, p = ms && FR.money.progress(
 function decide(bot, s) {
   const cmds = [], m = s.money, cash = m.cash + (m.offer ? m.offer.amount : 0);
   if (m.offer) cmds.push({ type: 'acceptRound' });
+  // a card-reading player takes the DeepField compute share when its revenue cut costs less than half of renting the PF
+  const d = s.market.dealOffer;
+  if (DEALS && d && s.turn <= d.expires && m.revenue * d.revShare < 0.5 * d.pf * s.compute.rentPrice) cmds.push({ type: 'acceptDeal' });
   // chase a capability milestone on the best skill; otherwise lift the weakest
   const tgt = chasing(s) ? m.milestone.skill || strongest(s) : weakest(s);
   if (tgt !== s.target) cmds.push({ type: 'target', skill: tgt });

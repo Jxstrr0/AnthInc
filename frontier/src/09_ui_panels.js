@@ -37,7 +37,11 @@
   const wks = (n) => n + (n === 1 ? ' week' : ' weeks');
   const wkS = (n) => n <= 0 ? 'now' : n + (n === 1 ? ' wk' : ' wks');
   // 'Week 7' this year, 'Year 2, Week 3' otherwise
-  const when = (t) => { const s = S(); return s && FR.year(t) === FR.year(s.turn) ? 'Week ' + FR.weekOfYear(t) : FR.dateLabel(t); };
+  // (relative to the memo's own week while the memo renders, so a Week 52 memo never dates next week as "Week 1");
+  // non-breaking spaces keep a date on one line
+  let refTurn = null;
+  const when = (t) => { const s = S(), ref = refTurn != null ? refTurn : s && s.turn;
+    return (s && FR.year(t) === FR.year(ref) ? 'Week ' + FR.weekOfYear(t) : FR.dateLabel(t)).replace(/ /g, '\u00a0'); };
   const runwayText = (w) => (w == null || w === Infinity) ? 'cash-positive' : wks(Math.max(0, w));
   const META = (id) => (FR.HQ_FLOOR_META || {})[id] || { n: '?', name: String(id) };
   const ORD = ['first', 'second', 'third', 'fourth', 'fifth'];
@@ -155,7 +159,7 @@
       const Q = Object.assign({ stakePer: 100, stakeUnit: 1e6, stakeMax: 500 }, tryr(() => FR.sim.K.score, {}));
       const at = (pts) => { const v = Q.stakeUnit * (Math.pow(10, pts / Q.stakePer) - 1), [d, u] = v >= 999.5e6 ? [1e9, 'B'] : [1e6, 'M'], x = v / d;
         return '$' + x.toFixed(x >= 10 ? 0 : 1).replace(/\.0$/, '') + u; };
-      return `Your ownership of the lab. Each round sells part of it. The score counts the stake once, at the end of the run: its value then (valuation × your share), compressed so each tenfold rise adds ${Q.stakePer} points (${at(Q.stakePer)} scores ${Q.stakePer}, ${at(2 * Q.stakePer)} scores ${2 * Q.stakePer}), capped at ${Q.stakeMax} points (${at(Q.stakeMax)}).`;
+      return `Your ownership of the lab. Each round sells part of it. The score counts the stake once, at the end of the run: its value then (valuation × your share), compressed so each tenfold rise adds ${Q.stakePer} points (${at(Q.stakePer)} scores ${Q.stakePer}, ${at(2 * Q.stakePer)} scores ${2 * Q.stakePer}), capped at ${Q.stakeMax} points (${at(Q.stakeMax)}). A lab wound up for want of cash scores 0 for the stake.`;
     },
     get pressure() {
       const W = pressW(), b = pressBands(), nm = SK().map(k => `${SN(k)} ×${trim1(+W[k] || 1)}`).join(', ');
@@ -207,7 +211,8 @@
     if (k === 'serving' ? Math.abs(d) < 500 : Math.abs(d) < 0.05) return '';
     return `<span class="fp-d ${d > 0 ? 'pos' : 'neg'}">${k === 'serving' ? smoney(d) : sg1(d)}</span>`;
   }
-  const unitText = (a) => `${n1((a && a.pf) || 0)} PF · ${trim1((a && a.staff) || 0)} staff`;
+  const big = (v) => v >= 100 ? String(Math.round(v)) : trim1(v);
+  const unitText = (a) => `${(a && a.pf) >= 100 ? big(a.pf) : n1((a && a.pf) || 0)} PF · ${big((a && a.staff) || 0)} staff`;
   function footText(f, f0) {
     if (!f) return '';
     const pr = (f.alloc && f.alloc.projects) || { pf: 0, need: 0 }, dn = f0 && f !== f0 ? f.net - f0.net : 0;
@@ -288,13 +293,16 @@
     const mkt = c.scarcity > 0 ? ` Chip shortage: the spot price stays high for about ${wks(c.scarcity)}.`
       : ` Spot price ${c.rentPrice > K.basePrice * 1.05 ? 'above' : c.rentPrice < K.basePrice * 0.95 ? 'below' : 'near'} its usual ${kmoney(K.basePrice)}.`;
     const ceil = `The spot market rents at most <b class="num">${top} PF</b> in Year ${FR.year(s.turn)}${nextTop > top ? `, <b class="num">${nextTop} PF</b> from Year ${ny}` : ''}.`;
-    return `<div class="pl-steps fp-rent"><div class="pl-step"><span><b>Rented</b><small class="num">${kmoney(per)} per PF-week${disc ? ` · ${pct0(disc)} off` : ''}</small></span>
+    // bigger jumps beside the ±5 stepper: ±50 and ±250, each clamped to 0..the ceiling (hidden when they would not move)
+    const jumps = [-250, -50, 50, 250].map(d => ({ d, v: clamp(c.rentPF + d, 0, top) })).filter(j => j.v !== c.rentPF);
+    const jumpRow = jumps.length && !dead ? `<div class="fp-hire fp-jump">${jumps.map(j => btn('rent', j.v, (j.d < 0 ? '−' : '+') + Math.abs(j.d) + ' PF', 'quiet')).join('')}</div>` : '';
+    return `<div class="pl-steps fp-rent"><div class="pl-step"><span><b>Rented</b><small><span class="num">${kmoney(per)}</span> per PF-week${disc ? ` · ${pct0(disc)} off` : ''}</small></span>
       <button class="pl-sb" data-fp="rent" data-v="${lo}"${c.rentPF <= 0 || dead ? ' disabled' : ''} aria-label="Rent ${step} PF less">${ico('minus')}</button>
       <b class="num">${c.rentPF} PF</b>
       <button class="pl-sb" data-fp="rent" data-v="${hi}"${c.rentPF >= top || dead ? ' disabled' : ''} aria-label="Rent ${step} PF more, up to ${top} PF">${ico('plus')}</button></div></div>
-      <div class="pl-tot"><span>Rent a week</span><b class="num">${kmoney(cost)}</b></div>
+      ${jumpRow}<div class="pl-tot"><span>Rent a week</span><b class="num">${kmoney(cost)}</b></div>
       ${c.rentPF >= top && !dead ? why(`Rent is at the ceiling of ${top} PF. Clusters add capacity beyond it.`, 'info') : ''}
-      <p class="hint">Steps of ${step} PF, <span class="num">${kmoney(step * per)}</span> a week each. Changes apply at once and bill at End Turn. ${ceil}${mkt}</p>`;
+      <p class="hint">Steps of ${step} PF, <span class="num">${kmoney(step * per)}</span> a week each; the buttons below move 50 or 250. Changes apply at once and bill at End Turn. ${ceil}${mkt}</p>`;
   }
   const KIND = { training: ['Training', 'training'], safety: ['Safety', 'safety'], research: ['Research', 'research'], product: ['Product', 'serving'], business: ['Business', 'coin'], compute: ['Compute', 'compute'] };
   const kindOf = (k) => KIND[k] || [String(k || 'Project').charAt(0).toUpperCase() + String(k || 'project').slice(1), 'project'];
@@ -309,12 +317,16 @@
     let effect = '';
     if (pv && pv.ok && pv.f && f0) {
       const pr = pv.f.alloc.projects || { need: 0, pf: 0 }, cap = pv.f.capacity;
-      effect = kv('coin', `Burn <b class="num">${smoney(pv.f.burn - f0.burn)}</b> a week. Runway ${runwayText(f0.runway)} → <b class="num">${runwayText(pv.f.runway)}</b>.`)
+      // the project costs its budget once, spread over its weeks: runway after = (cash − cost) over next week's net without it
+      const without = pv.f.net + tryr(() => FR.money.burnParts(pv.state).projects - FR.money.burnParts(s).projects, 0);
+      const after = without >= 0 ? (s.money.cash >= o.cost ? Infinity : 0) : Math.floor(Math.max(0, s.money.cash - o.cost) / -without);
+      effect = kv('coin', `Adds <b class="num">${kmoney(o.cost / Math.max(1, o.turns))}</b> a week to burn for ${wks(o.turns)}, <b class="num">${kmoney(o.cost)}</b> in all. Runway ${runwayText(f0.runway)} → <b class="num">${runwayText(after)}</b>.`)
         + (pr.need > cap + 0.01 ? why(`Projects would need ${n1(pr.need)} PF of ${n1(cap)} PF capacity. Project work slows to ${pct0(cap / pr.need)}.`)
           : o.pfPerTurn > 0 ? kv('compute', `Holds <b class="num">${o.pfPerTurn} PF</b> a week. The sliders share <b class="num">${n1(Math.max(0, cap - pr.need))} PF</b>.`) : '');
     }
     return `<div class="card fp-offer${locked ? ' ghost' : ''}">
-      <div class="card-head"><span class="pl-kind">${esc(k[0])}</span><b class="card-title">${esc(o.name)}</b>${badge('Tier ' + o.tier, locked ? '' : 'info', locked ? 'lock' : '')}</div>
+      <div class="fp-cardk"><span class="pl-kind">${esc(k[0])}</span>${badge('Tier ' + o.tier, locked ? '' : 'info', locked ? 'lock' : '')}</div>
+      <div class="card-head"><b class="card-title">${esc(o.name)}</b></div>
       <p class="card-meta">${skillOf(o) ? esc(skillOf(o)) + ' · ' : ''}${esc(o.blurb || '')}</p>
       <div class="stats fp-st4">${stat('Weeks', o.turns)}${stat('Cost', kmoney(o.cost))}${stat('Compute', o.pfPerTurn + ' PF')}${stat('Risk', risk + '%', '', { tip: tip(TIPS.risk, 'risk') })}</div>
       ${kv('trend', esc(describe(o)))}${effect}
@@ -394,7 +406,7 @@
     const f = fc(s), al = (f && f.alloc) || {}, sv = al.serving || { pf: 0 }, dem = tryr(() => FR.money.demandPF(s), 0), fx = fxOf(s);
     const tm = tryr(() => FR.money.trustMult(s), 1), share = tryr(() => FR.compute.revShare(s), 0), zeta = tryr(() => FR.money.zetaFactor(s), 1);
     const base = tryr(() => FR.money.pricePerPF(avgCap(s)), 0), eff = base * (fx.priceMult || 1) * tm * Math.max(0, 1 - share) * zeta;
-    let out = head('serving', `Floor ${esc(META('serving').n)} · serving <b class="num">${s.sliders.serving}%</b> · revenue <b class="num">${kmoney(s.money.revenue)}</b> a week`);
+    let out = head('serving', `Floor ${esc(META('serving').n)} · serving <b class="num">${s.sliders.serving}%</b> · revenue next week <b class="num">${kmoney(f ? f.revenue : s.money.revenue)}</b>`);
     out += intro('Serving sells access to the model. Revenue is the PF served, up to customer demand, times the price per PF-week.');
     out += sliders('serving', s, f);
     out += sec('coin', 'Revenue');
@@ -441,7 +453,7 @@
   // Safety: pressure, the slider, per-skill cap / safe / gap with the outlook, the incident history
   VIEWS.safety = function (s) {
     const f = fc(s), K = MK(), worst = SK().reduce((b, k) => gapOf(s, k) > gapOf(s, b) ? k : b, SK()[0]);
-    let out = head('safety', `Floor ${esc(META('safety').n)} · safety <b class="num">${s.sliders.safety}%</b> · widest gap <b>${esc(SN(worst))} <span class="num">${gapTxt(gapOf(s, worst))}</span></b>`);
+    let out = head('safety', `Floor ${esc(META('safety').n)} · safety <b class="num">${s.sliders.safety}%</b> · widest gap <b>${esc(SN(worst))}&nbsp;<span class="num">${gapTxt(gapOf(s, worst))}</span></b>`);
     out += intro(`Safety work lands where the gap is widest. Safety can run at most ${K.safeLead} above capability.`);
     out += pressureCard(s);
     out += sliders('safety', s, f);
@@ -455,7 +467,7 @@
       const rec = l.filter(t => t > s.turn - K.incidentWindow).length, last = rec >= K.finalIncidents - 1;
       return row('incident', `${esc(SN(k))} · ${l.length} incident${l.length === 1 ? '' : 's'}`, `${l.map(t => esc(when(t))).join(', ')} · ${rec} in the past ${K.incidentWindow} weeks${last ? '. One more ends the lab' : ''}`, last ? badge('Last warning', 'bad') : '');
     }).join('');
-    out += rows || empty('safety', 'No incidents on record', `Warnings start when a gap stays above ${K.warnGap} for ${K.warnTurns} weeks. Safety share and safety projects keep every gap at ${K.warnGap} or below.`, btn('go', 'research.offers', 'Safety projects on the board', '', false, 'research'));
+    out += rows || empty('safety', 'No incidents on record', `Warnings start when a gap stays above ${K.warnGap} for ${K.warnTurns} weeks. Safety share and safety projects keep every gap at ${K.warnGap} or below; the ${tryr(() => FR.sim.K.winTurns, 52)}-week frontier hold needs every gap at ${tryr(() => FR.sim.K.safeMargin, 5)} or below.`, btn('go', 'research.offers', 'Safety projects on the board', '', false, 'research'));
     const inc = (s.news || []).filter(n => n.kind === 'incident').slice(-5).reverse();
     if (inc.length) out += sec('news', 'On the wire') + `<ul class="fp-news">${inc.map(newsItem).join('')}</ul>`;
     return out;
@@ -489,7 +501,8 @@
       ? confirmBox(true, `Cancel ${esc(p.name)}?`, `<b class="num">${kmoney(spent)}</b> already spent is not refunded. The remaining ${kmoney(Math.max(0, p.cost - spent))} is not spent, and ${p.pfPerTurn} PF a week returns to the sliders.${above > 0 ? ' Projects on the floors above move down one floor.' : ''}`, 'Keep it', 'cancelOk', p.uid, 'Cancel project')
       : `<div class="card-actions">${btn('cancel', p.uid, 'Cancel project', 'quiet pl-danger-q', !live(s), 'trash')}</div>`;
     return `<div class="card fp-proj">
-      <div class="card-head"><span class="pl-kind">${esc(k[0])}</span><b class="card-title">${esc(p.name)}</b>${p.overrun ? badge('Overrun', 'warn', 'alert') : badge('In progress', 'info', 'clock')}</div>
+      <div class="fp-cardk"><span class="pl-kind">${esc(k[0])}</span>${p.overrun ? badge('Overrun', 'warn', 'alert') : badge('In progress', 'info', 'clock')}</div>
+      <div class="card-head"><b class="card-title">${esc(p.name)}</b></div>
       <p class="card-meta">${skillOf(p) ? esc(skillOf(p)) + ' · ' : ''}started ${esc(when(p.started))}</p>
       <div class="pl-mrow-l"><span>Week ${wk} of ${turns}</span><span class="num"><b>${wks(p.turnsLeft)}</b> left</span></div>${meter(done / turns * 100, 'good')}
       <div class="stats">${stat('Spent', kmoney(spent))}${stat('Budget', kmoney(p.cost))}${stat('PF a week', p.pfPerTurn)}</div>
@@ -542,7 +555,15 @@
     return `<div class="card" data-focus="milestone"><div class="card-head">${ico('record')}<b class="card-title">${esc(roundName(ms.round))} milestone</b>${pr.met ? badge('Met', 'good', 'check') : badge(pr.weeksLeft <= 0 ? 'Due now' : wks(pr.weeksLeft) + ' left', pr.weeksLeft <= 4 ? 'warn' : '', 'clock')}</div>
       <p class="card-meta">${esc(ms.text)}</p>
       <div class="pl-mrow-l"><span>${esc(label)}</span><span class="num"><b>${fmt(pr.current)}</b> of ${fmt(pr.value)}</span></div>${meter(pr.value > 0 ? pr.current / pr.value * 100 : 0, pr.met ? 'good' : 'gold')}
-      ${note(pr.met ? 'check' : 'alert', said)}</div>`;
+      ${pr.met ? '' : paceNote(s, ms)}${note(pr.met ? 'check' : 'alert', said)}</div>`;
+  }
+  // FR.money.pace: where today's settings leave a capability milestone by its due week
+  const paceOf = (s, ms) => has('money', 'pace') ? tryr(() => FR.money.pace(s, ms), null) : null;
+  function paceNote(s, ms) {
+    const p = paceOf(s, ms); if (!p) return '';
+    const t = `At this pace: ${p.skill ? esc(SN(p.skill)) + ' ' : 'average '}<b class="num">${n1(p.projected)}</b> by ${esc(when(ms.due))}`;
+    return p.short > 0 ? why(`${t}, short by <span class="num">${n1(p.short)}</span>. Training output grows with compute and staff: rent PF on Serving or the Compute tab, hire on the Team tab.`)
+      : note('trend', t + '.');
   }
   BV.money = function (s, f) {
     const m = s.money, bp = tryr(() => FR.money.burnParts(s), { payroll: 0, ops: 0, compute: 0, projects: 0 }), rw = f ? f.runway : Infinity;
@@ -581,17 +602,23 @@
           : cashRoom <= 0 ? `Recruiting one costs ${kmoney(K.hireFee)}; cash is ${kmoney(s.money.cash)}.` : '';
     const part = !dis && amounts.some(n => n > can) ? (can < room ? (cashRoom < headRoom ? `Cash covers ${can} ${can === 1 ? 'hire' : 'hires'} at ${kmoney(K.hireFee)} each.` : `Headcount is capped at ${K.maxHead}: room for ${can} more.`) : '') : '';
     return `<div class="fp-hire">${amounts.map(n => btn('hire', n, `Hire ${n}`, '', !!dis || n > can)).join('')}</div>`
-      + `<p class="hint">${kmoney(K.hireFee)} recruiting fee a head now. Each costs ${kmoney(K.wage)} a week from ${esc(when(s.turn + K.hireTurns))}, when they join.</p>`
+      + `<p class="hint">${kmoney(K.hireFee)} recruiting fee a head now. Each costs ${kmoney(K.wage + (K.opsPerHead || 0))} a week (pay ${kmoney(K.wage)}, operations ${kmoney(K.opsPerHead || 0)}) from ${esc(when(s.turn + K.hireTurns))}, when they join.</p>`
       + (dis ? why(dis, room <= 0 && live(s) ? 'info' : 'warn') : part ? why(part, 'info') : '');
   }
-  function layoffBlock(s, n) {
-    const K = MoK(), sev = n * K.wage * K.severanceWeeks, room = s.staff.headcount - K.minHead, tr = clamp(n * K.layoffTrustPer, K.layoffTrust[0], K.layoffTrust[1]);
-    if (P.confirm === 'layoff') {
-      const pv = preview({ type: 'layoff', n }, s), f0 = fc(s);
-      return confirmBox(true, `Lay off ${n}?`, `Severance <b class="num">${kmoney(sev)}</b> now. Payroll falls ${kmoney(n * K.wage)} a week to ${kmoney((s.staff.headcount - n) * K.wage)}. Public trust −${n1(tr)}.${pv.ok && pv.f && f0 ? ` Runway ${runwayText(f0.runway)} → ${runwayText(pv.f.runway)}.` : ''}`, 'Keep them', 'layoffOk', n, `Lay off ${n}`);
-    }
-    const dis = !live(s) ? 'The run is over.' : room < n ? `Headcount cannot fall below ${K.minHead}.` : s.money.cash < sev ? `Severance for ${n} is ${kmoney(sev)}; cash is ${kmoney(s.money.cash)}.` : '';
-    return btn2('layoff', n, `Lay off ${n}`, `${kmoney(sev)} severance · −${kmoney(n * K.wage)} a week`, 'danger', !!dis, 'trash') + (dis ? why(dis) : '');
+  function layoffBlock(s) {
+    const K = MoK(), room = s.staff.headcount - K.minHead, cf = /^layoff:(\d+)$/.exec(P.confirm || '');
+    if (cf) return layoffOne(s, +cf[1]);
+    const dis = !live(s) ? 'The run is over.' : room < 1 ? `Headcount cannot fall below ${K.minHead}.` : '';
+    const amounts = [1, 5, 20].map(n => Math.min(n, Math.max(1, room))).filter((n, i, a) => a.indexOf(n) === i);
+    const sevOf = (n) => n * K.wage * K.severanceWeeks;
+    return `<div class="fp-hire">${amounts.map(n => btn('layoff', n, `Lay off ${n}`, 'danger', !!dis || n > room || s.money.cash < sevOf(n))).join('')}</div>`
+      + `<p class="hint">Severance is ${wks(K.severanceWeeks)} of pay: ${kmoney(sevOf(1))} a head. Each head laid off saves ${kmoney(K.wage + (K.opsPerHead || 0))} a week and costs public trust.</p>`
+      + (dis ? why(dis) : '');
+  }
+  function layoffOne(s, n) {
+    const K = MoK(), sev = n * K.wage * K.severanceWeeks, tr = clamp(n * K.layoffTrustPer, K.layoffTrust[0], K.layoffTrust[1]);
+    const pv = preview({ type: 'layoff', n }, s), f0 = fc(s);
+    return confirmBox(true, `Lay off ${n}?`, `Severance <b class="num">${kmoney(sev)}</b> now. Payroll falls ${kmoney(n * K.wage)} a week to ${kmoney((s.staff.headcount - n) * K.wage)}. Public trust −${n1(tr)}.${pv.ok && pv.f && f0 ? ` Runway ${runwayText(f0.runway)} → ${runwayText(pv.f.runway)}.` : ''}`, 'Keep them', 'layoffOk', n, `Lay off ${n}`);
   }
   BV.team = function (s) {
     const K = MoK(), st = s.staff, pend = st.hiring.reduce((t, x) => t + x.n, 0), pay = tryr(() => FR.money.payroll(s), st.headcount * K.wage);
@@ -606,7 +633,7 @@
     out += sec('hire', 'Hire', `${room} of ${K.maxHire} left this week`, 'hire');
     out += hireBlock(s);
     out += sec('trash', 'Lay off');
-    return out + layoffBlock(s, 5);
+    return out + layoffBlock(s);
   };
   function dealCard(s) {
     const o = s.market.dealOffer, r = rival(s, o.rivalId), cut = (s.money.revenue || 0) * o.revShare, rentEq = o.pf * s.compute.rentPrice, open = o.kind === 'compute';
@@ -641,7 +668,7 @@
   BV.compute = function (s, f) {
     const c = s.compute, K = CK(), cap = tryr(() => FR.compute.capacity(s), { total: 0, owned: 0, rented: c.rentPF, deals: 0 }), pr = (f && f.alloc && f.alloc.projects) || { pf: 0, need: 0 };
     const t = Math.max(0.001, cap.total), nq = Math.ceil(s.turn / K.quarter) * K.quarter + 1;
-    let out = `<div class="stats">${stat('Owned', n1(cap.owned), 'PF', { key: 'o' })}${stat('Rented', n1(cap.rented), 'PF', { key: 'r' })}${stat('Deals', n1(cap.deals), 'PF', { key: 'd' })}</div>`;
+    let out = `<div class="stats">${stat('Owned', n1(cap.owned) + ' PF', '', { key: 'o' })}${stat('Rented', n1(cap.rented) + ' PF', '', { key: 'r' })}${stat('Deals', n1(cap.deals) + ' PF', '', { key: 'd' })}</div>`;
     out += `<div class="fp-stack" role="img" aria-label="Capacity ${n1(cap.total)} PF: owned ${n1(cap.owned)}, rented ${n1(cap.rented)}, deals ${n1(cap.deals)}"><i class="o" style="width:${cap.owned / t * 100}%"></i><i class="r" style="width:${cap.rented / t * 100}%"></i><i class="d" style="width:${cap.deals / t * 100}%"></i></div>`;
     out += note('compute', `Total <b class="num">${n1(cap.total)} PF</b>${pr.need > 0 ? `; projects hold <b class="num">${n1(pr.pf)}</b>, the sliders share <b class="num">${n1(Math.max(0, cap.total - pr.pf))}</b>` : ', all of it shared by the sliders'}. Compute bill <b class="num">${kmoney(tryr(() => FR.compute.cost(s), 0))}</b> a week.`);
     if (pr.need > cap.total + 0.01) out += why(`Projects need ${n1(pr.need)} PF of ${n1(cap.total)} PF. Project work slows and the sliders get nothing until capacity grows.`, 'bad');
@@ -759,14 +786,19 @@
     if (m.offer) out.push({ w: m.offer.expires - T + 1, icon: 'coin', re: /offer \(|lapses/i, text: `${esc(roundName(m.offer.round))} offer: ${kmoney(m.offer.amount)} for ${pct(m.offer.pct)}. Open until ${esc(when(m.offer.expires))}.` });
     if (m.milestone && !(m.offer && m.offer.round === m.milestone.round)) {
       const pr = tryr(() => FR.money.progress(s), null), cur = pr ? (m.milestone.kind === 'revenue' ? kmoney(pr.current) : n1(pr.current)) : '';
-      out.push({ w: m.milestone.due - T, icon: 'record', re: /milestone due/i, text: `${esc(m.milestone.text)}${pr ? ` Now ${cur}${pr.met ? ', met' : ''}.` : ''}` });
+      const pc = pr && !pr.met ? paceOf(s, m.milestone) : null;
+      out.push({ w: m.milestone.due - T, icon: 'record', re: /milestone due/i, text: `${esc(m.milestone.text)}${pr ? ` Now ${cur}${pr.met ? ', met' : ''}.` : ''}`
+        + (pc ? ` At this pace ${n1(pc.projected)}${pc.short > 0 ? `, short by ${n1(pc.short)}` : ''}.` : '') });
     }
     (s.projects.active || []).forEach((p, i) => out.push({ w: p.turnsLeft, icon: 'project', text: `${esc(p.name)} finishes in ${wks(p.turnsLeft)} (${esc(META('proj' + (i + 1)).name)}).` }));
     (s.compute.deals || []).forEach(d => out.push({ w: d.ends - T, icon: 'rival', re: /compute share ends/i, text: `${esc(rival(s, d.rivalId).name)} compute share ends ${esc(when(d.ends))}: ${d.pf} PF withdrawn.` }));
     const o = s.market.dealOffer;
     if (o) out.push({ w: o.expires - T + 1, icon: 'rival', re: /offers \d+ PF/i, text: `${esc(rival(s, o.rivalId).name)} offers ${o.pf} PF for ${o.turns} weeks at ${pct(o.revShare)} of revenue. Open until ${esc(when(o.expires))}.` });
     (s.compute.installing || []).forEach(x => out.push({ w: x.ready - T, icon: 'compute', text: `${esc(x.name)} cluster online ${esc(when(x.ready))}: ${x.pf} PF.` }));
-    (s.staff.hiring || []).forEach(x => out.push({ w: x.arrives - T, icon: 'hire', text: `${x.n} ${x.n === 1 ? 'hire joins' : 'hires join'} ${esc(when(x.arrives))}.` }));
+    // hires: one row for the whole pipeline
+    const hs = (s.staff.hiring || []).slice().sort((a, b) => a.arrives - b.arrives), hn = hs.reduce((t, x) => t + x.n, 0);
+    if (hs.length === 1) out.push({ w: hs[0].arrives - T, icon: 'hire', text: `${hn} ${hn === 1 ? 'hire joins' : 'hires join'} ${esc(when(hs[0].arrives))}.` });
+    else if (hs.length > 1) out.push({ w: hs[0].arrives - T, icon: 'hire', text: `${hn} hires join: ${hs.map(x => `${x.n} ${esc(when(x.arrives))}`).join(', ')}.` });
     return out.sort((a, b) => a.w - b.w);
   }
   // the one thing the memo points at next (a button that rides there), or null
@@ -781,7 +813,11 @@
     return null;
   }
   function memoHtml(s) {
-    const m = s.memo || { turn: 0, lines: [] }, T = m.turn || 0, rep = s.lastReport && s.lastReport.turn === T ? s.lastReport : null, d = rep && rep.deltas;
+    const m = s.memo || { turn: 0, lines: [] }; refTurn = m.turn || null;
+    try { return memoBody(s, m); } finally { refTurn = null; }
+  }
+  function memoBody(s, m) {
+    const T = m.turn || 0, rep = s.lastReport && s.lastReport.turn === T ? s.lastReport : null, d = rep && rep.deltas;
     const hist = s.history || [], cur = hist.length && hist[hist.length - 1].turn === T ? hist[hist.length - 1] : null;
     const prev = cur && hist.length > 1 && hist[hist.length - 2].turn === T - 1 ? hist[hist.length - 2] : null;
     const title = T > 0 ? `Year ${FR.year(T)} · Week ${FR.weekOfYear(T)} memo` : 'Year 1 · Founding memo';
@@ -796,9 +832,11 @@
     const cash = cur ? cur.cash : s.money.cash, rev = cur ? cur.revenue : s.money.revenue, trust = cur ? cur.trust : s.market.trust;
     const burn = T > 0 ? (cur ? cur.burn : s.money.burn) : tryr(() => FR.money.burnEstimate(s), 0);
     const kf = (v) => kmoney(v), pf = (v) => n1(v);
+    // cash against last week's close (or the founding cash), so rounds, clusters, fees and severance decided mid-week count
+    const prevCash = prev ? prev.cash : T === 1 ? tryr(() => FR.money.K.startCash, null) : null;
     out += sec('trend', 'What changed', T > 0 ? 'since last week' : 'at founding');
     out += `<div class="fp-box"><table class="fp-dt"><tbody>
-      <tr><td>Cash</td><td><b>${kmoney(cash)}</b></td><td>${dv(d ? d.cash : prev ? cash - prev.cash : null, kf, true, 1)}</td></tr>
+      <tr><td>Cash</td><td><b>${kmoney(cash)}</b></td><td>${dv(prevCash != null ? cash - prevCash : d ? d.cash : null, kf, true, 1)}</td></tr>
       <tr><td>Revenue a week</td><td><b>${kmoney(rev)}</b></td><td>${dv(prev ? rev - prev.revenue : null, kf, true, 1)}</td></tr>
       <tr><td>Burn a week${T > 0 ? '' : ' (forecast)'}</td><td><b>${kmoney(burn)}</b></td><td>${dv(prev ? burn - prev.burn : null, kf, false, 1)}</td></tr>
       <tr><td>Public trust</td><td><b>${n1(trust)}</b></td><td>${dv(d ? d.trust : prev ? trust - prev.trust : null, pf, true)}</td></tr>
@@ -852,7 +890,7 @@
       case 'target': if (s.target !== v) run({ type: 'target', skill: v }); return;
       case 'rent': run({ type: 'rent', pf: Math.round(+v) }); return;
       case 'hire': said(run({ type: 'hire', n: Math.max(1, Math.min(Math.round(+v) || 1, hireRoom(s))) })); return;
-      case 'layoff': sfx('tap'); P.confirm = 'layoff'; render(true); return;
+      case 'layoff': sfx('tap'); P.confirm = 'layoff:' + Math.max(1, Math.round(+v) || 1); render(true); return;
       case 'layoffOk': said(run({ type: 'layoff', n: Math.round(+v) })); return;
       case 'accept': { const r = run({ type: 'acceptRound' }, true); if (r.ok) sfx('good'); said(r); return; }
       case 'decline': sfx('tap'); P.confirm = 'decline'; render(true); return;
@@ -912,6 +950,11 @@
       '.fp .fp-big{font-size:var(--text-xl)}',
       '.fp .num,.fp-memo .num{white-space:nowrap}',
       '.fp .stat b.tone-warn{color:var(--warn)}',
+      /* card kind and tier/status on a line above the title, so the title gets the full card width */
+      '.fp .fp-cardk{display:flex;align-items:center;gap:8px;margin:0 0 4px}.fp .fp-cardk .badge{flex:none}',
+      '.fp .fp-cardk+.card-head .card-title{overflow-wrap:break-word;hyphens:auto}',
+      '.fp-jump{margin-top:0}.fp-jump .btn{font-family:var(--font-num)}',
+      '.fp-rent .pl-step>span small{white-space:normal}',
       /* hire amounts in one row */
       '.fp-hire{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin:var(--sp-2) 0}',
       '.fp-hire .btn{margin:0;min-height:48px;padding:8px 6px;white-space:nowrap}',
@@ -929,10 +972,11 @@
       '.fp-sl{margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}',
       '.fp-cardh+.fp-sl{margin-top:2px;border-top:0}',
       '.fp-sl-h{display:flex;align-items:center;gap:8px;min-width:0}',
-      '.fp-sl-n{display:flex;align-items:center;gap:6px;flex:1;min-width:0;font-size:var(--text-md);color:var(--ink-2)}',
+      '.fp-sl-n{display:flex;align-items:center;gap:6px;flex:none;font-size:var(--text-md);color:var(--ink-2)}',
       '.fp-sl-n .ico{width:18px;height:18px;color:var(--ink-3)}',
       '.fp-sl.own .fp-sl-n{color:var(--ink)}.fp-sl.own .fp-sl-n .ico{color:var(--brand-text)}',
-      '.fp-sl-u{flex:none;font-size:var(--text-xs);color:var(--ink-3)}',
+      /* the PF · staff figures give way (ellipsis) before they ever run under the skill name */
+      '.fp-sl-u{flex:0 1 auto;min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;font-size:var(--text-xs);color:var(--ink-3);text-align:right}',
       '.fp-sl-v{flex:none;min-width:46px;font-size:var(--text-lg);text-align:right}',
       '.fp-sl .pl-range{margin:0}',
       /* four sliders fill half the sheet: only the thumb takes a touch (a 44px disc around the 28px dot), so a vertical swipe

@@ -261,6 +261,7 @@
       for (let k = 0; k < 2; k++) pick.forEach(h => { const i = document.createElement('span'); i.className = 'tk-item'; i.textContent = h; el.appendChild(i); });
     },
     open() {
+      if (FR.elevator && FR.elevator.cancel) FR.elevator.cancel();   // a ride under way never lands behind the menu
       if (U.sheetId) U.sheet(null); U.hud(false); U.hideHint(); if (FR.r) FR.r.paused = true;
       if (FR.title) { if (FR.title.active && titleStale && FR.title.restart) FR.title.restart(); else ensureTitle(); } titleStale = false;
       // back at the menu the floor bed ends and the menu theme returns (both only when sound is on)
@@ -278,7 +279,9 @@
     // the end-of-run screen for FR.state (won, dead or exited): outcome, cause, score parts, the frontier record
     end() {
       const s = FR.state; if (!s || s.status === 'playing') { FR.menu.open(); return; }
+      if (FR.elevator && FR.elevator.cancel) FR.elevator.cancel();
       if (U.sheetId) U.sheet(null); U.hud(false); U.hideHint(); if (FR.r) FR.r.paused = true;
+      { const t = $('toast'); if (t) { clearTimeout(U._tt); t.classList.remove('on'); } }   // e.g. the founding "Welcome" toast
       if (FR.audio && FR.audio.bedStop) FR.audio.bedStop();
       try { renderEnd(s); } catch (e) { console.error('end screen failed', e); $('endKicker').textContent = 'Run over'; $('endTitle').textContent = (s.lab && s.lab.name) || 'Lab'; }
       titleStale = true; U.show('end'); $('end').scrollTop = 0;

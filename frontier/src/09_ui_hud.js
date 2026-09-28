@@ -46,14 +46,21 @@
     try {
       const you = FR.sim.avgCap(s), b = FR.market.best(s), rv = (s.market.rivals || []).find(r => r.id === b.rivalId), d = you - b.avgCap;
       const hold = (s.win && s.win.streak) || 0, rname = rv ? rv.name : 'Best rival';
+      // ahead but not holding: the widest gap past the safe margin is what blocks the 52-week hold
+      const M = (FR.sim.K && FR.sim.K.safeMargin) || 5, worst = FR.SKILLS.reduce((b, k) => gapOf(s, k) > gapOf(s, b) ? k : b, FR.SKILLS[0]);
+      const blocked = hold === 0 && d >= 0 && s.status === 'playing' && gapOf(s, worst) > M ? worst : null;
       html = `<span class="st-k">Frontier</span><span class="st-v st-you">You <b>${you.toFixed(1)}</b></span>`
         + `<span class="st-v st-riv"><span class="nm">${esc(rname)}</span> <b>${(+b.avgCap).toFixed(1)}</b></span>`
         + `<span class="st-gap ${d >= 0 ? 'good' : 'warn'}">${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}</span>`
-        + (hold > 0 ? `<span class="st-hold">Hold <b>${hold}/${WIN}</b><i style="--v:${Math.min(100, Math.round(hold / WIN * 100))}"></i></span>` : '');
-      label = `Average capability: yours ${you.toFixed(1)}, ${rname} ${(+b.avgCap).toFixed(1)}.` + (hold > 0 ? ` Safe frontier hold ${hold} of ${WIN} weeks.` : '');
+        + (hold > 0 ? `<span class="st-hold">Hold <b>${hold}/${WIN}</b><i style="--v:${Math.min(100, Math.round(hold / WIN * 100))}"></i></span>`
+          : blocked ? `<span class="st-hold st-block">Hold blocked <b>${esc(FR.SKILL_NAME[blocked])} gap ${Math.round(gapOf(s, blocked) * 10) / 10}</b></span>` : '');
+      label = `Average capability: yours ${you.toFixed(1)}, ${rname} ${(+b.avgCap).toFixed(1)}.` + (hold > 0 ? ` Safe frontier hold ${hold} of ${WIN} weeks.`
+        : blocked ? ` The safe hold has not started: ${FR.SKILL_NAME[blocked]} safety is more than ${M} below capability.` : '') + ' Opens the Rivals tab.';
     } catch (e) { html = ''; }
     if (html !== last.strip) { last.strip = html; el.innerHTML = html; el.classList.toggle('holding', /st-hold/.test(html)); if (label) el.setAttribute('aria-label', label); }
   };
+
+  const gapOf = (s, k) => Math.max(0, s.model.skills[k].cap - s.model.skills[k].safe);
 
   // ---------- memo dot ----------
   let memoSeen = -1; // the memo.turn last opened this session (a new or loaded career starts unread)
@@ -77,7 +84,7 @@
     const b = $('memoOk'); if (b) b.addEventListener('click', () => { sfx('tap'); U.sheet(null); });
   }
   U.openMemo = function () {
-    if (!FR.state) return;
+    if (!FR.state || (FR.elevator && FR.elevator.riding)) return;
     if (typeof U.memo === 'function') { try { U.memo(); } catch (e) { console.error('memo sheet failed', e); memoFallback(); } } else memoFallback();
     U.markMemoRead();
   };
@@ -104,8 +111,10 @@
     const cur = FR.r && FR.r.current; if (!cur || !FR.elevator) return;
     if (cur.id === id) { if (fn) fn(); return; }
     if (FR.elevator.riding) return;
-    if (fn) { const h = (d) => { if (!d || d.floorId !== id) return; FR.off('elevator:arrived', h); setTimeout(fn, 0); }; FR.on('elevator:arrived', h); }
-    FR.cmd.goFloor(id);
+    if (!FR.cmd.goFloor(id)) return;
+    // the callback belongs to this ride only: a ride cancelled by quitting (FR.elevator.cancel bumps gen) drops it
+    const gen = FR.elevator.gen;
+    if (fn) { const h = (d) => { if (FR.elevator.gen !== gen) { FR.off('elevator:arrived', h); return; } if (!d || d.floorId !== id) return; FR.off('elevator:arrived', h); if (FR.inWorld && !FR.inWorld()) return; setTimeout(fn, 0); }; FR.on('elevator:arrived', h); }
   };
   // a hotspot with no panel (a build without 09_ui_panels.js, or an id it does not know): the floor's name and status line
   U.noPanel = function (id) {
@@ -123,7 +132,7 @@
 
   // ---------- the in-game menu (#hMenu) ----------
   U.gameMenu = function () {
-    const s = FR.state; if (!s) return; const st = FR.settings || {};
+    const s = FR.state; if (!s || (FR.elevator && FR.elevator.riding)) return;   // not mid-ride: quitting would strand the ride const st = FR.settings || {};
     const seg = (id, key, opts) => `<div class="seg" id="${id}" role="group">${opts.map(([v, n]) => `<button class="btn small${!!st[key] === v ? ' sel' : ''}" data-k="${key}" data-v="${v ? 1 : 0}" aria-pressed="${!!st[key] === v}">${n}</button>`).join('')}</div>`;
     const failed = !!U._saveFailed;
     U.sheet(`<div class="wk wk-menu"><span class="kicker">${esc(s.lab.name)} · ${esc(FR.dateLabel(s.turn))}</span><h3>Game menu</h3>
@@ -156,7 +165,17 @@
     });
     $('hBack').addEventListener('click', () => { sfx('tap'); if (FR.r && FR.r.back) FR.r.back(); });
     $('hMemo').addEventListener('click', () => { sfx('tap'); U.openMemo(); });
-    $('hEnd').addEventListener('click', () => { if (U.endWhy()) return; FR.cmd.endTurn(); });
+    // never behind a sheet: a key press on the focused End Turn under the memo must not resolve another week
+    $('hEnd').addEventListener('click', () => { if (U.endWhy() || U.sheetId) return; FR.cmd.endTurn(); });
+    // the chips and the strip open what they summarise: Cash the Money tab, Trust the lobby trust board, Week the memo,
+    // the frontier strip the Rivals tab
+    const chip = (id, label, fn) => { const el = $(id); if (!el) return; el.setAttribute('role', 'button'); el.tabIndex = 0; el.dataset.opens = label;
+      const go = (e) => { if (!FR.state || U.sheetId || (FR.elevator && FR.elevator.riding)) return; e.stopPropagation(); sfx('tap'); fn(); };
+      el.addEventListener('click', go); el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } }); };
+    chip('hudCashChip', 'money', () => route('boardroom.money'));
+    chip('hudTrustChip', 'trust', () => route('lobby.trust'));
+    chip('hudWeekChip', 'memo', () => U.openMemo());
+    chip('hudStrip', 'rivals', () => route('boardroom.rivals'));
     $('hMenu').addEventListener('click', () => { sfx('tap'); U.gameMenu(); });
     FR.on('hq:view', d => { if (d && d.mode !== 'room') U.hideHint(); });
     // tap-target router: R.focus plays the tap and glides first, so this only opens the matching panel
