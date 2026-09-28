@@ -40,7 +40,7 @@ const assert = (cond, msg) => { if (!cond) throw new Fail(msg); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 // a Playwright error in one line: the message, the selector it waited for, and what blocked it
 function pwWhy(e) {
-  const lines = String((e && e.message) || e).split('\n').map(l => l.trim()).filter(Boolean);
+  const lines = String((e && e.message) || e).replace(/\x1b\[[0-9;]*m/g, '').split('\n').map(l => l.trim()).filter(Boolean);
   const pick = (re) => { const l = lines.slice(1).reverse().find(x => re.test(x)); return l ? l.replace(/^-\s*/, '') : ''; };
   return [lines[0], pick(/waiting for (locator|selector)/), pick(/intercepts pointer|not visible|not stable|outside of the viewport|not enabled|detached/)].filter(Boolean).join(' · ').slice(0, 400);
 }
@@ -251,14 +251,15 @@ class Run {
     await this.until(() => !FR.ui.sheetId && !document.getElementById('hEnd').disabled, null, 5000, 'End Turn to be ready');
     for (let tries = 0; ; tries++) {
       await this.page.click('#hEnd');
-      try { await this.until((t) => FR.state.turn === t + 1, t0, tries < 2 ? 2500 : 6000, 'the week to resolve'); break; }
+      try { await this.until((t) => FR.state.turn === t + 1 || FR.state.status !== 'playing', t0, tries < 2 ? 2500 : 6000, 'the week to resolve'); break; }
       catch (e) { if (tries >= 2) throw e; await sleep(300); } // the dock's 350 ms re-arm after the previous week
     }
     if (opts.expectEnd) return;
+    const st = await this.ev(() => ({ status: FR.state.status, end: FR.state.end }));
+    assert(st.status === 'playing', `the run ended at End Turn ${t0} (${st.status}: ${JSON.stringify(st.end)})`);
     await this.until(() => FR.ui.sheetId === 'memo' && document.getElementById('sheet').classList.contains('on'), null, 5000, 'the memo sheet after End Turn');
     await sleep(350);
     if (opts.shot) await this.shot(opts.shot);
-    const st = await this.ev(() => FR.state.status); assert(st === 'playing', `the run ended during the flow (status ${st})`);
     await this.page.click('#sheet [data-fp="noted"]');
     await this.until(() => !FR.ui.sheetId, null, 4000, 'the memo to close');
     await sleep(380);
